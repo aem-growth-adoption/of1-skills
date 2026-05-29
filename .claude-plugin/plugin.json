@@ -1,0 +1,35 @@
+{
+  "name": "of1-demo-skills",
+  "version": "0.1.0",
+  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services. Ships an orchestrator plus 14 step skills.",
+  "entrypoints": {
+    "skills": [
+      "of1-demo-cc",
+      "of1-setup-cc",
+      "of1-demo",
+      "of1-setup",
+      "of1-branch-setup",
+      "of1-discovery",
+      "of1-extraction",
+      "of1-prototype",
+      "of1-snowflake",
+      "of1-template-generation",
+      "of1-generative-block-styler",
+      "of1-brand-voice-extractor",
+      "of1-content-metadata",
+      "of1-quick-suggestions",
+      "of1-cta-template-builder",
+      "of1-config-review",
+      "of1-deploy"
+    ]
+  },
+  "dependencies": [
+    "stardust",
+    "snowflake",
+    "impeccable"
+  ],
+  "_notes": {
+    "dependencies": "stardust + snowflake + impeccable live in adobe/skills@feat/eds-snowflake-da-content (stardust is built on top of impeccable). They must be published as a Claude Code plugin/marketplace before plugin-install can resolve them. Until then, of1-setup-cc verifies presence and emits install instructions if missing.",
+    "entrypoints": "of1-demo-cc is the Claude Code orchestrator. of1-demo is the SLICC variant (kept for SLICC users). Pick one to invoke based on the runtime."
+  }
+}
