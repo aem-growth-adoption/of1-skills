@@ -1,0 +1,16 @@
+# Secrets — local DA OAuth token, never commit
+.hlx/
+
+# OF1 pipeline working state (per-domain runs)
+.of1/
+
+# playwright-cli browser automation cache and logs
+.playwright-cli/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
