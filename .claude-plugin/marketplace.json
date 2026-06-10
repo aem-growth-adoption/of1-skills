@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "of1-demo-skills",
-      "source": "./plugin"
+      "source": "./"
     }
   ]
 }
