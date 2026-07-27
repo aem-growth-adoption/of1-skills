@@ -1,7 +1,7 @@
 {
   "name": "of1-demo-skills",
   "version": "0.1.0",
-  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services. Ships an orchestrator plus 13 step skills.",
+  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services. Ships an orchestrator plus 13 step skills, plus a standalone signals.json authoring skill.",
   "skills": "./skills/",
   "entrypoints": {
     "skills": [
@@ -20,7 +20,8 @@
       "of1-quick-suggestions",
       "of1-cta-template-builder",
       "of1-config-review",
-      "of1-deploy"
+      "of1-deploy",
+      "of1-signals"
     ]
   },
   "dependencies": [
@@ -29,6 +30,6 @@
     "impeccable@impeccable"
   ],
   "_notes": {
-    "entrypoints": "of1-demo-cc is the Claude Code orchestrator. of1-demo is the SLICC variant (kept for SLICC users). Pick one to invoke based on the runtime."
+    "entrypoints": "of1-demo-cc is the Claude Code orchestrator. of1-demo is the SLICC variant (kept for SLICC users). Pick one to invoke based on the runtime. of1-signals is a standalone skill, not a numbered pipeline step — it authors extension-only config (signals.json) that neither the sync/deploy pipeline nor the OF1 worker ever reads."
   }
 }
