@@ -1,14 +1,13 @@
 {
   "name": "of1-demo-skills",
   "version": "0.1.0",
-  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services. Ships an orchestrator plus 13 step skills.",
+  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services. Ships an orchestrator plus 12 step skills.",
   "skills": "./skills/",
   "entrypoints": {
     "skills": [
       "of1-demo-cc",
       "of1-demo",
       "of1-setup",
-      "of1-repo-setup",
       "of1-discovery",
       "of1-extraction",
       "of1-prototype",
