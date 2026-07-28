@@ -1,7 +1,7 @@
 {
   "name": "of1-demo-skills",
   "version": "0.1.0",
-  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services. Ships an orchestrator plus 12 step skills, plus a standalone signals.json authoring skill.",
+  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services, or introduce OF1 onto an existing EDS/Stardust site. Ships two orchestrators plus 12 step skills, plus a standalone signals.json authoring skill.",
   "skills": "./skills/",
   "entrypoints": {
     "skills": [
@@ -20,7 +20,8 @@
       "of1-cta-template-builder",
       "of1-config-review",
       "of1-deploy",
-      "of1-signals"
+      "of1-signals",
+      "of1-adopt"
     ]
   },
   "dependencies": [
