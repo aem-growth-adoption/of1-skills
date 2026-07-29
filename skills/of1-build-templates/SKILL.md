@@ -36,7 +36,7 @@ Selected by `OF1_TG_MODE`. The orchestrator runs the three phases in order: `bas
 | `base` | Generate `styles/of1-template-base.css` from the prototype CSS + `DESIGN.json`. Must finish before any `intent` agent starts — intent agents read the base CSS to see the exact token surface they can reference. | Orchestrator FIRST (sequential, 1 agent) |
 | `intent` | Generate 3 variations for ONE intent (`$OF1_TG_INTENT`). Reads the base CSS (already on disk), writes only `templates/of1-{intent}-*` and `styles/of1-{intent}-*`. Does NOT commit. | Orchestrator fan-out (5 agents in parallel) after `base` |
 | `assemble` | Run ONCE after all 5 intent agents finish. Verifies base CSS exists, assembles the catalog, runs `fill-template.py`, installs gallery, single commit + push. | Orchestrator after all intents return |
-| `all` (default) | Legacy fallback — runs `base` → 5 intents serially → assemble, inline in one agent. ~3× slower than the fan-out. | Single agent when orchestrator can't fan out |
+| `all` (default) | Fallback — runs `base` → 5 intents serially → assemble, inline in one agent. ~3× slower than the fan-out. | Single agent when orchestrator can't fan out |
 
 **Race-safety:** intent agents write disjoint files (`of1-{intent}-*` prefixes don't collide). `styles/of1-template-base.css` is owned by the `base` agent; intent agents only read it. The catalog, gallery, and git are owned by `assemble`.
 
@@ -480,7 +480,7 @@ cat > "$OF1_STATE_DIR/step-6-status.json" <<EOF
 EOF
 ```
 
-## Process — Mode: `all` (legacy fallback)
+## Process — Mode: `all` (fallback)
 
 If `OF1_TG_MODE` is unset, run all three phases inline: `base` → 5 intents serially → `assemble`. Same artifacts as the fan-out; ~5× slower wall-clock because there's no parallelism. Prefer fan-out when the orchestrator supports it.
 
