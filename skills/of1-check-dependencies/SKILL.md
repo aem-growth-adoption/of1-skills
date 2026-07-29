@@ -1,6 +1,6 @@
 ---
 name: of1-check-dependencies
-description: Verify all OF1 demo pipeline dependencies are installed, verify the local EDS repo, and prepare repo-config.json.
+description: Verify all OF1 demo pipeline dependencies are installed, check the local EDS repo is valid, and prepare repo-config.json. Use at the start of an OF1 demo (Step 1 / setup), before running any pipeline step, or whenever dependencies or repo config need a preflight check.
 ---
 
 # OF1 Setup — Verify Dependencies & Repo
