@@ -161,14 +161,14 @@ function main(argv) {
   });
 
   // Mark grid with item count
-  out = out.replace(
+  out = out.replaceAll(
     '<div class="of1-cmp-grid" data-grid-items>',
     `<div class="of1-cmp-grid" data-grid-items data-item-count="${itemCount}">`,
   );
 
   // Wrap in standalone page
-  const stylesheet = values._meta?.stylesheet || '/styles/of1-template-base.css';
-  const title = values['hero.title'] || 'Template Preview';
+  const stylesheet = values._meta?.stylesheet ?? '/styles/of1-template-base.css';
+  const title = values['hero.title'] ?? 'Template Preview';
 
   const standalone = `<!DOCTYPE html>
 <html lang="en">
