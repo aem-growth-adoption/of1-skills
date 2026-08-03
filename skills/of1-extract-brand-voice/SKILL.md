@@ -19,12 +19,33 @@ Read repo config:
 
 ```bash
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
+OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
+REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
+BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
 
 Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `brand-voice.json`.
+
+## Source resolution — live site vs replica
+
+The content this skill extracts comes from one of two places, decided by `OF1_CONTENT_SOURCE`:
+
+```bash
+if [ -n "$OF1_CONTENT_SOURCE" ]; then
+  # Pipeline mode: extract from the REAL external site (highest-fidelity source data)
+  SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
+else
+  # Standalone mode (default, unchanged): extract from the built EDS replica preview
+  SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
+fi
+echo "Extracting from: $SOURCE_BASE"
+```
+
+Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everything else
+(output files, image download, JSON shapes) is identical in both modes.
 
 ## Inputs
 
@@ -37,9 +58,9 @@ Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § 
 
 Fetch **3–5 pages** to get a representative sample of the brand's writing:
 
-1. **Homepage** — `https://${DOMAIN}`
+1. **Homepage** — `$SOURCE_BASE`
 2. **Product/service page** — a detail page (from discovery output if available)
-3. **About or editorial** — `/about`, `/blog`, `/stories`
+3. **About or editorial** — `$SOURCE_BASE/about`, `$SOURCE_BASE/blog`, `$SOURCE_BASE/stories`
 
 For each page, analyze:
 - TONE: Formal/informal, technical/accessible, playful/serious?

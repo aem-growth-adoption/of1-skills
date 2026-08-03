@@ -19,12 +19,35 @@ Read repo config:
 
 ```bash
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
+OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
+REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
+BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
 
 Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `suggestions.json`.
+
+## Source resolution — live site vs replica
+
+The content this skill extracts comes from one of two places, decided by `OF1_CONTENT_SOURCE`:
+
+```bash
+if [ -n "$OF1_CONTENT_SOURCE" ]; then
+  # Pipeline mode: extract from the REAL external site (highest-fidelity source data)
+  SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
+else
+  # Standalone mode (default, unchanged): extract from the built EDS replica preview
+  SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
+fi
+echo "Extracting from: $SOURCE_BASE"
+```
+
+This skill itself doesn't crawl the site directly — it only reads `products.json`, `personas.json`,
+and `brand-voice.json` (produced by `of1-extract-content` and `of1-extract-brand-voice`, which do
+honor `$SOURCE_BASE`). `$SOURCE_BASE` is resolved here for consistency and in case any suggestion
+copy needs to reference the live site's URL. Output files and JSON shapes are identical in both modes.
 
 ## Inputs
 

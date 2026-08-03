@@ -41,6 +41,26 @@ cat "$OF1_STATE_DIR/step-2-output.md" 2>/dev/null
 
 Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` — § `products.json`, § `personas.json`, § `use-cases.json`, § `features.json`, § `faqs.json`.
 
+## Source resolution — live site vs replica
+
+The content this skill extracts comes from one of two places, decided by `OF1_CONTENT_SOURCE`:
+
+```bash
+if [ -n "$OF1_CONTENT_SOURCE" ]; then
+  # Pipeline mode: extract from the REAL external site (highest-fidelity source data)
+  SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
+else
+  # Standalone mode (default, unchanged): extract from the built EDS replica preview
+  SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
+fi
+echo "Extracting from: $SOURCE_BASE"
+```
+
+Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everything else
+(output files, image download, JSON shapes) is identical in both modes. Note: `$SOURCE_BASE`
+is only for extracting product/content data — Step 9's image re-hosting always targets the
+EDS replica (`https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...`) regardless of source.
+
 ## Inputs
 
 - `DOMAIN` (e.g. `frescopa.coffee`). In pipeline mode, read from repo-config. Only ask the user if not provided.
@@ -49,7 +69,7 @@ Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` —
 
 ### 1. Understand scope
 
-In pipeline mode: use `https://${DOMAIN}` and focus on the **demo category** from discovery (10–20 products). Skip asking.
+In pipeline mode: use `$SOURCE_BASE` and focus on the **demo category** from discovery (10–20 products). Skip asking.
 
 In standalone mode, ask:
 > What should I index? Full catalog / specific category / curated list of URLs?
