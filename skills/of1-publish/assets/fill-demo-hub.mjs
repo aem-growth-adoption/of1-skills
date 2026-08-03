@@ -63,7 +63,7 @@ function countTemplates(repoDir) {
 
 function renderAudit(stateDir) {
   const audit = loadJson(path.join(stateDir, 'pipeline-audit.json'));
-  if (!audit || Object.keys(audit).length === 0 || !audit.steps) return '';
+  if (!audit || Object.keys(audit).length === 0 || !Array.isArray(audit.steps) || audit.steps.length === 0) return '';
 
   const totalTokens = audit.totalTokens || 0;
   const totalDuration = audit.totalDurationMs || 0;
