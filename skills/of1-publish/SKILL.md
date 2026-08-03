@@ -79,11 +79,7 @@ curl -s -H "Authorization: Bearer $DA_TOKEN" \
 [ -s /tmp/da-pages.txt ] || echo "WARN: no DA pages found — hub will be missing EDS page links"
 
 # Generate the demo hub from the template
-# Claude Code (python3 available):
-python3 "$SKILL_DIR/assets/fill-demo-hub.py" . "${DOMAIN}"
-
-# SLICC (use .jsh — no python3 in SLICC runtime):
-# run_jsh "$SKILL_DIR/assets/fill-demo-hub.jsh" . "${DOMAIN}"
+node "$SKILL_DIR/assets/fill-demo-hub.mjs" . "${DOMAIN}"
 ```
 
 This reads all config, finds prototypes, discovers EDS pages from `/tmp/da-pages.txt`, and writes `deliverables/index.html`. Do NOT hand-write the hub HTML.
