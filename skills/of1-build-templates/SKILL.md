@@ -35,7 +35,7 @@ Selected by `OF1_TG_MODE`. The orchestrator runs the three phases in order: `bas
 |---|---|---|
 | `base` | Generate `styles/of1-template-base.css` from the prototype CSS + `DESIGN.json`. Must finish before any `intent` agent starts — intent agents read the base CSS to see the exact token surface they can reference. | Orchestrator FIRST (sequential, 1 agent) |
 | `intent` | Generate 3 variations for ONE intent (`$OF1_TG_INTENT`). Reads the base CSS (already on disk), writes only `templates/of1-{intent}-*` and `styles/of1-{intent}-*`. Does NOT commit. | Orchestrator fan-out (5 agents in parallel) after `base` |
-| `assemble` | Run ONCE after all 5 intent agents finish. Verifies base CSS exists, assembles the catalog, runs `fill-template.py`, installs gallery, single commit + push. | Orchestrator after all intents return |
+| `assemble` | Run ONCE after all 5 intent agents finish. Verifies base CSS exists, assembles the catalog, runs `fill-template.mjs`, installs gallery, single commit + push. | Orchestrator after all intents return |
 | `all` (default) | Fallback — runs `base` → 5 intents serially → assemble, inline in one agent. ~3× slower than the fan-out. | Single agent when orchestrator can't fan out |
 
 **Race-safety:** intent agents write disjoint files (`of1-{intent}-*` prefixes don't collide). `styles/of1-template-base.css` is owned by the `base` agent; intent agents only read it. The catalog, gallery, and git are owned by `assemble`.
@@ -65,7 +65,7 @@ The OF1 worker materializes templates from EDS into R2 after `POST /api/tenants/
 | 5 | `templates/<name>.sample.json` | Sample slot data for gallery preview | `intent` |
 | 6 | `styles/of1-template-base.css` | Shared design tokens + thin reset | `base` |
 | 7 | `styles/<name>.css` | Per-template stylesheet (imports the base) | `intent` |
-| 8 | `drafts/<name>-sample.html` | Filled preview (via `fill-template.py`) | `assemble` |
+| 8 | `drafts/<name>-sample.html` | Filled preview (via `fill-template.mjs`) | `assemble` |
 | 9 | `gallery/index.html` | Browsable review UI | `assemble` |
 
 ### Slot types (worker's `render-template.js`)
@@ -403,22 +403,12 @@ Produces `templates/templates-catalog.json` + `of1/config/templates.json`. Fails
 
 ```bash
 mkdir -p tools drafts
-
-# Claude Code (python3 available):
-cp "$SKILL_DIR/assets/fill-template.py" tools/fill-template.py
+cp "$SKILL_DIR/assets/fill-template.mjs" tools/fill-template.mjs
 for TPL in templates/of1-*.html; do
   NAME=$(basename "$TPL" .html)
   SAMPLE="templates/${NAME}.sample.json"
-  [ -f "$SAMPLE" ] && python3 tools/fill-template.py "$TPL" "$SAMPLE" "drafts/${NAME}-sample.html"
+  [ -f "$SAMPLE" ] && node tools/fill-template.mjs "$TPL" "$SAMPLE" "drafts/${NAME}-sample.html"
 done
-
-# SLICC (use .jsh — no python3 in SLICC runtime):
-# cp "$SKILL_DIR/assets/fill-template.jsh" tools/fill-template.jsh
-# for TPL in templates/of1-*.html; do
-#   NAME=$(basename "$TPL" .html)
-#   SAMPLE="templates/${NAME}.sample.json"
-#   [ -f "$SAMPLE" ] && run_jsh tools/fill-template.jsh "$TPL" "$SAMPLE" "drafts/${NAME}-sample.html"
-# done
 ```
 
 ### 4. Install gallery
@@ -437,7 +427,7 @@ git add styles/of1-template-base.css styles/of1-*.css \
         templates/templates-catalog.json \
         of1/config/templates.json \
         drafts/of1-*-sample.html \
-        tools/fill-template.py \
+        tools/fill-template.mjs \
         gallery/index.html
 git commit -m "feat: 15 OF1 templates (5 intents × 3 variations) for ${DOMAIN}"
 git push origin "$BRANCH"
@@ -506,4 +496,4 @@ OF1_TG_MODE=assemble # re-invoke this skill's assemble path
 - 15 × `drafts/of1-*-sample.html` — filled previews
 - `templates/templates-catalog.json` — template index (fully inlined)
 - `gallery/index.html` — browseable review UI
-- `tools/fill-template.py` — fill script
+- `tools/fill-template.mjs` — fill script
