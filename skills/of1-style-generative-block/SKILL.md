@@ -236,7 +236,7 @@ There is no separate page-chrome CSS step. `/of1` loads the site's own `styles/s
 
 ### Step 7 — Upload OF1 DA content
 
-The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up its real `/nav` and `/footer` documents automatically — no placeholder nav/footer pages need to be created here, since the site already has real ones from step 5 (`of1-convert-to-eds`).
+The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up its real `/nav` and `/footer` documents automatically — no placeholder nav/footer pages need to be created here, since the site already has real ones produced by `stardust:replica` (for the full e2e pipeline) or by the existing site itself (for `of1-adopt-existing-site`).
 
 ```bash
 OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>https://of1-gen-web-service.franklin-prod.workers.dev</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr></table></div></div></main><footer></footer></body>'
@@ -349,9 +349,9 @@ Common failures:
 
 | Symptom | Likely cause |
 |---|---|
-| `HEADER MISSING` / `FOOTER MISSING` | `content/nav.html`/`content/footer.html` weren't pushed by step 5 (`of1-convert-to-eds`) — re-run step 5's artifact-verification gate |
+| `HEADER MISSING` / `FOOTER MISSING` | `content/nav.html`/`content/footer.html` weren't pushed by `stardust:replica`'s deploy phase — re-run its artifact-verification gate |
 | `OF1 BLOCK MISSING` | `blocks/of1/of1.js` wasn't pushed, or the `of1` block table's `th` cell doesn't read exactly `of1` |
-| Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by step 5, or the preview hasn't picked up the latest push yet |
+| Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by `stardust:replica`'s deploy phase, or the preview hasn't picked up the latest push yet |
 
 Fix any failures and re-push before Completion.
 

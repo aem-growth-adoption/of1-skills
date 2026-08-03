@@ -1,7 +1,7 @@
 {
   "name": "of1-demo-skills",
   "version": "0.1.0",
-  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services, or introduce OF1 onto an existing EDS/Stardust site. Ships two orchestrators plus 12 step skills, plus a standalone signals.json authoring skill.",
+  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services, or introduce OF1 onto an existing EDS/Stardust site. Ships two orchestrators plus 10 step skills, plus a standalone signals.json authoring skill.",
   "skills": "./skills/",
   "entrypoints": {
     "skills": [
@@ -9,9 +9,6 @@
       "of1-demo-orchestrator",
       "of1-check-dependencies",
       "of1-discover-narrative",
-      "of1-extract-design-tokens",
-      "of1-build-prototypes",
-      "of1-convert-to-eds",
       "of1-build-templates",
       "of1-style-generative-block",
       "of1-extract-brand-voice",
