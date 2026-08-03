@@ -54,10 +54,10 @@ fix_cmd() {
 # ---------- 1. OF1 step skills (project- or user-scoped) ----------
 
 REQUIRED_SKILLS=(
-  of1-discover-narrative of1-extract-design-tokens of1-build-prototypes
-  of1-convert-to-eds of1-build-templates of1-style-generative-block
+  of1-discover-narrative of1-build-templates of1-style-generative-block
   of1-extract-brand-voice of1-extract-content of1-build-quick-suggestions
   of1-build-cta-template of1-generate-config-review of1-publish
+  of1-adopt-existing-site
 )
 
 # Search locations: CC plugin/user/project scopes plus SLICC's /workspace/skills.
@@ -85,7 +85,7 @@ for S in "${REQUIRED_SKILLS[@]}"; do
   find_skill "$S" >/dev/null || MISSING+=("$S")
 done
 if [ ${#MISSING[@]} -eq 0 ]; then
-  ok "All 12 OF1 step skills present"
+  ok "All 10 OF1 skills present"
 else
   fail "Missing OF1 step skills: ${MISSING[*]} — fix: $(fix_cmd '/plugin install of1-demo-skills@<marketplace>' 'upskill aem-growth-adoption/of1-demo-skills --all')"
 fi
@@ -131,6 +131,13 @@ for S in "${ADOBE_EDS_SKILLS[@]}"; do
     fi
   fi
 done
+
+# ---------- stardust:replica (Stage 2 depends on it) ----------
+if find "${SKILL_ROOTS[@]}" -path "*/skills/replica/SKILL.md" 2>/dev/null | grep -q .; then
+  ok "stardust:replica present"
+else
+  fail "stardust:replica skill not found — Stage 2 requires it. Update the stardust plugin: $(fix_cmd '/plugin update stardust' 'upskill adobe/skills --path plugins/stardust --all')"
+fi
 
 # ---------- 3. Shell tools ----------
 
