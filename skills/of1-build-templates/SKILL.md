@@ -117,7 +117,7 @@ The OF1 worker materializes templates from EDS into R2 after `POST /api/tenants/
 
 ### Catalog requirement — fully inline
 
-⚠️ Every entry in `templates-catalog.json`'s `templates[]` array MUST include `slots`, `htmlContent`, and `stylesheet` inlined. `assemble-catalog.py` handles this — do not hand-author the catalog.
+⚠️ Every entry in `templates-catalog.json`'s `templates[]` array MUST include `slots`, `htmlContent`, and `stylesheet` inlined. `assemble-catalog.mjs` handles this — do not hand-author the catalog.
 
 ### Per-template structure (mandatory)
 
@@ -394,11 +394,7 @@ COUNT_CSS=$(ls styles/of1-*.css 2>/dev/null | grep -v 'of1-template-base.css' | 
 ### 2. Assemble the catalog (fully inlined)
 
 ```bash
-# Claude Code (python3 available):
-python3 "$SKILL_DIR/assets/assemble-catalog.py" "$OF1_DEMO_REPO" "$OWNER" "$REPO" "$BRANCH"
-
-# SLICC (use .jsh — no python3 in SLICC runtime):
-# run_jsh "$SKILL_DIR/assets/assemble-catalog.jsh" "$OF1_DEMO_REPO" "$OWNER" "$REPO" "$BRANCH"
+node "$SKILL_DIR/assets/assemble-catalog.mjs" "$OF1_DEMO_REPO" "$OWNER" "$REPO" "$BRANCH"
 ```
 
 Produces `templates/templates-catalog.json` + `of1/config/templates.json`. Fails fast if any of the 15 templates is missing HTML; warns if any intent is missing from the catalog.
