@@ -1,7 +1,14 @@
-// download-images.jsh — Parallel product-image download + upload to DA.
+#!/usr/bin/env node
+// download-images.mjs — Parallel product-image download + upload to DA.
+//
+// Reads a manifest of products + image URLs, downloads each image concurrently,
+// sniffs its content type from magic bytes (so JPEGs aren't uploaded as PNGs),
+// and uploads to DA via the filesystem mount when available or admin.da.live PUT
+// otherwise. Default concurrency is 8 workers — enough to saturate I/O without
+// being rude to source servers.
 //
 // Usage:
-//   download-images.jsh \
+//   node download-images.mjs \
 //     --input image-manifest.json \
 //     --owner aem-growth-adoption \
 //     --repo of1-demo-orchestrator \
@@ -11,12 +18,33 @@
 //     [--workers 8] \
 //     [--update-products] \
 //     [--products-json of1/config/products.json] \
-//     [--token-file path/to/token.json]
+//     [--token-file path/to/token.json] \
+//     [--mount-dir /mnt/da]
+//
+// Manifest shape:
+//   [{"productId": "house-blend", "urls": ["https://...", "https://..."]}, ...]
+//
+// Token resolution order (first that works wins):
+//   1. --token-file <path>
+//   2. $DA_TOKEN env var (raw token)
+//   3. $ADOBE_IMS_TOKEN env var (raw token, Claude Code convention)
+//   4. $OF1_TOKEN_FILE env var (path to token JSON)
+//   5. `oauth-token adobe` (SLICC shim)
+//   6. ./.hlx/.da-token.json (project default)
+
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { exec as execCb } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const exec = promisify(execCb);
 
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 const MIN_BYTES = 10000;
 const DEFAULT_WORKERS = 8;
 
+// (magic_prefix, mime, extension)
 const MAGIC = [
   { prefix: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], mime: 'image/png', ext: 'png' },
   { prefix: [0xff, 0xd8, 0xff], mime: 'image/jpeg', ext: 'jpg' },
@@ -37,7 +65,7 @@ function detectContentType(bytes) {
       bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
     return { mime: 'image/webp', ext: 'webp' };
   }
-  return { mime: 'image/png', ext: 'png' };
+  return { mime: 'image/png', ext: 'png' }; // safe fallback
 }
 
 function parseArgs(argv) {
@@ -45,9 +73,9 @@ function parseArgs(argv) {
     input: null, owner: null, repo: null, branch: null,
     output: 'image-mapping.json', maxPerProduct: 5, workers: DEFAULT_WORKERS,
     updateProducts: false, productsJson: 'of1/config/products.json',
-    tokenFile: null, mountDir: null,
+    tokenFile: null, mountDir: '/mnt/da',
   };
-  const raw = argv.slice(1); // argv[0] is script name
+  const raw = argv;
   for (let i = 0; i < raw.length; i++) {
     switch (raw[i]) {
       case '--input': args.input = raw[++i]; break;
@@ -73,38 +101,40 @@ function parseArgs(argv) {
   return args;
 }
 
-async function readTokenFile(path) {
-  const content = await fs.readFile(path);
+function readTokenFile(filePath) {
+  const content = fs.readFileSync(filePath, 'utf8');
   const data = JSON.parse(content);
   const token = data.access_token || data.token;
-  if (!token) throw new Error(`Token file ${path} missing access_token / token field`);
+  if (!token) throw new Error(`Token file ${filePath} missing access_token / token field`);
   return token;
 }
 
 async function resolveToken(tokenFileArg) {
-  if (tokenFileArg) return await readTokenFile(tokenFileArg);
+  if (tokenFileArg) return readTokenFile(tokenFileArg);
   if (process.env.DA_TOKEN) return process.env.DA_TOKEN;
   if (process.env.ADOBE_IMS_TOKEN) return process.env.ADOBE_IMS_TOKEN;
-  if (process.env.OF1_TOKEN_FILE) return await readTokenFile(process.env.OF1_TOKEN_FILE);
+  if (process.env.OF1_TOKEN_FILE) return readTokenFile(process.env.OF1_TOKEN_FILE);
   try {
-    const { stdout: result } = await exec('oauth-token adobe');
-    const trimmed = result.trim();
+    const { stdout } = await exec('oauth-token adobe');
+    const trimmed = stdout.trim();
     if (trimmed) return trimmed;
-  } catch (e) { /* ignore */ }
-  try {
-    const content = await fs.readFile('.hlx/.da-token.json');
-    const data = JSON.parse(content);
-    const token = data.access_token || data.token;
-    if (token) return token;
-  } catch (e) { /* ignore */ }
+  } catch (e) { /* ignore — SLICC shim not available */ }
+  for (const candidate of ['.hlx/.da-token.json']) {
+    if (fs.existsSync(candidate)) return readTokenFile(candidate);
+  }
   throw new Error(
-    'Could not resolve DA token. Pass --token-file, set $DA_TOKEN/$ADOBE_IMS_TOKEN, ' +
-    'or place token JSON at .hlx/.da-token.json.'
+    'Could not resolve DA token. Pass --token-file, set $DA_TOKEN/$ADOBE_IMS_TOKEN, '
+    + 'or place token JSON at .hlx/.da-token.json.',
   );
 }
 
 async function downloadImage(url) {
-  const resp = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+  let resp;
+  try {
+    resp = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+  } catch (e) {
+    return { data: null, err: `download error: ${e.message}` };
+  }
   if (!resp.ok) return { data: null, err: `HTTP ${resp.status}` };
   const buffer = await resp.arrayBuffer();
   const bytes = new Uint8Array(buffer);
@@ -122,7 +152,7 @@ async function triggerPreview(token, owner, repo, branch, filename) {
     const resp = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'x-content-source-authorization': `Bearer ${token}`,
       },
     });
@@ -133,18 +163,22 @@ async function triggerPreview(token, owner, repo, branch, filename) {
   }
 }
 
-async function uploadImage(data, contentType, token, owner, repo, branch, filename, mountDir) {
-  // Try mount first
+async function upload(data, contentType, token, owner, repo, branch, filename, mountDir) {
   if (mountDir) {
+    const mountPath = path.join(mountDir, branch, 'media', filename);
     try {
-      const mountPath = `${mountDir}/${branch}/media/${filename}`;
-      // Write binary via base64 workaround — use fetch to upload instead
-      // Mount not easily doable in .jsh without binary fs support, skip to API
-    } catch (e) { /* fall through */ }
+      fs.mkdirSync(path.dirname(mountPath), { recursive: true });
+      fs.writeFileSync(mountPath, Buffer.from(data));
+      const err = await triggerPreview(token, owner, repo, branch, filename);
+      return ['mount', err || null];
+    } catch (e) {
+      // fall through to API
+    }
   }
 
-  // DA multipart upload
-  const boundary = '----DABoundary' + Math.random().toString(16).slice(2, 18);
+  // DA requires multipart/form-data with field name "data" for binary uploads.
+  // Raw PUT silently returns 2xx but doesn't persist the file.
+  const boundary = '----DABoundary' + crypto.randomBytes(8).toString('hex');
   const header = `--${boundary}\r\nContent-Disposition: form-data; name="data"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`;
   const footer = `\r\n--${boundary}--\r\n`;
 
@@ -156,24 +190,25 @@ async function uploadImage(data, contentType, token, owner, repo, branch, filena
   body.set(footerBytes, headerBytes.length + data.length);
 
   const url = `https://admin.da.live/source/${owner}/${repo}/media/${filename}`;
+  let resp;
   try {
-    const resp = await fetch(url, {
+    resp = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': `multipart/form-data; boundary=${boundary}`,
       },
-      body: body,
+      body,
     });
-    if (!resp.ok) return { method: null, err: `HTTP ${resp.status}` };
   } catch (e) {
-    return { method: null, err: `upload error: ${e.message}` };
+    return ['api', `upload error: ${e.message}`];
   }
+  if (!resp.ok) return ['api', `HTTP ${resp.status}`];
   // File is uploaded to DA's source store but not yet in the Media Bus —
   // request a preview so it becomes reachable at the site's /media/ path.
   const previewErr = await triggerPreview(token, owner, repo, branch, filename);
-  if (previewErr) return { method: null, err: previewErr };
-  return { method: 'api', err: null };
+  if (previewErr) return ['api', previewErr];
+  return ['api', null];
 }
 
 async function processOne(task, token, owner, repo, branch, mountDir) {
@@ -184,14 +219,14 @@ async function processOne(task, token, owner, repo, branch, mountDir) {
   }
   const { mime: contentType, ext } = detectContentType(data);
   const filename = `product-${productId}-${n}.${ext}`;
-  const { method, err: upErr } = await uploadImage(data, contentType, token, owner, repo, branch, filename, mountDir);
+  const [method, upErr] = await upload(data, contentType, token, owner, repo, branch, filename, mountDir);
   if (upErr) {
     return { product_id: productId, n, ok: false, stage: 'upload', err: upErr };
   }
   return { product_id: productId, n, ok: true, method, filename, size: data.length };
 }
 
-// Concurrency limiter
+// Concurrency limiter — bounded pool, no third-party deps.
 function semaphore(max) {
   let active = 0;
   const queue = [];
@@ -199,9 +234,7 @@ function semaphore(max) {
     return new Promise((resolve, reject) => {
       const execute = async () => {
         active++;
-        try { resolve(await fn()); }
-        catch (e) { reject(e); }
-        finally {
+        try { resolve(await fn()); } catch (e) { reject(e); } finally {
           active--;
           if (queue.length > 0) queue.shift()();
         }
@@ -213,17 +246,12 @@ function semaphore(max) {
 }
 
 async function main() {
-  const args = parseArgs(process.argv);
+  const args = parseArgs(process.argv.slice(2));
   const token = await resolveToken(args.tokenFile);
 
-  // Check mount availability
-  let mountDir = null;
-  try {
-    await fs.readFile(args.mountDir + '/.'); // probe
-    mountDir = args.mountDir;
-  } catch (e) { /* no mount */ }
+  const mountDir = fs.existsSync(args.mountDir) ? args.mountDir : null;
 
-  const manifestContent = await fs.readFile(args.input);
+  const manifestContent = fs.readFileSync(args.input, 'utf8');
   const manifest = JSON.parse(manifestContent);
 
   const tasks = [];
@@ -239,7 +267,7 @@ async function main() {
 
   const run = semaphore(args.workers);
   const results = await Promise.all(
-    tasks.map(task => run(() => processOne(task, token, args.owner, args.repo, args.branch, mountDir)))
+    tasks.map((task) => run(() => processOne(task, token, args.owner, args.repo, args.branch, mountDir))),
   );
 
   for (const r of results) {
@@ -250,7 +278,7 @@ async function main() {
     }
   }
 
-  const okN = results.filter(r => r.ok).length;
+  const okN = results.filter((r) => r.ok).length;
   const failN = results.length - okN;
   console.log(`\nSummary: ${okN} uploaded, ${failN} failed.`);
 
@@ -265,16 +293,15 @@ async function main() {
   }
   for (const pid of Object.keys(mapping)) {
     mapping[pid].sort((a, b) => a.n - b.n);
-    mapping[pid] = mapping[pid].map(x => x.url);
+    mapping[pid] = mapping[pid].map((x) => x.url);
   }
 
-  await fs.writeFile(args.output, JSON.stringify(mapping, null, 2));
+  fs.writeFileSync(args.output, JSON.stringify(mapping, null, 2));
   console.log(`Mapping written to: ${args.output}`);
 
   if (args.updateProducts) {
-    try {
-      const pjContent = await fs.readFile(args.productsJson);
-      const products = JSON.parse(pjContent);
+    if (fs.existsSync(args.productsJson)) {
+      const products = JSON.parse(fs.readFileSync(args.productsJson, 'utf8'));
       let updated = 0;
       for (const p of products) {
         const pid = p.id || '';
@@ -283,9 +310,9 @@ async function main() {
           updated++;
         }
       }
-      await fs.writeFile(args.productsJson, JSON.stringify(products, null, 2));
+      fs.writeFileSync(args.productsJson, JSON.stringify(products, null, 2));
       console.log(`Updated ${updated} products in ${args.productsJson}`);
-    } catch (e) {
+    } else {
       console.error(`WARN: --update-products requested but ${args.productsJson} not found`);
     }
   }

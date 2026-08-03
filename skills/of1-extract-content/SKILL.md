@@ -260,9 +260,9 @@ Verify all ID references are consistent across files. Fix mismatches.
 
 ### 9. Download + upload product images to DA
 
-⛔ **HARD GATE — DO NOT SKIP THIS STEP. DO NOT MARK THIS SKILL AS COMPLETE WITHOUT RUNNING `download-images.py`.** If you write the completion status file without first downloading and uploading images to DA, the demo WILL fail the pre-launch checklist and the entire pipeline run is wasted. This step is NOT optional. Placeholder URLs written by hand instead of running the script are NOT valid — they will 404.
+⛔ **HARD GATE — DO NOT SKIP THIS STEP. DO NOT MARK THIS SKILL AS COMPLETE WITHOUT RUNNING `download-images.mjs`.** If you write the completion status file without first downloading and uploading images to DA, the demo WILL fail the pre-launch checklist and the entire pipeline run is wasted. This step is NOT optional. Placeholder URLs written by hand instead of running the script are NOT valid — they will 404.
 
-**ALL product images MUST be self-hosted on DA and previewed on EDS.** Never leave external CDN URLs in `products.json` — external URLs break due to CORS, referrer policies, encoding issues, and EDS image optimization rewriting. `content.da.live` is DA's authoring/source store — it is access-restricted and NOT a public delivery endpoint. Images must be uploaded to DA AND previewed (so EDS's Media Bus ingests them), then referenced via the site's own domain: `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/{filename}`. `download-images.py`/`.jsh` does both steps automatically.
+**ALL product images MUST be self-hosted on DA and previewed on EDS.** Never leave external CDN URLs in `products.json` — external URLs break due to CORS, referrer policies, encoding issues, and EDS image optimization rewriting. `content.da.live` is DA's authoring/source store — it is access-restricted and NOT a public delivery endpoint. Images must be uploaded to DA AND previewed (so EDS's Media Bus ingests them), then referenced via the site's own domain: `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/{filename}`. `download-images.mjs` does both steps automatically.
 
 **Minimum 4 images per product, up to 8.** The pre-launch checklist FAILS if any product has fewer than 4. Templates often render 3–6 item cards with images — fewer than 4 images per product leaves visible gaps. If a product page has only 1–3 images, look on the category/listing page, manufacturer press galleries, related model pages, or lifestyle/editorial pages for additional angles.
 
@@ -282,7 +282,7 @@ Stage the source URLs in `products.json`'s `images` arrays.
 
 #### Parallel download + upload
 
-Use `download-images.py` — it downloads + uploads concurrently (8 workers), sniffs content type from magic bytes, triggers an EDS preview per image so it's reachable on the site's own domain, and resolves the DA token automatically.
+Use `download-images.mjs` — it downloads + uploads concurrently (8 workers), sniffs content type from magic bytes, triggers an EDS preview per image so it's reachable on the site's own domain, and resolves the DA token automatically.
 
 ```bash
 cd "$OF1_DEMO_REPO"
@@ -299,19 +299,11 @@ print(f"Manifest: {len(manifest)} products with images")
 EOF
 
 # Parallel download + upload + rewrite products.json with DA URLs
-# Claude Code (python3 available):
-python3 "$SKILL_DIR/assets/download-images.py" \
+node "$SKILL_DIR/assets/download-images.mjs" \
   --input /tmp/image-manifest.json \
   --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
   --output /tmp/image-mapping.json \
   --update-products
-
-# SLICC (use .jsh — no python3 in SLICC runtime):
-# run_jsh "$SKILL_DIR/assets/download-images.jsh" \
-#   --input /tmp/image-manifest.json \
-#   --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
-#   --output /tmp/image-mapping.json \
-#   --update-products
 ```
 
 The `--update-products` flag rewrites `products.json[*].images` to the site's `.aem.page/media/...` URLs automatically.
@@ -323,7 +315,7 @@ rm -rf /tmp/image-manifest.json /tmp/image-mapping.json
 rm -rf of1/config/img-tmp of1/config/da-token.json of1/config/image-manifest.json
 ```
 
-These are working files from `download-images.py` — do NOT commit them to git.
+These are working files from `download-images.mjs` — do NOT commit them to git.
 
 #### Verify
 
@@ -367,7 +359,7 @@ EOF
 ## Completion (pipeline mode)
 
 ⛔ **BEFORE writing the status file below, you MUST have:**
-1. Run `download-images.py` with `--update-products` (Step 9 above)
+1. Run `download-images.mjs` with `--update-products` (Step 9 above)
 2. Verified ALL product image URLs return HTTP 200 (the verify script above)
 3. Confirmed all images are `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...` URLs (site domain, previewed), NOT `https://content.da.live/...` (access-restricted, not public)
 
