@@ -50,6 +50,15 @@ function main(argv) {
     const name = meta.name;
     const intent = meta.intent;
 
+    if (!name) {
+      console.error(`ERROR: ${metaFile} missing required field 'name'`);
+      return 1;
+    }
+    if (!intent) {
+      console.error(`ERROR: ${metaFile} missing required field 'intent'`);
+      return 1;
+    }
+
     const htmlPath = path.join(templateDir, `${name}.html`);
     if (!fs.existsSync(htmlPath)) {
       missingHtml.push(name);

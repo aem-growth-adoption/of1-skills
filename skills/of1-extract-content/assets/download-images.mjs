@@ -83,8 +83,24 @@ function parseArgs(argv) {
       case '--repo': args.repo = raw[++i]; break;
       case '--branch': args.branch = raw[++i]; break;
       case '--output': args.output = raw[++i]; break;
-      case '--max-per-product': args.maxPerProduct = parseInt(raw[++i], 10); break;
-      case '--workers': args.workers = parseInt(raw[++i], 10); break;
+      case '--max-per-product': {
+        const rawVal = raw[++i];
+        args.maxPerProduct = parseInt(rawVal, 10);
+        if (Number.isNaN(args.maxPerProduct)) {
+          console.error(`Invalid --max-per-product value: ${rawVal}`);
+          process.exit(1);
+        }
+        break;
+      }
+      case '--workers': {
+        const rawVal = raw[++i];
+        args.workers = parseInt(rawVal, 10);
+        if (Number.isNaN(args.workers)) {
+          console.error(`Invalid --workers value: ${rawVal}`);
+          process.exit(1);
+        }
+        break;
+      }
       case '--update-products': args.updateProducts = true; break;
       case '--products-json': args.productsJson = raw[++i]; break;
       case '--token-file': args.tokenFile = raw[++i]; break;
