@@ -62,13 +62,23 @@ function countTemplates(repoDir) {
 }
 
 function renderAudit(stateDir) {
-  const audit = loadJson(path.join(stateDir, 'pipeline-audit.json'));
-  if (!audit || Object.keys(audit).length === 0 || !Array.isArray(audit.steps) || audit.steps.length === 0) return '';
+  const auditPath = path.join(stateDir, 'pipeline-audit.json');
+  const audit = loadJson(auditPath);
+  if (!audit || Object.keys(audit).length === 0) return ''; // no audit written — fine
+
+  // Orchestrators write `stages`; accept legacy `steps` too.
+  const stages = Array.isArray(audit.stages) ? audit.stages
+    : Array.isArray(audit.steps) ? audit.steps
+      : null;
+  if (!stages || stages.length === 0) {
+    console.error(`WARN: ${auditPath} exists but has no 'stages' (or legacy 'steps') array — audit section omitted from the hub.`);
+    return '';
+  }
 
   const totalTokens = audit.totalTokens || 0;
   const totalDuration = audit.totalDurationMs || 0;
   const totalMins = totalDuration / 60000;
-  const stepCount = audit.stepCount ?? audit.steps.length;
+  const stageCount = audit.stageCount ?? audit.stepCount ?? stages.length;
 
   const skillVersion = audit.skillVersion ?? 'unknown';
   const skillBranch = audit.skillBranch ?? 'unknown';
@@ -78,16 +88,16 @@ function renderAudit(stateDir) {
   html += '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:16px;">\n';
   html += `  <div style="font-size:12px;color:var(--dim);">Total tokens<br><span style="font-size:20px;color:var(--fg);">${totalTokens.toLocaleString('en-US')}</span></div>\n`;
   html += `  <div style="font-size:12px;color:var(--dim);">Wall clock<br><span style="font-size:20px;color:var(--fg);">${totalMins.toFixed(1)} min</span></div>\n`;
-  html += `  <div style="font-size:12px;color:var(--dim);">Dispatches<br><span style="font-size:20px;color:var(--fg);">${stepCount}</span></div>\n`;
+  html += `  <div style="font-size:12px;color:var(--dim);">Dispatches<br><span style="font-size:20px;color:var(--fg);">${stageCount}</span></div>\n`;
   html += '</div>\n';
 
   html += '<table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:24px;">\n';
   html += '<tr style="text-align:left;color:var(--dim);border-bottom:1px solid var(--border);">';
-  html += '<th style="padding:6px 8px;">Step</th><th>Name</th><th>Model</th>';
+  html += '<th style="padding:6px 8px;">Stage</th><th>Name</th><th>Model</th>';
   html += '<th style="text-align:right;">Tokens</th><th style="text-align:right;">Duration</th>';
   html += '<th>Status</th></tr>\n';
 
-  for (const s of audit.steps) {
+  for (const s of stages) {
     const durS = (s.durationMs || 0) / 1000;
     const tokens = s.totalTokens || 0;
     const status = s.status ?? '?';
@@ -96,7 +106,7 @@ function renderAudit(stateDir) {
     const retryBadge = retries > 0 ? ` <span style="color:var(--orange);">↻${retries}</span>` : '';
 
     html += '<tr style="border-bottom:1px solid var(--border);">';
-    html += `<td style="padding:6px 8px;">${s.step ?? '?'}</td>`;
+    html += `<td style="padding:6px 8px;">${s.stage ?? s.step ?? '?'}</td>`;
     html += `<td>${htmlEscape(s.name ?? '')}</td>`;
     html += `<td>${htmlEscape(s.model ?? '')}</td>`;
     html += `<td style="text-align:right;">${tokens.toLocaleString('en-US')}</td>`;
@@ -113,7 +123,7 @@ function renderAudit(stateDir) {
     html += '<div style="display:flex;flex-direction:column;gap:12px;">\n';
     for (const imp of improvements) {
       html += '<div style="padding:12px 16px;border:1px solid var(--border);border-radius:6px;font-size:12px;">\n';
-      html += `  <div style="color:var(--orange);margin-bottom:4px;">Step ${imp.step ?? '?'} — ${htmlEscape(imp.issue ?? '')}</div>\n`;
+      html += `  <div style="color:var(--orange);margin-bottom:4px;">Stage ${imp.stage ?? imp.step ?? '?'} — ${htmlEscape(imp.issue ?? '')}</div>\n`;
       html += `  <div style="color:var(--dim);">${htmlEscape(imp.suggestion ?? '')}</div>\n`;
       html += '</div>\n';
     }

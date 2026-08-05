@@ -2,14 +2,11 @@
 # playwright-cli-shim — translate SLICC-flavored playwright-cli calls into the
 # shape expected by Playwright's agent CLI (https://playwright.dev/agent-cli).
 #
-# Install:
-#   1. npm install -g @playwright/cli@latest
-#   2. playwright-cli install-browser
-#   3. mv "$(which playwright-cli)" "$(which playwright-cli).real"
-#   4. ln -s <repo>/.claude/skills/of1-check-dependencies/scripts/playwright-cli-shim.sh \
-#         /usr/local/bin/playwright-cli
-#
-# Or set REAL_PWCLI env var to the absolute path of the real binary.
+# Install: run the idempotent installer next to this file —
+#   bash install-shim.sh
+# It resolves the real binary with `command -v`, renames it in place, symlinks
+# this shim into the SAME directory (so PATH ordering can't shadow it), and
+# verifies afterward. Or set REAL_PWCLI to the absolute path of the real binary.
 
 set -e
 
@@ -20,15 +17,19 @@ REAL="${REAL_PWCLI:-${HOME}/.npm-global/bin/playwright-cli.real}"
 # Pop the subcommand
 SUB="${1:-}"; shift || true
 
-# Rebuild args with: --output→--filename, drop --tab=ID (capture id), rename visit/navigate→open
+# Rebuild args with: --output→--filename, --fullPage→--full-page (boolean, no
+# =value — the modern binary rejects =value on booleans), drop --tab=ID (capture
+# id), rename visit/navigate→open
 NEW_ARGS=()
 SELECT_TAB=""
 for arg in "$@"; do
   case "$arg" in
-    --tab=*)           SELECT_TAB="${arg#--tab=}" ;;
-    --output)          NEW_ARGS+=("--filename") ;;
-    --output=*)        NEW_ARGS+=("--filename=${arg#--output=}") ;;
-    *)                 NEW_ARGS+=("$arg") ;;
+    --tab=*)                   SELECT_TAB="${arg#--tab=}" ;;
+    --output)                  NEW_ARGS+=("--filename") ;;
+    --output=*)                NEW_ARGS+=("--filename=${arg#--output=}") ;;
+    --fullPage|--full-page)    NEW_ARGS+=("--full-page") ;;
+    --fullPage=*|--full-page=*) NEW_ARGS+=("--full-page") ;;
+    *)                         NEW_ARGS+=("$arg") ;;
   esac
 done
 

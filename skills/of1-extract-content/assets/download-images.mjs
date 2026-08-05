@@ -182,13 +182,20 @@ async function triggerPreview(token, owner, repo, branch, filename) {
 async function upload(data, contentType, token, owner, repo, branch, filename, mountDir) {
   if (mountDir) {
     const mountPath = path.join(mountDir, branch, 'media', filename);
+    // Narrow the try to the filesystem write only. If the write succeeds but
+    // triggerPreview later fails, we must NOT fall through and re-upload a file
+    // that is already on the mount (finding 51).
+    let wrote = false;
     try {
       fs.mkdirSync(path.dirname(mountPath), { recursive: true });
       fs.writeFileSync(mountPath, Buffer.from(data));
+      wrote = true;
+    } catch (e) {
+      // mount unavailable — fall through to the API path
+    }
+    if (wrote) {
       const err = await triggerPreview(token, owner, repo, branch, filename);
       return ['mount', err || null];
-    } catch (e) {
-      // fall through to API
     }
   }
 

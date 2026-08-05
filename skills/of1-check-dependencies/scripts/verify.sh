@@ -69,6 +69,15 @@ SKILL_ROOTS=(
   "/workspace/skills"
 )
 
+# CC also supports marketplaces sourced from a local directory (`/plugin
+# marketplace add <path>`), whose installLocation lives outside the roots above
+# — e.g. a local dev checkout of this very plugin. Add those too.
+if [ -r "$HOME/.claude/plugins/known_marketplaces.json" ] && command -v jq >/dev/null 2>&1; then
+  while IFS= read -r loc; do
+    [ -n "$loc" ] && [ -d "$loc" ] && SKILL_ROOTS+=("$loc")
+  done < <(jq -r '.[].installLocation // empty' "$HOME/.claude/plugins/known_marketplaces.json" 2>/dev/null)
+fi
+
 find_skill() {
   local name="$1"
   for root in "${SKILL_ROOTS[@]}"; do
@@ -152,10 +161,23 @@ done
 # OF1 step skills call `playwright-cli visit/screenshot/snapshot`. Prefer the
 # SLICC-native `playwright-cli` binary; in CC, the standard `playwright` binary
 # is accepted as a degraded fallback (shim at scripts/playwright-cli-shim.sh).
+# Probe SHAPE, not just presence (finding 49). A `playwright-cli` on PATH may be
+# the raw Microsoft @playwright/cli binary, which rejects the legacy
+# visit/--output syntax the step skills emit. Its global `--help` exits 0 for any
+# token, so `<subcmd> --help` can't distinguish it — check the shim marker, then
+# confirm the legacy `visit` subcommand is actually understood.
+SHIM_INSTALL="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/install-shim.sh"
 if command -v playwright-cli >/dev/null 2>&1; then
-  ok "playwright-cli → $(command -v playwright-cli)"
+  PWCLI_PATH="$(command -v playwright-cli)"
+  if grep -q 'playwright-cli-shim' "$PWCLI_PATH" 2>/dev/null; then
+    ok "playwright-cli (shim) → $PWCLI_PATH"
+  elif playwright-cli visit 2>&1 | grep -qi 'unknown command'; then
+    warn "playwright-cli at $PWCLI_PATH is the raw @playwright/cli binary — it rejects the legacy 'visit'/'--output' syntax the step skills use. Install the shim: bash $SHIM_INSTALL"
+  else
+    ok "playwright-cli → $PWCLI_PATH"
+  fi
 elif command -v playwright >/dev/null 2>&1; then
-  warn "playwright-cli not found; only 'playwright' is installed at $(command -v playwright). Install the shim at scripts/playwright-cli-shim.sh or step skills calling visit/screenshot/snapshot will fail."
+  warn "playwright-cli not found; only 'playwright' is installed at $(command -v playwright). Install the shim: bash $SHIM_INSTALL — else step skills calling visit/screenshot/snapshot will fail."
 else
   fail "Neither playwright-cli nor playwright installed — fix: npm i -g playwright; npx playwright install chromium"
 fi

@@ -86,8 +86,7 @@ The OF1 worker materializes templates from EDS into R2 after `POST /api/tenants/
 - `<a data-slot="key">` → link slot
 - `<img data-slot="key">` → image slot
 - `data-slot-list="key"` → list slot
-- Item cards MUST be `<article data-card="N">` for auto-hide
-- `<div data-grid-items>` gets `data-item-count="N"` injected at render
+- Item cards carry `data-card="N"` for auto-hide — works on `<article>`, `<li>`, `<tr>`, `<section>`, or `<div>`. A card is hidden when `item-N.title` AND `item-N.body` are both absent; for non-`item-N` slot keys (e.g. table rows using `row-N.*`), add `data-card-key="row-N.name"` so the renderer probes the right value.
 - NO `<!DOCTYPE>`, `<html>`, `<head>`, `<body>` — just `<main>…</main>`
 - **Interactive components MUST include inline JS** — templates have no external JS runtime. If using tabs, accordions, carousels, or toggles, include a `<script>` tag at the end of `<main>` with the minimal JS needed to make them work (e.g., click handlers to show/hide panels). Keep scripts short (<30 lines), vanilla JS, no dependencies. The first tab/panel MUST be visible by default (no JS needed for initial render).
 
@@ -310,7 +309,7 @@ For each of the 3 variations, write all 4 files.
   </div>
 </section>
 <section class="of1-{name}-grid of1-section">
-  <div class="of1-cmp-grid" data-grid-items>
+  <div class="of1-cmp-grid">
     <article data-card="1">
       <img data-slot="item-1.image" src="" alt="">
       <h3 data-slot="item-1.title">Item</h3>
