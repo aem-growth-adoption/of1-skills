@@ -24,9 +24,14 @@ cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
 
-Read existing design tokens (from step 3 extraction) — use for colors, fonts, button styles, border-radius. Only WebFetch the site if you need CTA-specific details not in the tokens:
+Read existing design tokens (from step 3 extraction) — use for colors, fonts, button styles, border-radius. Only WebFetch the site if you need CTA-specific details not in the tokens. **Resolve the spec via the shared resolver** (`of1-demo-orchestrator/knowledge/design-tokens-resolution.md`) — `DESIGN.json` may live at `stardust/current/` OR project root (`./`), and `styles/styles.css` is a valid token source for a live site:
 ```bash
-cat stardust/current/DESIGN.json 2>/dev/null
+DESIGN_JSON=""
+if   [ -f stardust/current/DESIGN.json ]; then DESIGN_JSON="stardust/current/DESIGN.json"
+elif [ -f ./DESIGN.json ];               then DESIGN_JSON="./DESIGN.json"
+fi
+[ -n "$DESIGN_JSON" ] && cat "$DESIGN_JSON"
+# If neither DESIGN.json location nor styles/styles.css exists, stop — do not invent tokens.
 ```
 
 Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `cta-template.json`.

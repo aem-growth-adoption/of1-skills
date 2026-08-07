@@ -18,7 +18,7 @@ Commit config files, trigger sync to the OF1 worker, generate the demo hub, run 
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
 
-Resolve `DA_TOKEN` and read repo config:
+Resolve `DA_TOKEN` (a shell local, not an input — canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`; see `of1-demo-orchestrator/knowledge/pipeline-contract.md` § "Environment variables") and read repo config:
 
 ```bash
 DA_TOKEN="${ADOBE_IMS_TOKEN:-$(jq -r .access_token "$OF1_TOKEN_FILE")}"

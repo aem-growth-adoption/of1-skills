@@ -54,11 +54,14 @@ fix_cmd() {
 # ---------- 1. OF1 step skills (project- or user-scoped) ----------
 
 REQUIRED_SKILLS=(
+  of1-demo-orchestrator
   of1-discover-narrative of1-build-templates of1-style-generative-block
   of1-extract-brand-voice of1-extract-content of1-build-quick-suggestions
   of1-build-cta-template of1-generate-config-review of1-publish
   of1-adopt-existing-site
 )
+# of1-signals is intentionally omitted — it's a standalone operator tool, not a pipeline step (see its SKILL.md).
+# of1-check-dependencies is omitted because it's the skill running this check.
 
 # Search locations: CC plugin/user/project scopes plus SLICC's /workspace/skills.
 # Each runtime only has its own; the other paths quietly miss.
@@ -93,10 +96,14 @@ MISSING=()
 for S in "${REQUIRED_SKILLS[@]}"; do
   find_skill "$S" >/dev/null || MISSING+=("$S")
 done
+TOTAL=${#REQUIRED_SKILLS[@]}
 if [ ${#MISSING[@]} -eq 0 ]; then
-  ok "All 10 OF1 skills present"
+  ok "All $TOTAL OF1 skills present"
+elif [ ${#MISSING[@]} -eq "$TOTAL" ]; then
+  # None found at all — almost always a detector/path problem, not a real absence.
+  fail "found 0 of $TOTAL OF1 skills — is this a local checkout with the plugin not installed to a searched root? fix: $(fix_cmd '/plugin install of1-demo-skills@<marketplace>' 'upskill aem-growth-adoption/of1-demo-skills --all')"
 else
-  fail "Missing OF1 step skills: ${MISSING[*]} — fix: $(fix_cmd '/plugin install of1-demo-skills@<marketplace>' 'upskill aem-growth-adoption/of1-demo-skills --all')"
+  fail "Missing $((${#MISSING[@]})) of $TOTAL OF1 skills: ${MISSING[*]} — fix: $(fix_cmd '/plugin install of1-demo-skills@<marketplace>' 'upskill aem-growth-adoption/of1-demo-skills --all')"
 fi
 
 # ---------- 2. Adobe EDS skills: stardust + impeccable ----------

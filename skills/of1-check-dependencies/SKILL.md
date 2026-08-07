@@ -33,7 +33,7 @@ existing** — it is not written by `verify.sh`; Part 2 writes it.
 
 ### What verify.sh checks
 
-1. The 10 OF1 skills are installed (`of1-discover-narrative`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-generate-config-review`, `of1-publish`, `of1-style-generative-block`, `of1-adopt-existing-site`)
+1. The pipeline's OF1 skills are installed — the orchestrator (`of1-demo-orchestrator`) plus every step skill it dispatches (`of1-discover-narrative`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-generate-config-review`, `of1-publish`, `of1-style-generative-block`, `of1-adopt-existing-site`). The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
 2. The Adobe EDS skills `stardust` (incl. `stardust:replica`), `impeccable` are installed
 3. Shell tools: `node`, `python3`, `jq`, `git`, `curl`
 4. `playwright-cli` (or the standard `playwright` binary with a shim warning)
@@ -51,8 +51,9 @@ HEAD) or `main`.
 ## Part 2 — repo state (interactive, after verify.sh succeeds)
 
 Read `setup.json` for `owner`, `repo`, `branch`, `of1Repo`, and resolve
-`DA_TOKEN` from whichever token source `verify.sh` already found (do not
-re-derive it — `verify.sh` already validated it exists):
+`DA_TOKEN` (a shell local — the canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`; see
+`of1-demo-orchestrator/knowledge/pipeline-contract.md` § "Environment variables") from whichever
+token source `verify.sh` already found (do not re-derive it — `verify.sh` already validated it exists):
 
 ```bash
 SETUP=$(cat "$OF1_STATE_DIR/setup.json")

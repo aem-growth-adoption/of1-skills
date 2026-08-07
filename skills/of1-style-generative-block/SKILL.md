@@ -35,7 +35,7 @@ DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 
 1. **NEVER modify `blocks/of1/of1.js`** — the OF1 block JavaScript is shared infrastructure and must not be changed. Only the CSS (`blocks/of1/of1.css`) is customized per brand.
 2. **This skill OWNS the block install.** Always copy `of1.js` and `of1.css` fresh from `$SKILL_DIR/assets/` to `blocks/of1/` — never reuse whatever exists in the demo repo (may be stale from a previous run).
-3. **Style using brand tokens from stardust** — read `stardust/current/DESIGN.json`, `DESIGN.md`, and the `:root` tokens in `styles/styles.css`. The OF1 block must feel native to the brand, not a generic overlay.
+3. **Style using brand tokens from stardust** — read `DESIGN.json` (resolve its path via `of1-demo-orchestrator/knowledge/design-tokens-resolution.md` — `stardust/current/` OR `./`), `DESIGN.md`, and the `:root` tokens in `styles/styles.css`. The OF1 block must feel native to the brand, not a generic overlay.
 4. **Commit BOTH `of1.js` and `of1.css`** — `of1.js` deployed as-is alongside your styled `of1.css`. Always `git add blocks/of1/` to include both. Missing JS = blank page.
 
 ## Why this skill exists
@@ -68,9 +68,9 @@ No runtime patching is needed. `/of1` is authored as an ordinary content page (S
 
 ### Step 1 — Read design context
 
-- `stardust/current/DESIGN.json` — design tokens (colors, fonts, spacing, radius)
+- `DESIGN.json` — design tokens (colors, fonts, spacing, radius). **Resolve its path via `of1-demo-orchestrator/knowledge/design-tokens-resolution.md`** — it may live at `stardust/current/DESIGN.json` OR project root (`./DESIGN.json`, on a bounded-single replica run). Read whichever exists.
 - `stardust/current/DESIGN.md` — design direction
-- `styles/styles.css` — CSS custom properties (the actual deployed tokens)
+- `styles/styles.css` — CSS custom properties (the actual deployed tokens; authoritative for a live site, not a guess). If neither `DESIGN.json` location nor `styles/styles.css` exists, stop and report — do not invent tokens.
 - `blocks/of1/of1.css` — the freshly-copied template you'll customize
 - `templates/templates-catalog.json` — template catalog (what the LLM generates)
 

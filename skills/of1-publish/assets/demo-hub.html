@@ -18,6 +18,8 @@
   .badge--green { background: rgba(0,229,160,0.15); color: var(--accent); }
   .badge--orange { background: rgba(220,110,82,0.15); color: var(--orange); }
   .badge--blue { background: rgba(107,163,255,0.15); color: var(--blue); }
+  .narrative { font-size: 13px; line-height: 1.6; color: var(--fg); margin-bottom: 8px; }
+  .narrative .focus { color: var(--accent); font-weight: 500; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -25,6 +27,9 @@
 <body>
 <h1>{{DOMAIN}}</h1>
 <p class="subtitle">OF1 Demo Hub &bull; Branch: {{BRANCH}} &bull; Generated {{DATE}}</p>
+
+<h2>Demo Narrative</h2>
+<p class="narrative"><span class="focus">{{FOCUS}}</span> &mdash; {{NARRATIVE}}</p>
 
 <h2>Discovery &amp; Extraction</h2>
 <div class="links">

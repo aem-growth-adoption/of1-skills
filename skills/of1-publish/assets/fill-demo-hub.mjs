@@ -10,7 +10,7 @@
 //
 // Reads:
 //   $OF1_STATE_DIR/repo-config.json (default /shared/of1-demo-orchestrator)
-//   $OF1_STATE_DIR/step-3-output.md (first paragraph of narrative)
+//   $OF1_STATE_DIR/step-2-output.md (discovery: demo focus + narrative)
 //   of1/config/{products,personas,suggestions,templates}.json
 //   stardust/current/assets/logo.svg (optional)
 //   DA content pages (/tmp/da-pages.txt, or content/*.html fallback)
@@ -133,33 +133,33 @@ function renderAudit(stateDir) {
   return html;
 }
 
-function extractNarrative(step3Output) {
-  const lines = step3Output.split('\n');
-  let inNarrative = false;
-  const narrativeLines = [];
+// Extract the body of a `## <heading>` section from step-2-output.md — the lines
+// after the heading, up to the next heading or EOF. Returns '' if not found.
+function extractSection(discoveryOutput, heading) {
+  const lines = discoveryOutput.split('\n');
+  const body = [];
+  let inSection = false;
   for (const line of lines) {
-    if (line.includes('**Persona:**') || line.includes('**Journey:**')) {
-      inNarrative = true;
-      narrativeLines.push(line.replace('**Persona:**', '').replace('**Journey:**', '').trim());
-    } else if (inNarrative && line.trim() === '') {
-      break;
-    } else if (inNarrative) {
-      narrativeLines.push(line.trim());
+    if (/^#{1,6}\s/.test(line)) {
+      // A heading line. If it's ours, start collecting; otherwise stop if we were.
+      if (line.replace(/^#{1,6}\s+/, '').trim().toLowerCase() === heading.toLowerCase()) {
+        inSection = true;
+        continue;
+      }
+      if (inSection) break;
+      continue;
     }
+    if (inSection) body.push(line.trim());
   }
-  return narrativeLines.length ? narrativeLines.join(' ') : 'Demo narrative not available.';
+  return body.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-function extractFocus(step3Output) {
-  const lines = step3Output.split('\n');
-  for (let idx = 0; idx < lines.length; idx++) {
-    if (lines[idx].includes('## Demo Focus')) {
-      if (idx + 1 < lines.length) {
-        return lines[idx + 1].trim();
-      }
-    }
-  }
-  return 'AI-Powered Experience';
+function extractNarrative(discoveryOutput) {
+  return extractSection(discoveryOutput, 'Narrative') || 'Demo narrative not available.';
+}
+
+function extractFocus(discoveryOutput) {
+  return extractSection(discoveryOutput, 'Demo Focus') || 'AI-Powered Experience';
 }
 
 function getLogoSvg(repoDir) {
@@ -290,11 +290,13 @@ function main() {
   const suggestions = loadJson(path.join(repoDir, 'of1', 'config', 'suggestions.json'));
   const templatesJson = loadJson(path.join(repoDir, 'of1', 'config', 'templates.json'));
 
-  const step3 = loadText(path.join(stateDir, 'step-3-output.md'));
-  const narrative = extractNarrative(step3);
-  const focus = extractFocus(step3);
-  void narrative;
-  void focus;
+  const discoveryPath = path.join(stateDir, 'step-2-output.md');
+  const discovery = loadText(discoveryPath);
+  if (!discovery) {
+    console.error(`WARN: ${discoveryPath} not found or empty — demo focus/narrative will fall back to defaults.`);
+  }
+  const narrative = extractNarrative(discovery);
+  const focus = extractFocus(discovery);
 
   const numTemplates = countTemplates(repoDir);
   const numSuggestions =
@@ -321,6 +323,8 @@ function main() {
 
   const replacements = {
     '{{DOMAIN}}': htmlEscape(domain),
+    '{{FOCUS}}': htmlEscape(focus),
+    '{{NARRATIVE}}': htmlEscape(narrative),
     '{{NUM_PRODUCTS}}': String(products.length),
     '{{OF1_URL}}': of1Url,
     '{{GALLERY_URL}}': galleryUrl,

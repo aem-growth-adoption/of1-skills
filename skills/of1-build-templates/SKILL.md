@@ -44,13 +44,25 @@ Selected by `OF1_TG_MODE`. The orchestrator runs the three phases in order: `bas
 
 Available before invocation, in addition to the env above:
 
-- Design tokens → `$OF1_DEMO_REPO/stardust/current/DESIGN.json` (from step 3)
+- **Sample/preview realism (optional, best-effort) → `$OF1_DEMO_REPO/of1/config/products.json`** — real products, prices, and counts to make the `sample.json` gallery previews look close to reality. This is produced by a **parallel** step (8b, content extraction) and **may not be on disk yet** when you run — treat it as nice-to-have, **never a blocker**. When present, it's a **bare JSON array** (`[ {…}, {…} ]`), NOT `{"products": […]}` — so `jq '.[] | .price'` works and `jq '.products…'` errors. Per-item keys: `id, name, title, category, description, price, currency, keywords, highlights, features, images, url, persona, useCase`. `price` may be a string (`"499.00"`) or a number (`14.99`). See the Sample-data section below.
+- Design tokens → `DESIGN.json` (from step 3) — resolve its path via `of1-demo-orchestrator/knowledge/design-tokens-resolution.md` (`$OF1_DEMO_REPO/stardust/current/DESIGN.json` OR `$OF1_DEMO_REPO/DESIGN.json`)
 - Demo narrative → `$OF1_STATE_DIR/step-2-output.md` (from step 2)
 - Pixel-perfect prototypes → `$OF1_DEMO_REPO/deliverables/prototype-*.html` (from step 4), when they exist — self-contained HTML with inline `<style>`; the primary visual/structural reference, read directly (no step 5 dependency)
 - Prototype screenshots → captured by the orchestrator directly from the static `deliverables/prototype-*.html` files (see "Pre-fan-out" in the orchestrator skill), when prototypes exist
-- **Fallback (no prototypes — e.g. `of1-adopt-existing-site` running against an existing EDS site):** `$OF1_DEMO_REPO/stardust/current/DESIGN.json` + live screenshots of the site's own rendered EDS pages (captured by the `of1-adopt-existing-site` orchestrator the same way Track A captures EDS reference screenshots) + the repo's real `styles/styles.css` tokens
+- **Fallback (no prototypes — e.g. `of1-adopt-existing-site` running against an existing EDS site):** `DESIGN.json` (resolved via `design-tokens-resolution.md`) + live screenshots of the site's own rendered EDS pages (captured by the `of1-adopt-existing-site` orchestrator the same way Track A captures EDS reference screenshots) + the repo's real `styles/styles.css` tokens
 
 Worker-side schemas: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `templates.json`, § `products.json`.
+
+## Sample data — realistic gallery previews (best-effort)
+
+The templates you author are slot-based **shells**. At runtime the OF1 worker fills every slot with real, per-request content (from the live catalog + RAG) — so the values baked into `sample.json` never reach a customer. Their only job is to make the **review gallery** render a close-to-reality preview for the user approving the demo.
+
+Because of that, sample data is **nice-to-have realism, not a correctness gate**:
+
+- **Always generate all 15 templates**, every intent included. Missing preview data is never a reason to skip or block a template — a shell with placeholder values is still a valid, deployable template.
+- **When `of1/config/products.json` is on disk, prefer its real values** (names, prices, categories) for `sample.json` so the gallery looks like the real store. `price` may be a string or a number — read it type-agnostically.
+- **When it isn't there yet** (it's written by parallel step 8b and ordering isn't guaranteed), use plausible placeholder values. Don't wait on it, don't fail on it.
+- This applies equally to the `budget` intent — generate its `price-tiers` / `cost-breakdown` / `roi-story` shells regardless; use real prices for the preview if available, placeholders otherwise.
 
 ## Reference — Worker Contract
 
@@ -167,7 +179,7 @@ Generate `styles/of1-template-base.css` from the prototype CSS + `DESIGN.json`. 
 
 Write the file directly; **don't run a script**.
 
-**Sources of truth, priority order:**
+**Sources of truth — first decide which of two equally-valid modes you're in:**
 
 ```bash
 cd "$OF1_DEMO_REPO"
@@ -175,18 +187,20 @@ HAS_PROTOTYPES=false
 ls deliverables/prototype-*.html >/dev/null 2>&1 && HAS_PROTOTYPES=true
 ```
 
-- **If prototypes exist (`$HAS_PROTOTYPES = true`, the normal Track A case):**
-  1. Prototype inline CSS — the `<style>` block inside `deliverables/prototype-*.html` (search `:root { … }` + custom-property declarations). This is the canonical token source — extract it directly, no intermediate conversion step produces it.
-  2. `DESIGN.json` — `stardust/current/DESIGN.json`. Tiebreaker / fill-in for tokens not in the prototypes. Schema drifts between extraction runs; tolerate variation.
+Both modes are normal — pick by `$HAS_PROTOTYPES`, don't treat a missing prototype as a problem:
+
+- **Mode A — prototypes exist (`$HAS_PROTOTYPES = true`):** the demo built pixel-perfect prototypes (Track A / the full crawl-and-recreate flow).
+  1. Prototype inline CSS — the `<style>` block inside `deliverables/prototype-*.html` (search `:root { … }` + custom-property declarations). Canonical token source here — extract directly.
+  2. `DESIGN.json` — resolve its path via `of1-demo-orchestrator/knowledge/design-tokens-resolution.md`. Tiebreaker / fill-in for tokens not in the prototypes. Schema drifts between runs; tolerate variation.
 
   Don't trust `DESIGN.json` as the sole source — the prototypes are the visually-validated ground truth.
 
-- **If no prototypes exist** (running against an existing EDS site — e.g. via `of1-adopt-existing-site`):
-  1. `styles/styles.css` — the repo's real, deployed `:root` tokens. This is the canonical source in this case; the site is already live, so its own stylesheet IS the ground truth.
-  2. `stardust/current/DESIGN.json` — tiebreaker / fill-in for tokens not in `styles.css`.
+- **Mode B — no prototypes (`$HAS_PROTOTYPES = false`):** running against an existing EDS site (e.g. via `of1-adopt-existing-site`). **This is the common path for adopt-site — `deliverables/prototype-*.html` is legitimately absent, NOT a blocker.** Do not hunt for prototypes or wait on them.
+  1. `styles/styles.css` — the repo's real, deployed `:root` tokens. Canonical source here; the site is already live, so its own stylesheet IS the ground truth.
+  2. `DESIGN.json` (resolve via `design-tokens-resolution.md`) — tiebreaker / fill-in for tokens not in `styles.css`. If neither `DESIGN.json` location nor `styles/styles.css` exists, stop and report — do not invent tokens.
   3. Live screenshots of the site's own rendered pages (captured by the orchestrator) — visual reference for section rhythm, card grids, and typography scale that a token file alone doesn't capture.
 
-**Required tokens** — define at minimum these custom properties on `:root`, using prototype values verbatim:
+**Required tokens** — define at minimum these custom properties on `:root`, taking each value verbatim from your mode's canonical source (Mode A: the prototype's `:root`; Mode B: `styles/styles.css`):
 
 ```css
 :root {
@@ -194,7 +208,7 @@ ls deliverables/prototype-*.html >/dev/null 2>&1 && HAS_PROTOTYPES=true
   --color-bg: ...;
   --color-fg: ...;
   --color-fg-dim: ...;
-  --color-accent: ...;       /* brand accent — must match prototype buttons/links */
+  --color-accent: ...;       /* brand accent — must match the site's real buttons/links (prototype in Mode A, styles.css in Mode B) */
   --color-surface: ...;
   --color-border: ...;
 
