@@ -65,7 +65,31 @@ done
 
 `of1-endpoint.json` must exist (created by step 1). If missing, fail — don't recreate it here.
 
-### 2. Generate demo hub page
+### 2. Deploy the replica prototypes as standalone deliverables
+
+`stardust:replica` writes the standalone prototype archetypes to
+`stardust/prototypes/<slug>-proposed.html`, but nothing serves them — so they're invisible in the
+demo. Copy each into `deliverables/` (EDS serves that dir statically, exactly like `discovery.html`),
+where Step 3's `git add deliverables/` picks them up and the hub links them:
+
+```bash
+if ls stardust/prototypes/*.html >/dev/null 2>&1; then
+  mkdir -p deliverables
+  for f in stardust/prototypes/*.html; do
+    stem=$(basename "$f" .html)
+    cp "$f" "deliverables/prototype-${stem}.html"
+    echo "  ✓ deployed prototype-${stem}.html"
+  done
+else
+  echo "  (no stardust/prototypes/*.html — content-only demo or replica skipped)"
+fi
+```
+
+The hub's prototype renderer (`fill-demo-hub.mjs` → `renderPrototypes`) links exactly these
+`deliverables/prototype-<slug>.html` files, and Check 5 does not assert them individually (they're
+best-effort deliverables), so a content-only demo with no prototypes is not a hard failure.
+
+### 3. Generate demo hub page
 
 **You MUST create `/tmp/da-pages.txt` before calling the fill script** — it reads this file to list the EDS overlay pages in the hub. Without it, the hub shows prototypes but no live EDS pages.
 
@@ -84,7 +108,7 @@ node "$SKILL_DIR/assets/fill-demo-hub.mjs" . "${DOMAIN}"
 
 This reads all config, finds prototypes, discovers EDS pages from `/tmp/da-pages.txt`, and writes `deliverables/index.html`. Do NOT hand-write the hub HTML.
 
-### 3. Commit and push
+### 4. Commit and push
 
 ```bash
 git add of1/config/ deliverables/
@@ -94,7 +118,7 @@ git push origin "$BRANCH"
 
 After push, config files are immediately available at `${PREVIEW_BASE}/of1/config/{file}.json`.
 
-### 4. Sync config to the OF1 worker
+### 5. Sync config to the OF1 worker
 
 ```bash
 RESPONSE=$(curl -s -X POST "${WORKER_URL}/api/tenants/${TENANT_ID}/sync")
@@ -113,7 +137,7 @@ if [ "$OK" != "true" ]; then
 fi
 ```
 
-### 5. Verify tenant is ready
+### 6. Verify tenant is ready
 
 ```bash
 STATUS=$(curl -s "${WORKER_URL}/api/tenants/${TENANT_ID}/status")
@@ -128,7 +152,7 @@ fi
 
 Required for `ready: true`: `hasOf1Endpoint`, `hasProducts`, `hasBrandVoice`, `hasSuggestions`, `hasTemplates`.
 
-### 6. Test generation
+### 7. Test generation
 
 ```bash
 curl -s -X POST "${WORKER_URL}/api/generate" \
@@ -231,16 +255,27 @@ EOF
 
 ### Check 5: All deliverable URLs return 200
 
+Only assert URLs this pipeline path actually produces. `brand-review.html` is **not** produced by
+any current path (there is no brand-review step) — do not assert it. The home page is served at `/`,
+**not** `/home` — assert `/`. `/nav` and `/footer` are the chrome fragments every page's
+header/footer blocks fetch (via `loadFragment` → `${path}.plain.html`); if either 404s, every page
+renders chromeless (Check 2 only inspects the `/of1` DOM — it does not prove the fragments exist), so
+assert `nav.plain.html` and `footer.plain.html` here too. `of1-style-generative-block` Step 6b
+guarantees these exist before deploy.
+
 ```bash
 LINKS=(
-  "${PREVIEW_BASE}/deliverables/discovery.html"
-  "${PREVIEW_BASE}/deliverables/brand-review.html"
-  "${PREVIEW_BASE}/home"
+  "${PREVIEW_BASE}/"
+  "${PREVIEW_BASE}/nav.plain.html"
+  "${PREVIEW_BASE}/footer.plain.html"
   "${PREVIEW_BASE}/gallery/index.html"
   "${PREVIEW_BASE}/of1"
   "${PREVIEW_BASE}/deliverables/config-review.html"
   "${PREVIEW_BASE}/deliverables/index.html"
 )
+# Full e2e pipeline only (discovery ran): also assert the discovery deliverable.
+# In of1-adopt-existing-site's flow discovery never runs — see that skill's Step 12 note.
+[ -f "${OF1_STATE_DIR}/step-2-output.md" ] && LINKS+=("${PREVIEW_BASE}/deliverables/discovery.html")
 
 ALL_OK=true
 for URL in "${LINKS[@]}"; do
@@ -253,7 +288,10 @@ for URL in "${LINKS[@]}"; do
   fi
 done
 
-[ "$ALL_OK" = "true" ] || { echo "✗ FAIL: Some URLs return non-200"; }
+# HARD gate: a non-200 deliverable means the demo is broken. Fail loud — do NOT
+# let the pipeline report "ready" over a 404. (Previously this only printed a
+# warning and the run continued, which is how chromeless/404 demos shipped.)
+[ "$ALL_OK" = "true" ] || { echo "✗ FAIL: Some deliverable URLs return non-200 — demo is not ready" >&2; exit 1; }
 ```
 
 ### Check 6: Generation test (end-to-end worker verification)
@@ -268,8 +306,9 @@ SECTIONS=$(echo "$RESPONSE" | grep -c '"type"' || echo "0")
 if [ "$SECTIONS" -ge 2 ]; then
   echo "✓ Generation returned ${SECTIONS} sections"
 else
-  echo "✗ FAIL: generation returned ${SECTIONS} sections (expected ≥2)"
+  echo "✗ FAIL: generation returned ${SECTIONS} sections (expected ≥2)" >&2
   echo "$RESPONSE" | head -20
+  exit 1
 fi
 ```
 
@@ -300,7 +339,7 @@ Present final report:
 **Gallery:** ${PREVIEW_BASE}/gallery/index.html
 **Worker tenant:** ${TENANT_ID} (synced + verified)
 
-Pre-launch checklist: 5/5 passed ✓
+Pre-launch checklist: 6/6 passed ✓
 ```
 
 ```bash

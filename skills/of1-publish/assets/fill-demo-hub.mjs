@@ -218,9 +218,27 @@ function renderEdsPages(pages) {
   return html || '  <span style="color:var(--dim)">No pages published yet</span>';
 }
 
+// Discovery & Extraction section — only link deliverables that actually exist.
+// discovery.html is produced by the full e2e pipeline (Stage 1) but NOT by the
+// adopt-existing-site flow; brand-review.html is produced by NO current path, so
+// it is never linked. An empty section shows a dim placeholder instead of a 404 link.
+function renderDiscovery(repoDir, previewBase) {
+  let html = '';
+  const discoveryPath = path.join(repoDir, 'deliverables', 'discovery.html');
+  if (fs.existsSync(discoveryPath)) {
+    html += `  <a href="${previewBase}/deliverables/discovery.html"><span class="badge badge--orange">Standalone</span> Discovery</a>\n`;
+  }
+  return html || '  <span style="color:var(--dim)">No discovery report for this flow</span>';
+}
+
+// Prototypes are the standalone HTML replica archetypes. stardust:replica writes
+// them to `stardust/prototypes/<slug>-proposed.html` (NOT `stardust/current/prototypes/`,
+// which was the old — and wrong — path this script used, so prototypes never showed).
+// of1-publish copies each into `deliverables/prototype-<slug>.html` and deploys it so
+// it is browsable; this renderer links those deployed copies.
 function renderPrototypes(repoDir, previewBase) {
   let html = '';
-  const protoDir = path.join(repoDir, 'stardust', 'current', 'prototypes');
+  const protoDir = path.join(repoDir, 'stardust', 'prototypes');
   const delivDir = path.join(repoDir, 'deliverables');
 
   if (fs.existsSync(protoDir)) {
@@ -230,7 +248,7 @@ function renderPrototypes(repoDir, previewBase) {
       .sort();
     for (const file of files) {
       const stem = path.basename(file, '.html');
-      const label = titleCase(stem.replace(/-/g, ' ').replace('prototype ', ''));
+      const label = titleCase(stem.replace(/-/g, ' ').replace('proposed', '').replace('prototype ', '')).trim();
       html += `  <a href="${previewBase}/deliverables/prototype-${stem}.html"><span class="badge badge--orange">Standalone</span> ${htmlEscape(label)}</a>\n`;
     }
   }
@@ -242,7 +260,7 @@ function renderPrototypes(repoDir, previewBase) {
       .sort();
     for (const file of files) {
       const stem = path.basename(file, '.html');
-      const label = titleCase(stem.replace('prototype-', '').replace(/-/g, ' '));
+      const label = titleCase(stem.replace('prototype-', '').replace(/-/g, ' ').replace('proposed', '')).trim();
       html += `  <a href="${previewBase}/deliverables/${file}"><span class="badge badge--orange">Standalone</span> ${htmlEscape(label)}</a>\n`;
     }
   }
@@ -329,6 +347,7 @@ function main() {
     '{{OF1_URL}}': of1Url,
     '{{GALLERY_URL}}': galleryUrl,
     '{{PREVIEW_BASE}}': previewBase,
+    '{{DISCOVERY}}': renderDiscovery(repoDir, previewBase),
     '{{PROTOTYPES}}': prototypesHtml,
     '{{EDS_PAGES}}': renderEdsPages(edsPages),
     '{{OWNER}}': owner,

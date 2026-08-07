@@ -234,9 +234,27 @@ There is no separate page-chrome CSS step. `/of1` loads the site's own `styles/s
 
 `/of1` needs no `templates/`, `fragments/`, or `data-overlay`/`data-slot-passthrough` machinery. It is authored directly as a DA content document in Step 7 below, using the site's real `/nav` and `/footer` — the same paths every other page on the site already uses.
 
+### Step 6b — Guarantee the site's /nav and /footer chrome exist
+
+The header/footer blocks fetch `/nav` and `/footer` on every page; if either is missing, **every page
+renders chromeless** — no nav, no footer, including `/of1`. These docs are *supposed* to exist by now
+(`stardust:replica` authors them for the e2e pipeline; the existing site already has them for
+`of1-adopt-existing-site`), but replica does **not** create them when the source was bot-blocked — it
+emits empty `<header></header>` pages and skips the fragments. Do not assume; guarantee. This guard is
+idempotent — if both already return 200 it changes nothing, and it **never overwrites** an existing
+chrome doc:
+
+```bash
+node "$SKILL_DIR/assets/ensure-nav-footer.mjs"
+```
+
+On a missing fragment it authors a minimal branded one from the pages actually deployed on this branch
+(so nav links only point at pages that exist). It fails loud (exit 1) if a fragment still can't be made
+live — a chromeless demo must not proceed silently.
+
 ### Step 7 — Upload OF1 DA content
 
-The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up its real `/nav` and `/footer` documents automatically — no placeholder nav/footer pages need to be created here, since the site already has real ones produced by `stardust:replica` (for the full e2e pipeline) or by the existing site itself (for `of1-adopt-existing-site`).
+The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 6b above (whether from `stardust:replica`, the existing site, or the Step 6b fallback).
 
 ```bash
 OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>https://of1-gen-web-service.franklin-prod.workers.dev</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr></table></div></div></main><footer></footer></body>'
@@ -349,7 +367,7 @@ Common failures:
 
 | Symptom | Likely cause |
 |---|---|
-| `HEADER MISSING` / `FOOTER MISSING` | `content/nav.html`/`content/footer.html` weren't pushed by `stardust:replica`'s deploy phase — re-run its artifact-verification gate |
+| `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 6b (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when replica/the existing site didn't provide one |
 | `OF1 BLOCK MISSING` | `blocks/of1/of1.js` wasn't pushed, or the `of1` block table's `th` cell doesn't read exactly `of1` |
 | Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by `stardust:replica`'s deploy phase, or the preview hasn't picked up the latest push yet |
 
