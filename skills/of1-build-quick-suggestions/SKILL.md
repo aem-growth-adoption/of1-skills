@@ -29,25 +29,10 @@ mkdir -p of1/config
 
 Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `suggestions.json`.
 
-## Source resolution — live site vs replica
-
-The content this skill extracts comes from one of two places, decided by `OF1_CONTENT_SOURCE`:
-
-```bash
-if [ -n "$OF1_CONTENT_SOURCE" ]; then
-  # Pipeline mode: extract from the REAL external site (highest-fidelity source data)
-  SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
-else
-  # Standalone mode (default, unchanged): extract from the built EDS replica preview
-  SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
-fi
-echo "Extracting from: $SOURCE_BASE"
-```
-
-This skill itself doesn't crawl the site directly — it only reads `products.json`, `personas.json`,
-and `brand-voice.json` (produced by `of1-extract-content` and `of1-extract-brand-voice`, which do
-honor `$SOURCE_BASE`). `$SOURCE_BASE` is resolved here for consistency and in case any suggestion
-copy needs to reference the live site's URL. Output files and JSON shapes are identical in both modes.
+This skill does not crawl the site — it is a pure transform over `products.json`, `personas.json`,
+and `brand-voice.json` (already produced by `of1-extract-content` and `of1-extract-brand-voice`, which
+own the live-site-vs-replica source resolution). There is no `OF1_CONTENT_SOURCE` handling here; output
+files and JSON shapes are identical in pipeline and standalone modes.
 
 ## Inputs
 
@@ -76,7 +61,7 @@ cat of1/config/brand-voice.json | jq '{tone, vocabulary, avoidWords}'
 Based on the actual product catalog, personas, and brand voice, generate 8–12 quick suggestion chips that:
 - **Only reference products/categories that exist in products.json**
 - Cover different personas (from personas.json)
-- Cover different intents (compare, recommend, explore, deep-dive, budget)
+- Cover different intents (`comparison`, `recommendation`, `deep-dive`, `discovery`, `budget` — the same five the templates use; see the Intent coverage list below)
 - Use natural language a real user would type
 - Are concise (under 40 characters each)
 
@@ -105,11 +90,11 @@ The OF1 block fetches this on page load to populate the search UI (randomly pick
 - `title` → the `<h1>` heading on the /of1 page (e.g. "Find Your Next Adventure")
 - `subtitle` → supporting text below the heading
 - `placeholder` → input field placeholder text
-- `suggestions[].type` → always `"explore"` (used by the OF1 block for chip styling)
+- `suggestions[].type` → always `"explore"` (used by the OF1 block for chip styling; this is NOT the intent — intent is not stored in the JSON, it only guides which queries you generate below)
 - `suggestions[].label` → short text shown on the chip (under 40 chars)
 - `suggestions[].query` → the full query string sent to `/api/generate` when clicked
 
-**Intent coverage:** Ensure suggestions cover all intent types so demos can showcase different generation behaviors:
+**Intent coverage:** intent is a *generation-time* concept — it steers which queries you write, but it is NOT written to the JSON (every chip's `type` is `"explore"`). Spread your 8–12 chips across all five intents so demos can showcase different generation behaviors:
 - `deep-dive`: "Tell me about [specific product]" — detailed single-product pages
 - `comparison`: "Compare [A] vs [B]" — side-by-side layouts
 - `recommendation`: "Best [category] for [persona need]" — featured product + alternatives
