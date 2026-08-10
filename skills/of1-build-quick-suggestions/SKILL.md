@@ -90,7 +90,7 @@ The OF1 block fetches this on page load to populate the search UI (randomly pick
 - `title` → the `<h1>` heading on the /of1 page (e.g. "Find Your Next Adventure")
 - `subtitle` → supporting text below the heading
 - `placeholder` → input field placeholder text
-- `suggestions[].type` → always `"explore"` (used by the OF1 block for chip styling; this is NOT the intent — intent is not stored in the JSON, it only guides which queries you generate below)
+- `suggestions[].type` → always the literal string `"explore"`. It is a reserved field the OF1 worker/SDK does **not** currently read — the landing chips render from `label` + `query` only, and the worker stamps `"explore"` on every suggestion by convention (there's a worker-side test locking this in). Do NOT try to encode the intent here; intent is not stored in the JSON at all (see Intent coverage below).
 - `suggestions[].label` → short text shown on the chip (under 40 chars)
 - `suggestions[].query` → the full query string sent to `/api/generate` when clicked
 
