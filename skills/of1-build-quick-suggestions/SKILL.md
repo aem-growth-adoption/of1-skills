@@ -54,7 +54,7 @@ copy needs to reference the live site's URL. Output files and JSON shapes are id
 - `DOMAIN` (e.g. `frescopa.coffee`). In pipeline mode, read from repo-config. Only ask the user if not provided.
 - Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge)
 
-**REQUIRED — read step 8 outputs before generating suggestions.** This step runs AFTER step 8 completes, so these files exist:
+**REQUIRED — read the content-extraction outputs before generating suggestions.** This skill runs AFTER `of1-extract-brand-voice` and `of1-extract-content` complete, so these files exist:
 
 ```bash
 # Product names — suggestions MUST reference only real products that exist

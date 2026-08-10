@@ -366,7 +366,7 @@ EOF
 
 If ANY of these are false, GO BACK and complete Step 9. Do not proceed.
 
-This skill runs alongside `brand-voice-extractor` (step 8a). Both must complete before step 8 is marked done.
+This skill runs alongside `of1-extract-brand-voice`. Both must complete before the content track is treated as done.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-content-status.json" <<EOF

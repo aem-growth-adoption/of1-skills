@@ -130,7 +130,7 @@ The worker injects these fields into the LLM system prompt to shape how generate
 
 ## Completion (pipeline mode)
 
-This skill runs alongside `content-metadata` (step 8b). Both must complete before step 8 is marked done.
+This skill runs alongside `of1-extract-content`. Both must complete before the content track is treated as done.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-brand-voice-status.json" <<EOF

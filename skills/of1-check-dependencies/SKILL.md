@@ -76,7 +76,7 @@ if [ -f "$OF1_STATE_DIR/repo-config.json" ]; then
   echo "=== Existing demo found ==="
   cat "$OF1_STATE_DIR/repo-config.json"
   echo ""
-  for f in "$OF1_STATE_DIR"/step-*-status.json; do
+  for f in "$OF1_STATE_DIR"/of1-*-status.json; do
     [ -f "$f" ] && { echo "--- $(basename "$f") ---"; cat "$f"; echo ""; }
   done
 fi
@@ -117,7 +117,7 @@ rm -rf styles/of1-*.css styles/prototype-*.css
 rm -f PRODUCT.md
 
 # Clean prior state
-rm -rf "$OF1_STATE_DIR"/step-*
+rm -rf "$OF1_STATE_DIR"/of1-*-status.json
 rm -f "$OF1_STATE_DIR/discovery.html"
 
 git add -A

@@ -63,7 +63,7 @@ for f in brand-voice products personas use-cases features faqs suggestions cta-t
 done
 ```
 
-`of1-endpoint.json` must exist (created by step 1). If missing, fail — don't recreate it here.
+`of1-endpoint.json` must exist (created by `of1-check-dependencies`). If missing, fail — don't recreate it here.
 
 ### 2. Deploy the replica prototypes as standalone deliverables
 

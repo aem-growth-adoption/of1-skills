@@ -387,7 +387,7 @@ Fix any failures and re-push before Completion.
 
 After pushing, mark the step as `review` and **STOP**. Do not proceed. The user must open the OF1 page, test the search UI, click suggestion chips, and visually approve the styling before the pipeline continues.
 
-This is a gate — step 12 (Deploy) cannot start until both step 6 (Templates) and step 7 (this step) are approved.
+This is a gate — `of1-publish` (Deploy) cannot start until both `of1-build-templates`(assemble) and this skill (`of1-style-generative-block`) are approved.
 
 ```bash
 OF1_URL="https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1"
