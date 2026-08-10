@@ -12,7 +12,7 @@ Own the `/of1` page top to bottom: install the block, generate brand-aligned CSS
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_STATE_DIR` | state + IPC dir; receives `step-7-status.json` |
+| `OF1_STATE_DIR` | state + IPC dir; receives `of1-style-generative-block-status.json` |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
 | `SKILL_DIR` | absolute path to this skill's directory (used to find the canonical `assets/of1.js` and `assets/of1.css` that get installed in `blocks/of1/`) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
@@ -391,9 +391,10 @@ This is a gate — step 12 (Deploy) cannot start until both step 6 (Templates) a
 
 ```bash
 OF1_URL="https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1"
-cat > "$OF1_STATE_DIR/step-7-status.json" <<EOF
+cat > "$OF1_STATE_DIR/of1-style-generative-block-status.json" <<EOF
 {
-  "step": 7,
+  "stage": 3,
+  "skill": "of1-style-generative-block",
   "status": "review",
   "deliverables": [
     { "url": "${OF1_URL}", "label": "OF1 page" }
