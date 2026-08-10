@@ -274,7 +274,8 @@ LINKS=(
   "${PREVIEW_BASE}/deliverables/index.html"
 )
 # Full e2e pipeline only (discovery ran): also assert the discovery deliverable.
-# In of1-integration's flow discovery never runs — see that skill's Deploy (of1-publish) note.
+# When discovery never ran (e.g. of1-integration against an existing site), the
+# output file is absent and this URL is skipped automatically — no flow-specific edit needed.
 [ -f "${OF1_STATE_DIR}/of1-discovery-output.md" ] && LINKS+=("${PREVIEW_BASE}/deliverables/discovery.html")
 
 ALL_OK=true

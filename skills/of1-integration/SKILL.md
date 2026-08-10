@@ -166,12 +166,6 @@ Once `of1-extract-brand-voice` + `of1-extract-content` + `of1-build-quick-sugges
 
 ## Deploy — `of1-publish` (inline)
 
-After `of1-generate-config-review` is approved AND `of1-build-templates`(assemble) + `of1-style-generative-block` are both done, run the `of1-publish` skill inline (read it and follow it directly — same as `of1-demo-orchestrator`'s deploy step).
+After `of1-generate-config-review` is approved AND `of1-build-templates`(assemble) + `of1-style-generative-block` are both done, run the `of1-publish` skill inline (read it and follow it directly — same as `of1-demo-orchestrator`'s deploy step). Export `SKILL_DIR` to that skill's directory first, exactly as the orchestrator does for a dispatched skill.
 
-**Check 5 (deliverable URLs return 200) is already adopt-flow-aware:** it only asserts
-`discovery.html` when `of1-discovery-output.md` exists, and discovery never runs in the adopt flow, so that
-URL is skipped automatically — no manual edit needed. (`brand-review.html` is no longer asserted by
-any path.) `/`, `/nav`, `/footer`, `/of1`, gallery, config-review, and the hub are asserted in both
-flows and must all return 200.
-
-Checks 1, 2, 3, 4, and 6 apply unchanged.
+`of1-publish`'s pre-launch checklist is self-contained and already flow-aware — its Check 5 only asserts the discovery deliverable when `of1-discovery-output.md` exists (so it self-skips in this flow, where discovery never runs). Follow the skill's checklist as written; there is nothing to adapt here.
