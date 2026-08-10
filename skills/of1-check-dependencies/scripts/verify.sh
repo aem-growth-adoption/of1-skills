@@ -8,7 +8,7 @@
 # Exit 0 = all good; exit 1 = something blocking is missing.
 # Side effect on success:
 #   <stateDir>/setup.json          — resolved paths + owner/repo/branch + token source
-#   <stateDir>/step-1-status.json  — SLICC sprinkle IPC ack (harmless in CC)
+#   <stateDir>/of1-check-dependencies-status.json — SLICC sprinkle IPC ack (harmless in CC)
 #
 # repo-config.json (owner/repo/branch/domain/repoDir) is NOT written by this
 # script — it's written interactively by of1-check-dependencies/SKILL.md's "Repo state"
@@ -264,8 +264,8 @@ if [ $FAIL -gt 0 ]; then
     REASONS=$(printf '%s\n' "${LOG[@]}" | grep '^✗' | sed 's/^✗ //' | head -3 | paste -sd '; ' -)
     # Use python3 for JSON escaping (jq -Rs not available in SLICC)
     ESCAPED=$(printf '%s' "$REASONS" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
-    printf '{"step":1,"status":"failed","error":%s}\n' "$ESCAPED" \
-      > "$STATE_DIR/step-1-status.json"
+    printf '{"stage":0,"skill":"of1-check-dependencies","status":"failed","error":%s}\n' "$ESCAPED" \
+      > "$STATE_DIR/of1-check-dependencies-status.json"
   fi
   exit 1
 fi
@@ -291,8 +291,8 @@ cat > "$STATE_DIR/setup.json" <<EOF
 EOF
 
 # SLICC sprinkle IPC ack (CC ignores)
-echo '{"step":1,"status":"done","summary":"prerequisites verified"}' \
-  > "$STATE_DIR/step-1-status.json"
+echo '{"stage":0,"skill":"of1-check-dependencies","status":"done","summary":"prerequisites verified"}' \
+  > "$STATE_DIR/of1-check-dependencies-status.json"
 
 echo "RESULT: OK ($WARN warning(s))"
 echo "Wrote $STATE_DIR/setup.json"
