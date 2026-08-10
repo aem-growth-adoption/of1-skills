@@ -12,7 +12,7 @@ Generate domain-specific quick suggestion chips, placeholder text, and search UI
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_STATE_DIR` | state + IPC dir; receives `step-9-status.json` |
+| `OF1_STATE_DIR` | state + IPC dir; receives `of1-build-quick-suggestions-status.json` |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
 
 Read repo config:
@@ -119,7 +119,7 @@ The OF1 block fetches this on page load to populate the search UI (randomly pick
 ## Completion (pipeline mode)
 
 ```bash
-cat > "$OF1_STATE_DIR/step-9-status.json" <<EOF
-{"step":9,"status":"done","summary":"Generated [N] suggestion chips covering [intents covered]."}
+cat > "$OF1_STATE_DIR/of1-build-quick-suggestions-status.json" <<EOF
+{"stage":3,"skill":"of1-build-quick-suggestions","status":"done","summary":"Generated [N] suggestion chips covering [intents covered]."}
 EOF
 ```
