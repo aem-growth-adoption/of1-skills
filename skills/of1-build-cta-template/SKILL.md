@@ -12,7 +12,7 @@ Analyze a website's visual design system (fonts, colors, button styles, spacing)
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_STATE_DIR` | state + IPC dir; receives `step-10-status.json` |
+| `OF1_STATE_DIR` | state + IPC dir; receives `of1-build-cta-template-status.json` |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
 
 Read repo config:
@@ -129,7 +129,7 @@ Ensure:
 ## Completion (pipeline mode)
 
 ```bash
-cat > "$OF1_STATE_DIR/step-10-status.json" <<EOF
-{"step":10,"status":"done","summary":"CTA template generated: [brief visual description]"}
+cat > "$OF1_STATE_DIR/of1-build-cta-template-status.json" <<EOF
+{"stage":3,"skill":"of1-build-cta-template","status":"done","summary":"CTA template generated: [brief visual description]"}
 EOF
 ```
