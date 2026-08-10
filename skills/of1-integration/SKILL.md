@@ -31,13 +31,13 @@ Two modes, decided by `OF1_PIPELINE_MODE`:
      (`of1-extract-brand-voice`/`of1-extract-content` → `of1-build-quick-suggestions`) runs
      immediately, in parallel with the still-running replica.
 
-## Phase 0 — Verify dependencies + repo state (inline)
+## Verify dependencies + repo state (inline)
 
 Invoke the `of1-check-dependencies` skill exactly as `of1-demo-orchestrator` does (Skill tool on Claude Code; read + follow inline on SLICC — not Agent/scoop dispatch, this step is light and must run in your own context to read the verified state). If it fails, surface the exact error and stop.
 
 After it succeeds, read `<STATE_DIR>/setup.json` for `stateDir`/`of1Repo` and `<STATE_DIR>/repo-config.json` for `owner`/`repo`/`branch`/`domain`. Use these for all subsequent steps.
 
-## Phase 1 — Artifact detection (inline)
+## Artifact detection (inline)
 
 ```bash
 cd "$OF1_DEMO_REPO"
@@ -56,6 +56,12 @@ in bounded (`--pages`) mode — this is fully valid input. OF1 integration consu
 way regardless of provenance; do NOT reject or re-extract on a bounded-single spec.
 
 ## Step graph
+
+This is the single ordering authority for the whole skill. Four steps run **inline** in the
+orchestrator's own context — `of1-check-dependencies`, artifact detection, `of1-generate-config-review`,
+and `of1-publish` (each documented in its own section below); every other step is **dispatched** as an
+Agent/scoop (see "## Dispatch"). The graph nodes and the Trigger table are authoritative — the prose
+sections describe *what each step does*, not a competing order.
 
 ```
 of1-check-dependencies (setup) → artifact detection (inline)
@@ -142,7 +148,7 @@ Same step-graph, same dependency rules on both runtimes. Only the invocation mec
 
 - The orchestrator uses **TaskCreate** with one task per skill/phase (`of1-check-dependencies`, extraction, `of1-build-templates`(base), `of1-build-templates`(intent-*), `of1-build-templates`(assemble), `of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-generate-config-review`, `of1-publish`). Mark the `of1-check-dependencies` task completed immediately; mark each task `in_progress`/`completed`/`failed` around its dispatch.
 - Each skill (except artifact detection and `of1-generate-config-review`, which are inline) is a single `Agent` dispatch. Sub-agents see none of this conversation — the prompt must be self-contained: read the target skill's `SKILL.md`, export the same env vars the orchestrator exports (`OF1_STATE_DIR`, `OF1_DEMO_REPO`, `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`, `SKILL_DIR`), state the branch/owner/repo, list which prior-skill output files it needs, and require the same JSON status block: `{"stage":3,"skill":"<skill>","status":"done"|"review"|"failed","summary":"...","deliverables":[...]}`.
-- **The extraction step's dispatch is a direct `stardust:extract` invocation targeting the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`)** — do not point it at any external domain, and do not run it at all if `HAS_DESIGN_JSON=true` from Phase 1.
+- **The extraction step's dispatch is a direct `stardust:extract` invocation targeting the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`)** — do not point it at any external domain, and do not run it at all if `HAS_DESIGN_JSON=true` from the artifact-detection step.
 - In pipeline mode also export `OF1_CONTENT_SOURCE` (to `of1-extract-brand-voice`/`of1-extract-content`/`of1-build-quick-suggestions` dispatches) and pass
   `OF1_REPLICA_DONE_FILE` to the orchestrator's own site-track gate (not to the skill agents).
 - **Parallelism is mandatory** at each fan-out point — the top-level orchestrator dispatches all eligible skills in a single message with multiple Agent tool-use blocks. (This is possible precisely because the *top level* is dispatching; a Stage-3 subagent could not, hence the "who dispatches on CC" note above.)
