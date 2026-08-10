@@ -70,7 +70,7 @@ done
 `stardust:replica` writes the standalone prototype archetypes to
 `stardust/prototypes/<slug>-proposed.html`, but nothing serves them — so they're invisible in the
 demo. Copy each into `deliverables/` (EDS serves that dir statically, exactly like `discovery.html`),
-where Step 3's `git add deliverables/` picks them up and the hub links them:
+where the "Commit and push" step's `git add deliverables/` picks them up and the hub links them:
 
 ```bash
 if ls stardust/prototypes/*.html >/dev/null 2>&1; then
@@ -233,7 +233,7 @@ from pathlib import Path
 
 p = Path('templates/templates-catalog.json')
 if not p.exists():
-    print("✗ templates-catalog.json missing — Step 6 did not run", file=sys.stderr)
+    print("✗ templates-catalog.json missing — of1-build-templates did not run", file=sys.stderr)
     sys.exit(1)
 
 catalog = json.loads(p.read_text())
@@ -274,7 +274,7 @@ LINKS=(
   "${PREVIEW_BASE}/deliverables/index.html"
 )
 # Full e2e pipeline only (discovery ran): also assert the discovery deliverable.
-# In of1-integration's flow discovery never runs — see that skill's Step 12 note.
+# In of1-integration's flow discovery never runs — see that skill's Deploy (of1-publish) note.
 [ -f "${OF1_STATE_DIR}/of1-discovery-output.md" ] && LINKS+=("${PREVIEW_BASE}/deliverables/discovery.html")
 
 ALL_OK=true
@@ -316,7 +316,7 @@ fi
 
 ### Checklist summary
 
-Only mark Step 12 done if ALL 6 pass:
+Only mark this deploy step (`of1-publish`) done if ALL 6 pass:
 
 | # | Check |
 |---|-------|

@@ -160,9 +160,9 @@ Same step-graph, same dependency rules on both runtimes. Only the invocation mec
 - Handle completions event-driven, not via polling: end your turn after dispatching, and react when a scoop-completion notification arrives — read its status file, check if it unblocks the next dispatch per the table above, and dispatch the next batch.
 - Model assignment: same as the Claude Code column above, using `claude-opus-4-8`/`claude-sonnet-5` model strings per `of1-demo-orchestrator`'s own convention.
 
-## Step 11 — Config review (inline, no dispatch on either runtime)
+## Config review — `of1-generate-config-review` (inline, no dispatch on either runtime)
 
-Identical to `of1-demo-orchestrator`'s Step 11 — run the `of1-generate-config-review` skill's fill script directly:
+Identical to `of1-demo-orchestrator`'s config-review step — run the `of1-generate-config-review` skill's fill script directly:
 
 ```bash
 cd "$OF1_DEMO_REPO"
@@ -174,9 +174,9 @@ git push origin "$BRANCH"
 
 (`$SKILL_DIR_CONFIG_REVIEW` = absolute path to the `of1-generate-config-review` skill directory.)
 
-## Step 12 — Deploy (inline)
+## Deploy — `of1-publish` (inline)
 
-After `of1-generate-config-review` is approved AND `of1-build-templates`(assemble) + `of1-style-generative-block` are both done, run the `of1-publish` skill inline (read it and follow it directly — same as `of1-demo-orchestrator`'s Step 12).
+After `of1-generate-config-review` is approved AND `of1-build-templates`(assemble) + `of1-style-generative-block` are both done, run the `of1-publish` skill inline (read it and follow it directly — same as `of1-demo-orchestrator`'s deploy step).
 
 **Check 5 (deliverable URLs return 200) is already adopt-flow-aware:** it only asserts
 `discovery.html` when `of1-discovery-output.md` exists, and discovery never runs in the adopt flow, so that
