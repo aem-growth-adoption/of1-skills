@@ -12,7 +12,7 @@ Analyze a website to extract its brand voice, tone, and personality, then genera
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_STATE_DIR` | state + IPC dir; receives `step-8-brand-status.json` |
+| `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-brand-voice-status.json` |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
 
 Read repo config:
@@ -133,9 +133,9 @@ The worker injects these fields into the LLM system prompt to shape how generate
 This skill runs alongside `content-metadata` (step 8b). Both must complete before step 8 is marked done.
 
 ```bash
-cat > "$OF1_STATE_DIR/step-8-brand-status.json" <<EOF
-{"step":8,"substep":"brand","status":"done","summary":"Brand voice extracted: [personality adjectives]. [N] vocabulary terms, [M] avoid words."}
+cat > "$OF1_STATE_DIR/of1-extract-brand-voice-status.json" <<EOF
+{"stage":3,"skill":"of1-extract-brand-voice","status":"done","summary":"Brand voice extracted: [personality adjectives]. [N] vocabulary terms, [M] avoid words."}
 EOF
 ```
 
-The orchestrator waits for both `step-8-brand-status.json` and `step-8-content-status.json` before marking step 8 complete.
+The orchestrator waits for both `of1-extract-brand-voice-status.json` and `of1-extract-content-status.json` (the content track) before treating the content pair as complete.
