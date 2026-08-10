@@ -323,12 +323,12 @@ playwright-cli open "$OF1_URL"
 sleep 4  # EDS loads header/footer blocks + lazy CSS
 
 # Confirm the branded chrome and the block are all in the DOM
-playwright-cli eval "document.querySelector('header .header') ? 'header OK' : 'HEADER MISSING'"
-playwright-cli eval "document.querySelector('footer .footer') ? 'footer OK' : 'FOOTER MISSING'"
-playwright-cli eval "document.querySelector('.of1')            ? 'of1 block OK' : 'OF1 BLOCK MISSING'"
+playwright-cli eval "() => (document.querySelector('header .header') ? 'header OK' : 'HEADER MISSING')"
+playwright-cli eval "() => (document.querySelector('footer .footer') ? 'footer OK' : 'FOOTER MISSING')"
+playwright-cli eval "() => (document.querySelector('.of1')            ? 'of1 block OK' : 'OF1 BLOCK MISSING')"
 
 # Capture a screenshot for visual review
-playwright-cli screenshot --fullPage=true --filename "$OF1_STATE_DIR/of1-render-check.png"
+playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/of1-render-check.png"
 ```
 
 (`header .header` / `footer .footer` match vanilla `aem-boilerplate`'s `decorateBlock` convention — confirm against the target's own `runtime-contract.json` `blockWrapperClass` field if it drifts.)
@@ -354,11 +354,11 @@ playwright-cli click ".of1-chip:first-child"
 sleep 8  # wait for LLM to generate + render
 
 # Screenshot the generated result
-playwright-cli screenshot --fullPage=true --filename "$OF1_STATE_DIR/of1-generated-check.png"
+playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/of1-generated-check.png"
 
 # Spot-check that blocks decorated correctly
-playwright-cli eval "document.querySelector('.generated-section .cards') ? 'cards OK' : 'CARDS MISSING'"
-playwright-cli eval "document.querySelector('.generated-section .hero') ? 'hero OK' : 'HERO MISSING'"
+playwright-cli eval "() => (document.querySelector('.generated-section .cards') ? 'cards OK' : 'CARDS MISSING')"
+playwright-cli eval "() => (document.querySelector('.generated-section .hero') ? 'hero OK' : 'HERO MISSING')"
 ```
 
 If selectors don't match, the CSS is targeting the wrong DOM structure. Refer to the EDS Block DOM Reference in Step 4 and fix `blocks/of1/of1.css` accordingly.

@@ -36,7 +36,7 @@ existing** — it is not written by `verify.sh`; Part 2 writes it.
 1. The pipeline's OF1 skills are installed — the orchestrator (`of1-demo-orchestrator`) plus every step skill it dispatches (`of1-discovery`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-generate-config-review`, `of1-publish`, `of1-style-generative-block`, `of1-adopt-existing-site`). The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
 2. The Adobe EDS skills `stardust` (incl. `stardust:replica`), `impeccable` are installed
 3. Shell tools: `node`, `python3`, `jq`, `git`, `curl`
-4. `playwright-cli` (or the standard `playwright` binary with a shim warning)
+4. `playwright-cli` — probed for the modern `open` subcommand (warns if the binary is present but missing it)
 5. `$OF1_DEMO_REPO` is a git checkout with EDS structural files
    (`scripts/aem.js` or `scripts/lib-franklin.js`, `scripts/scripts.js`,
    `styles/styles.css`) — **fails hard** if not, no fallback

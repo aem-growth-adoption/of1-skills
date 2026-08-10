@@ -165,28 +165,22 @@ for T in node python3 jq git curl; do
   fi
 done
 
-# OF1 step skills call `playwright-cli visit/screenshot/snapshot`. Prefer the
-# SLICC-native `playwright-cli` binary; in CC, the standard `playwright` binary
-# is accepted as a degraded fallback (shim at scripts/playwright-cli-shim.sh).
-# Probe SHAPE, not just presence (finding 49). A `playwright-cli` on PATH may be
-# the raw Microsoft @playwright/cli binary, which rejects the legacy
-# visit/--output syntax the step skills emit. Its global `--help` exits 0 for any
-# token, so `<subcmd> --help` can't distinguish it — check the shim marker, then
-# confirm the legacy `visit` subcommand is actually understood.
-SHIM_INSTALL="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)/install-shim.sh"
+# OF1 step skills call `playwright-cli open/screenshot/eval` using modern
+# @playwright/cli syntax (open, --filename, --full-page, arrow-fn eval). Probe
+# SHAPE, not just presence (finding 49): confirm the binary understands the
+# `open` subcommand. Its global `--help` exits 0 for any token, so check for the
+# `open` command in the help output specifically.
 if command -v playwright-cli >/dev/null 2>&1; then
   PWCLI_PATH="$(command -v playwright-cli)"
-  if grep -q 'playwright-cli-shim' "$PWCLI_PATH" 2>/dev/null; then
-    ok "playwright-cli (shim) → $PWCLI_PATH"
-  elif playwright-cli visit 2>&1 | grep -qi 'unknown command'; then
-    warn "playwright-cli at $PWCLI_PATH is the raw @playwright/cli binary — it rejects the legacy 'visit'/'--output' syntax the step skills use. Install the shim: bash $SHIM_INSTALL"
-  else
+  if playwright-cli --help 2>&1 | grep -qiE '(^| )open( |$)'; then
     ok "playwright-cli → $PWCLI_PATH"
+  else
+    warn "playwright-cli at $PWCLI_PATH does not expose the 'open' subcommand — step skills use modern @playwright/cli syntax (open/--filename/--full-page). Install it: npm i -g @playwright/cli@latest && playwright-cli install-browser"
   fi
 elif command -v playwright >/dev/null 2>&1; then
-  warn "playwright-cli not found; only 'playwright' is installed at $(command -v playwright). Install the shim: bash $SHIM_INSTALL — else step skills calling visit/screenshot/snapshot will fail."
+  warn "playwright-cli not found; only 'playwright' is installed at $(command -v playwright). Install @playwright/cli: npm i -g @playwright/cli@latest && playwright-cli install-browser — else step skills calling open/screenshot/eval will fail."
 else
-  fail "Neither playwright-cli nor playwright installed — fix: npm i -g playwright; npx playwright install chromium"
+  fail "playwright-cli not installed — fix: npm i -g @playwright/cli@latest && playwright-cli install-browser"
 fi
 
 # ---------- 4. EDS repo verification (any org/repo — structural, not identity) ----------

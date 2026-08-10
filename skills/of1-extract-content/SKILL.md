@@ -94,9 +94,10 @@ for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
 
   # Extract data from each tab in this batch
   for TAB_ID in $(playwright-cli tab-list | grep -oE '[0-9]+'); do
-    playwright-cli eval --tab "$TAB_ID" "
+    playwright-cli tab-select "$TAB_ID"
+    playwright-cli eval "() => {
       // extract name, price, description, images, features, etc.
-    "
+    }"
   done
 
   # Close batch tabs before opening the next batch
@@ -271,11 +272,11 @@ Verify all ID references are consistent across files. Fix mismatches.
 Use playwright-cli to visit each product detail page and extract product images:
 
 ```bash
-playwright-cli eval "
-Array.from(document.querySelectorAll('img'))
-  .filter(i => i.naturalWidth > 200 && !i.src.includes('icon') && !i.src.includes('logo'))
-  .map(i => ({ src: i.src, alt: i.alt, w: i.naturalWidth, h: i.naturalHeight }))
-"
+playwright-cli eval "() => (
+  Array.from(document.querySelectorAll('img'))
+    .filter(i => i.naturalWidth > 200 && !i.src.includes('icon') && !i.src.includes('logo'))
+    .map(i => ({ src: i.src, alt: i.alt, w: i.naturalWidth, h: i.naturalHeight }))
+)"
 ```
 
 Stage the source URLs in `products.json`'s `images` arrays.

@@ -36,7 +36,7 @@ TENANT_ID="${BRANCH}--${REPO}--${OWNER}"
 WORKER_URL="https://of1-gen-web-service.franklin-prod.workers.dev"
 ```
 
-`playwright-cli` calls use `open` + `--fullPage=true` + `--filename` (SLICC-native syntax; CC shim passes through unchanged).
+`playwright-cli` calls use modern @playwright/cli syntax: `open` + `--full-page` (bare boolean) + `--filename`. This works on both SLICC-native and CC `playwright-cli` binaries.
 
 ## How config sync works
 
@@ -174,7 +174,7 @@ ALL checks must pass before marking the demo done. If any fail, fix the issue an
 ```bash
 playwright-cli open "${PREVIEW_BASE}/of1"
 sleep 6
-playwright-cli screenshot --fullPage=true --filename "$OF1_STATE_DIR/check-of1.png"
+playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/check-of1.png"
 ```
 
 **Pass:** branded search UI visible (title, subtitle, input, chips), styled header nav (dark translucent bar, white links), styled footer. No raw unstyled content.
@@ -187,9 +187,9 @@ playwright-cli screenshot --fullPage=true --filename "$OF1_STATE_DIR/check-of1.p
 playwright-cli open "${PREVIEW_BASE}/of1"
 sleep 6
 # Verify concrete elements exist — not just a visual comparison
-playwright-cli eval "document.querySelector('header .header') ? 'header OK' : 'HEADER MISSING'"
-playwright-cli eval "document.querySelector('header .header a') ? 'nav links OK' : 'NAV LINKS MISSING'"
-playwright-cli eval "document.querySelector('footer .footer') ? 'footer OK' : 'FOOTER MISSING'"
+playwright-cli eval "() => (document.querySelector('header .header') ? 'header OK' : 'HEADER MISSING')"
+playwright-cli eval "() => (document.querySelector('header .header a') ? 'nav links OK' : 'NAV LINKS MISSING')"
+playwright-cli eval "() => (document.querySelector('footer .footer') ? 'footer OK' : 'FOOTER MISSING')"
 ```
 
 **Pass criteria (concrete, not just visual):**
