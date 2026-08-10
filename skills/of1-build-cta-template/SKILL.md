@@ -60,14 +60,16 @@ Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § 
 
 ## Process
 
-### 1. Analyze the site's visual design
+### 1. Read the site's visual design from the resolved tokens
 
-Fetch the homepage and 1–2 key pages using WebFetch. Extract:
-- Fonts (heading vs body — custom, web, or system)
-- Primary/accent colors, background colors, text colors
-- Button style (background, text color, border-radius, padding, text-transform, font-weight, letter-spacing)
-- Section styling (dark/light backgrounds, padding/margins)
-- Overall theme (dark/light, minimal/rich, sharp/rounded)
+`DESIGN.json` (resolved above) already carries everything the CTA needs — it was measured from the
+real site by `stardust:extract`/`replica`, so prefer it over re-deriving from HTML. Read:
+- **Fonts** → `typography.heading.family` / `typography.body.family` (+ `weight`, `letterSpacing`, `lineHeight`)
+- **Colors** → `colors.{primary, secondary, accent, background, surface, text, muted}`
+- **Button style** → `components.button.{radius, padding, weight, textTransform}`
+- **Section / theme cues** → `colors.background`/`surface`, `spacing.{section, component}`, `components.hero.{style, overlay}`, `components.card.radius`, `rounded`
+
+**Only WebFetch the homepage** if `DESIGN.json` is absent (the resolver above would have left `$DESIGN_JSON` empty) OR you need a CTA-specific detail the tokens genuinely don't capture (e.g. a distinctive section background treatment you can't infer from the token set). Do not re-derive fonts/colors/button styling by fetching when the tokens already provide them — the tokens are higher-fidelity than an HTML guess and the extraction already paid for them.
 
 ### 2. Determine the CTA visual treatment
 
