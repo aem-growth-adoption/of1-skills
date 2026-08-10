@@ -80,8 +80,8 @@ The OF1 block fetches this on page load to populate the search UI (randomly pick
   "subtitle": "...",
   "placeholder": "...",
   "suggestions": [
-    { "type": "explore", "label": "Short Chip Label", "query": "full natural language query the user would type" },
-    { "type": "explore", "label": "Another Chip", "query": "another full query" }
+    { "type": "comparison", "label": "Short Chip Label", "query": "full natural language query the user would type" },
+    { "type": "budget", "label": "Another Chip", "query": "another full query" }
   ]
 }
 ```
@@ -90,11 +90,11 @@ The OF1 block fetches this on page load to populate the search UI (randomly pick
 - `title` → the `<h1>` heading on the /of1 page (e.g. "Find Your Next Adventure")
 - `subtitle` → supporting text below the heading
 - `placeholder` → input field placeholder text
-- `suggestions[].type` → always the literal string `"explore"`. It is a reserved field the OF1 worker/SDK does **not** currently read — the landing chips render from `label` + `query` only, and the worker stamps `"explore"` on every suggestion by convention (there's a worker-side test locking this in). Do NOT try to encode the intent here; intent is not stored in the JSON at all (see Intent coverage below).
+- `suggestions[].type` → the chip's **intent**: one of `comparison`, `recommendation`, `deep-dive`, `discovery`, `budget` (the same five the templates use; see Intent coverage below). Set it to the intent that produced this chip's query. Note: the OF1 worker/SDK does not read `type` today — landing chips render from `label` + `query` only, and follow-up ranking uses `query`/`label` — so this is currently descriptive metadata that travels with the config, correct and ready for a future consumer (e.g. per-intent chip styling or analytics). It is NOT validated, so an accurate value is free and a wrong one is harmless; use the real intent.
 - `suggestions[].label` → short text shown on the chip (under 40 chars)
 - `suggestions[].query` → the full query string sent to `/api/generate` when clicked
 
-**Intent coverage:** intent is a *generation-time* concept — it steers which queries you write, but it is NOT written to the JSON (every chip's `type` is `"explore"`). Spread your 8–12 chips across all five intents so demos can showcase different generation behaviors:
+**Intent coverage:** each chip's intent is recorded in its `type` field (above). Spread your 8–12 chips across all five intents so demos can showcase different generation behaviors:
 - `deep-dive`: "Tell me about [specific product]" — detailed single-product pages
 - `comparison`: "Compare [A] vs [B]" — side-by-side layouts
 - `recommendation`: "Best [category] for [persona need]" — featured product + alternatives
