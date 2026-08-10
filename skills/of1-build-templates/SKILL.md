@@ -467,9 +467,10 @@ COUNT=$(ls templates/of1-*.html 2>/dev/null | wc -l | tr -d ' ')
 [ "$COUNT" -ge 15 ] || { echo "ABORT: only ${COUNT} templates exist" >&2; exit 1; }
 
 GALLERY_URL="https://${BRANCH}--${REPO}--${OWNER}.aem.page/gallery/index.html"
-cat > "$OF1_STATE_DIR/step-6-status.json" <<EOF
+cat > "$OF1_STATE_DIR/of1-build-templates-status.json" <<EOF
 {
-  "step": 6,
+  "stage": 3,
+  "skill": "of1-build-templates",
   "status": "review",
   "deliverables": [
     { "url": "${GALLERY_URL}", "label": "Template gallery" }
