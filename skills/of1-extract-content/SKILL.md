@@ -12,7 +12,7 @@ Crawl a website to extract product data, user personas, use cases, features, and
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_STATE_DIR` | state + IPC dir; receives `step-8-content-status.json` |
+| `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-content-status.json` |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
 | `SKILL_DIR` | absolute path to this skill (used to find `assets/download-images.*`) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
@@ -369,9 +369,9 @@ If ANY of these are false, GO BACK and complete Step 9. Do not proceed.
 This skill runs alongside `brand-voice-extractor` (step 8a). Both must complete before step 8 is marked done.
 
 ```bash
-cat > "$OF1_STATE_DIR/step-8-content-status.json" <<EOF
-{"step":8,"substep":"content","status":"done","summary":"Content metadata: [N] products, [M] personas, [P] use cases, [Q] features, [R] FAQs. All images on DA."}
+cat > "$OF1_STATE_DIR/of1-extract-content-status.json" <<EOF
+{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] products, [M] personas, [P] use cases, [Q] features, [R] FAQs. All images on DA."}
 EOF
 ```
 
-The orchestrator waits for both `step-8-content-status.json` and `step-8-brand-status.json` before marking step 8 complete.
+The orchestrator waits for both `of1-extract-content-status.json` and `of1-extract-brand-voice-status.json` before treating the content pair as complete.
