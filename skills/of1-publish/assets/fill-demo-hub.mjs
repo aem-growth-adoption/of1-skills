@@ -106,7 +106,9 @@ function renderAudit(stateDir) {
     const retryBadge = retries > 0 ? ` <span style="color:var(--orange);">↻${retries}</span>` : '';
 
     html += '<tr style="border-bottom:1px solid var(--border);">';
-    html += `<td style="padding:6px 8px;">${s.stage ?? s.step ?? '?'}</td>`;
+    // {stage,skill} is canonical; s.step is the retired legacy shape (older audits).
+    const stageLabel = s.skill ? `${s.stage ?? '?'} · ${s.skill}` : (s.stage ?? s.step ?? '?');
+    html += `<td style="padding:6px 8px;">${htmlEscape(String(stageLabel))}</td>`;
     html += `<td>${htmlEscape(s.name ?? '')}</td>`;
     html += `<td>${htmlEscape(s.model ?? '')}</td>`;
     html += `<td style="text-align:right;">${tokens.toLocaleString('en-US')}</td>`;
@@ -123,7 +125,8 @@ function renderAudit(stateDir) {
     html += '<div style="display:flex;flex-direction:column;gap:12px;">\n';
     for (const imp of improvements) {
       html += '<div style="padding:12px 16px;border:1px solid var(--border);border-radius:6px;font-size:12px;">\n';
-      html += `  <div style="color:var(--orange);margin-bottom:4px;">Stage ${imp.stage ?? imp.step ?? '?'} — ${htmlEscape(imp.issue ?? '')}</div>\n`;
+      const impLabel = imp.skill ? `${imp.stage ?? '?'} · ${imp.skill}` : (imp.stage ?? imp.step ?? '?');
+      html += `  <div style="color:var(--orange);margin-bottom:4px;">Stage ${htmlEscape(String(impLabel))} — ${htmlEscape(imp.issue ?? '')}</div>\n`;
       html += `  <div style="color:var(--dim);">${htmlEscape(imp.suggestion ?? '')}</div>\n`;
       html += '</div>\n';
     }
