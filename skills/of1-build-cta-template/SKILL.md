@@ -15,11 +15,7 @@ Analyze a website's visual design system (fonts, colors, button styles, spacing)
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-build-cta-template-status.json` |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
 
-Read repo config:
-
 ```bash
-REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
-DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
@@ -35,10 +31,6 @@ fi
 ```
 
 Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `cta-template.json`.
-
-## Inputs
-
-- `DOMAIN` (e.g. `frescopa.coffee`). In pipeline mode, read from repo-config. Only ask the user if not provided.
 
 ## Output
 

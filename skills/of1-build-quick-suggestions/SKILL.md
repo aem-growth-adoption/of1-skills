@@ -15,14 +15,7 @@ Generate domain-specific quick suggestion chips, placeholder text, and search UI
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-build-quick-suggestions-status.json` |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
 
-Read repo config:
-
 ```bash
-REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
-OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
-REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
-BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
-DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
@@ -36,7 +29,7 @@ files and JSON shapes are identical in pipeline and standalone modes.
 
 ## Inputs
 
-- `DOMAIN` (e.g. `frescopa.coffee`). In pipeline mode, read from repo-config. Only ask the user if not provided.
+- `of1/config/{products,personas,brand-voice}.json` — produced by `of1-extract-content` and `of1-extract-brand-voice` (read below)
 - Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge)
 
 **REQUIRED — read the content-extraction outputs before generating suggestions.** This skill runs AFTER `of1-extract-brand-voice` and `of1-extract-content` complete, so these files exist:
