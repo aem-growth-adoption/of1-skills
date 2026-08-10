@@ -12,7 +12,7 @@ Commit config files, trigger sync to the OF1 worker, generate the demo hub, run 
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_STATE_DIR` | state + IPC dir; receives `step-12-status.json` |
+| `OF1_STATE_DIR` | state + IPC dir; receives `of1-publish-status.json` |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
 | `SKILL_DIR` | absolute path to this skill (used to find `assets/fill-demo-hub.*`) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
@@ -345,9 +345,10 @@ Pre-launch checklist: 6/6 passed ✓
 ```bash
 HUB_URL="${PREVIEW_BASE}/deliverables/index.html"
 OF1_URL="${PREVIEW_BASE}/of1"
-cat > "$OF1_STATE_DIR/step-12-status.json" <<EOF
+cat > "$OF1_STATE_DIR/of1-publish-status.json" <<EOF
 {
-  "step": 12,
+  "stage": 3,
+  "skill": "of1-publish",
   "status": "done",
   "deliverables": [
     { "url": "${HUB_URL}", "label": "Demo hub" },
