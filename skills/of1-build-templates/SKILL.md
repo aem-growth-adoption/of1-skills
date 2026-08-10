@@ -256,8 +256,8 @@ fi
 Status file (SLICC sprinkle IPC; CC ignores):
 
 ```bash
-echo "{\"step\":6,\"substep\":\"base\",\"status\":\"done\",\"summary\":\"Generated styles/of1-template-base.css with brand tokens.\"}" \
-  > "$OF1_STATE_DIR/step-6-base-status.json"
+echo "{\"stage\":3,\"skill\":\"of1-build-templates\",\"phase\":\"base\",\"status\":\"done\",\"summary\":\"Generated styles/of1-template-base.css with brand tokens.\"}" \
+  > "$OF1_STATE_DIR/of1-build-templates-base-status.json"
 ```
 
 ## Process — Mode: `intent`
@@ -377,8 +377,8 @@ done
 End with a one-line summary listing the 3 file basenames. Status file (SLICC sprinkle IPC; CC ignores):
 
 ```bash
-echo "{\"step\":6,\"substep\":\"intent-${INTENT}\",\"status\":\"done\",\"summary\":\"Generated 3 ${INTENT} variations.\"}" \
-  > "$OF1_STATE_DIR/step-6-intent-${INTENT}-status.json"
+echo "{\"stage\":3,\"skill\":\"of1-build-templates\",\"phase\":\"intent-${INTENT}\",\"status\":\"done\",\"summary\":\"Generated 3 ${INTENT} variations.\"}" \
+  > "$OF1_STATE_DIR/of1-build-templates-intent-${INTENT}-status.json"
 ```
 
 ## Process — Mode: `assemble`
