@@ -275,7 +275,7 @@ LINKS=(
 )
 # Full e2e pipeline only (discovery ran): also assert the discovery deliverable.
 # In of1-adopt-existing-site's flow discovery never runs — see that skill's Step 12 note.
-[ -f "${OF1_STATE_DIR}/step-2-output.md" ] && LINKS+=("${PREVIEW_BASE}/deliverables/discovery.html")
+[ -f "${OF1_STATE_DIR}/of1-discovery-output.md" ] && LINKS+=("${PREVIEW_BASE}/deliverables/discovery.html")
 
 ALL_OK=true
 for URL in "${LINKS[@]}"; do

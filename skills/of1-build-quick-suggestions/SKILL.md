@@ -52,7 +52,7 @@ copy needs to reference the live site's URL. Output files and JSON shapes are id
 ## Inputs
 
 - `DOMAIN` (e.g. `frescopa.coffee`). In pipeline mode, read from repo-config. Only ask the user if not provided.
-- Discovery output at `$OF1_STATE_DIR/step-2-output.md` (for product/category knowledge)
+- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge)
 
 **REQUIRED — read step 8 outputs before generating suggestions.** This step runs AFTER step 8 completes, so these files exist:
 

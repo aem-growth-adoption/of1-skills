@@ -36,7 +36,7 @@ mkdir -p of1/config
 
 If discovery output exists, read it to focus on the right product category:
 ```bash
-cat "$OF1_STATE_DIR/step-2-output.md" 2>/dev/null
+cat "$OF1_STATE_DIR/of1-discovery-output.md" 2>/dev/null
 ```
 
 Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` — § `products.json`, § `personas.json`, § `use-cases.json`, § `features.json`, § `faqs.json`.

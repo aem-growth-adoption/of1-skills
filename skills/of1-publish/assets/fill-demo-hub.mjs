@@ -10,7 +10,7 @@
 //
 // Reads:
 //   $OF1_STATE_DIR/repo-config.json (default /shared/of1-demo-orchestrator)
-//   $OF1_STATE_DIR/step-2-output.md (discovery: demo focus + narrative)
+//   $OF1_STATE_DIR/of1-discovery-output.md (discovery: demo focus + narrative)
 //   of1/config/{products,personas,suggestions,templates}.json
 //   stardust/current/assets/logo.svg (optional)
 //   DA content pages (/tmp/da-pages.txt, or content/*.html fallback)
@@ -133,7 +133,7 @@ function renderAudit(stateDir) {
   return html;
 }
 
-// Extract the body of a `## <heading>` section from step-2-output.md — the lines
+// Extract the body of a `## <heading>` section from of1-discovery-output.md — the lines
 // after the heading, up to the next heading or EOF. Returns '' if not found.
 function extractSection(discoveryOutput, heading) {
   const lines = discoveryOutput.split('\n');
@@ -308,7 +308,7 @@ function main() {
   const suggestions = loadJson(path.join(repoDir, 'of1', 'config', 'suggestions.json'));
   const templatesJson = loadJson(path.join(repoDir, 'of1', 'config', 'templates.json'));
 
-  const discoveryPath = path.join(stateDir, 'step-2-output.md');
+  const discoveryPath = path.join(stateDir, 'of1-discovery-output.md');
   const discovery = loadText(discoveryPath);
   if (!discovery) {
     console.error(`WARN: ${discoveryPath} not found or empty — demo focus/narrative will fall back to defaults.`);

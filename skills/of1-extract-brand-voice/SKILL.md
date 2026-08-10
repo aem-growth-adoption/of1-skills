@@ -50,7 +50,7 @@ Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everyt
 ## Inputs
 
 - `DOMAIN` (e.g. `frescopa.coffee`). In pipeline mode, read from repo-config. Only ask the user if not provided.
-- Discovery output at `$OF1_STATE_DIR/step-2-output.md` (if available — use for page URLs instead of re-discovering)
+- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (if available — use for page URLs instead of re-discovering)
 
 ## Process
 
