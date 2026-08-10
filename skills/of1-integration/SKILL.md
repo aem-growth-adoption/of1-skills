@@ -162,17 +162,7 @@ Same step-graph, same dependency rules on both runtimes. Only the invocation mec
 
 ## Config review — `of1-generate-config-review` (inline, no dispatch on either runtime)
 
-Identical to `of1-demo-orchestrator`'s config-review step — run the `of1-generate-config-review` skill's fill script directly:
-
-```bash
-cd "$OF1_DEMO_REPO"
-node "$SKILL_DIR_CONFIG_REVIEW/assets/fill-config-review.mjs" . "$DOMAIN"
-git add deliverables/config-review.html
-git commit -m "docs: config review page for $DOMAIN"
-git push origin "$BRANCH"
-```
-
-(`$SKILL_DIR_CONFIG_REVIEW` = absolute path to the `of1-generate-config-review` skill directory.)
+Once `of1-extract-brand-voice` + `of1-extract-content` + `of1-build-quick-suggestions` + `of1-build-cta-template` are all done, run the `of1-generate-config-review` skill inline (read it and follow it directly — same as `of1-demo-orchestrator`'s config-review step). Export `SKILL_DIR` to that skill's directory first, exactly as the orchestrator does for a dispatched skill.
 
 ## Deploy — `of1-publish` (inline)
 
