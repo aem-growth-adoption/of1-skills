@@ -22,7 +22,6 @@ REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
-DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
@@ -31,25 +30,29 @@ Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § 
 
 ## Source resolution — live site vs replica
 
-The content this skill extracts comes from one of two places, decided by `OF1_CONTENT_SOURCE`:
+This skill crawls real pages (Step 1), so it needs a base URL to crawl. There are two candidates and
+`OF1_CONTENT_SOURCE` decides between them:
 
 ```bash
 if [ -n "$OF1_CONTENT_SOURCE" ]; then
-  # Pipeline mode: extract from the REAL external site (highest-fidelity source data)
+  # Pipeline mode: extract from the REAL external site. The orchestrator sets
+  # OF1_CONTENT_SOURCE to the target domain (e.g. frescopa.coffee), so here
+  # SOURCE_BASE is just that domain as an https:// URL.
   SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
 else
-  # Standalone mode (default, unchanged): extract from the built EDS replica preview
+  # Standalone mode (default): there is no external domain to point at — crawl the
+  # built EDS replica preview instead. This is NOT the target domain.
   SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
 fi
 echo "Extracting from: $SOURCE_BASE"
 ```
 
 Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everything else
-(output files, image download, JSON shapes) is identical in both modes.
+(output files, JSON shapes) is identical in both modes.
 
 ## Inputs
 
-- `DOMAIN` (e.g. `frescopa.coffee`). In pipeline mode, read from repo-config. Only ask the user if not provided.
+- `$SOURCE_BASE` (resolved above) — the base URL to crawl. In pipeline mode this is the target domain; in standalone mode it's the replica preview.
 - Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (if available — use for page URLs instead of re-discovering)
 
 ## Process
