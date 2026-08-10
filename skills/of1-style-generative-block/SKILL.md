@@ -239,7 +239,7 @@ There is no separate page-chrome CSS step. `/of1` loads the site's own `styles/s
 The header/footer blocks fetch `/nav` and `/footer` on every page; if either is missing, **every page
 renders chromeless** — no nav, no footer, including `/of1`. These docs are *supposed* to exist by now
 (`stardust:replica` authors them for the e2e pipeline; the existing site already has them for
-`of1-adopt-existing-site`), but replica does **not** create them when the source was bot-blocked — it
+`of1-integration`), but replica does **not** create them when the source was bot-blocked — it
 emits empty `<header></header>` pages and skips the fragments. Do not assume; guarantee. This guard is
 idempotent — if both already return 200 it changes nothing, and it **never overwrites** an existing
 chrome doc:

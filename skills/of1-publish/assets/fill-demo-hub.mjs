@@ -220,7 +220,7 @@ function renderEdsPages(pages) {
 
 // Discovery & Extraction section — only link deliverables that actually exist.
 // discovery.html is produced by the full e2e pipeline (Stage 1) but NOT by the
-// adopt-existing-site flow; brand-review.html is produced by NO current path, so
+// of1-integration flow; brand-review.html is produced by NO current path, so
 // it is never linked. An empty section shows a dim placeholder instead of a 404 link.
 function renderDiscovery(repoDir, previewBase) {
   let html = '';

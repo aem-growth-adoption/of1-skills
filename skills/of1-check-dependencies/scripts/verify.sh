@@ -58,7 +58,7 @@ REQUIRED_SKILLS=(
   of1-discovery of1-build-templates of1-style-generative-block
   of1-extract-brand-voice of1-extract-content of1-build-quick-suggestions
   of1-build-cta-template of1-generate-config-review of1-publish
-  of1-adopt-existing-site
+  of1-integration
 )
 # of1-signals is intentionally omitted — it's a standalone operator tool, not a pipeline step (see its SKILL.md).
 # of1-check-dependencies is omitted because it's the skill running this check.

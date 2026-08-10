@@ -5,7 +5,7 @@
 // page. If those documents don't exist, every page — /of1 included — renders
 // chromeless (no nav, no footer). stardust:replica is supposed to author them
 // but does NOT when the source was bot-blocked (it emits empty <header></header>
-// pages and never creates the fragments); the of1-adopt-existing-site flow runs
+// pages and never creates the fragments); the of1-integration flow runs
 // against a site that already has them. This guard makes the of1 side own the
 // invariant either way: if /nav or /footer is missing, author a minimal branded
 // one from the pages actually deployed on this branch.

@@ -197,7 +197,7 @@ playwright-cli eval "() => (document.querySelector('footer .footer') ? 'footer O
 - At least one nav link is present inside the header block
 - `footer .footer` block renders with styled content (not empty)
 
-**If fails:** the site's `content/nav.html`/`content/footer.html` didn't push correctly, or the preview hasn't picked up the latest deploy yet — re-check `stardust:replica` (for the full e2e pipeline, which produces the replica site's nav/footer chrome) or the existing site's own chrome (for `of1-adopt-existing-site`, where nav/footer already existed before this pipeline ran).
+**If fails:** the site's `content/nav.html`/`content/footer.html` didn't push correctly, or the preview hasn't picked up the latest deploy yet — re-check `stardust:replica` (for the full e2e pipeline, which produces the replica site's nav/footer chrome) or the existing site's own chrome (for `of1-integration`, where nav/footer already existed before this pipeline ran).
 
 ### Check 3: All products have ≥2 images
 
@@ -274,7 +274,7 @@ LINKS=(
   "${PREVIEW_BASE}/deliverables/index.html"
 )
 # Full e2e pipeline only (discovery ran): also assert the discovery deliverable.
-# In of1-adopt-existing-site's flow discovery never runs — see that skill's Step 12 note.
+# In of1-integration's flow discovery never runs — see that skill's Step 12 note.
 [ -f "${OF1_STATE_DIR}/of1-discovery-output.md" ] && LINKS+=("${PREVIEW_BASE}/deliverables/discovery.html")
 
 ALL_OK=true

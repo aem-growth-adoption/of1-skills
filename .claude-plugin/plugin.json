@@ -17,7 +17,7 @@
       "of1-generate-config-review",
       "of1-publish",
       "of1-signals",
-      "of1-adopt-existing-site"
+      "of1-integration"
     ]
   },
   "dependencies": [

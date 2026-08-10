@@ -49,7 +49,7 @@ Available before invocation, in addition to the env above:
 - Demo narrative → `$OF1_STATE_DIR/of1-discovery-output.md` (from `of1-discovery`)
 - Pixel-perfect prototypes → `$OF1_DEMO_REPO/deliverables/prototype-*.html` (from step 4), when they exist — self-contained HTML with inline `<style>`; the primary visual/structural reference, read directly (no step 5 dependency)
 - Prototype screenshots → captured by the orchestrator directly from the static `deliverables/prototype-*.html` files (see "Pre-fan-out" in the orchestrator skill), when prototypes exist
-- **Fallback (no prototypes — e.g. `of1-adopt-existing-site` running against an existing EDS site):** `DESIGN.json` (resolved via `design-tokens-resolution.md`) + live screenshots of the site's own rendered EDS pages (captured by the `of1-adopt-existing-site` orchestrator the same way Track A captures EDS reference screenshots) + the repo's real `styles/styles.css` tokens
+- **Fallback (no prototypes — e.g. `of1-integration` running against an existing EDS site):** `DESIGN.json` (resolved via `design-tokens-resolution.md`) + live screenshots of the site's own rendered EDS pages (captured by the `of1-integration` orchestrator the same way Track A captures EDS reference screenshots) + the repo's real `styles/styles.css` tokens
 
 Worker-side schemas: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `templates.json`, § `products.json`.
 
@@ -195,7 +195,7 @@ Both modes are normal — pick by `$HAS_PROTOTYPES`, don't treat a missing proto
 
   Don't trust `DESIGN.json` as the sole source — the prototypes are the visually-validated ground truth.
 
-- **Mode B — no prototypes (`$HAS_PROTOTYPES = false`):** running against an existing EDS site (e.g. via `of1-adopt-existing-site`). **This is the common path for adopt-site — `deliverables/prototype-*.html` is legitimately absent, NOT a blocker.** Do not hunt for prototypes or wait on them.
+- **Mode B — no prototypes (`$HAS_PROTOTYPES = false`):** running against an existing EDS site (e.g. via `of1-integration`). **This is the common path for adopt-site — `deliverables/prototype-*.html` is legitimately absent, NOT a blocker.** Do not hunt for prototypes or wait on them.
   1. `styles/styles.css` — the repo's real, deployed `:root` tokens. Canonical source here; the site is already live, so its own stylesheet IS the ground truth.
   2. `DESIGN.json` (resolve via `design-tokens-resolution.md`) — tiebreaker / fill-in for tokens not in `styles.css`. If neither `DESIGN.json` location nor `styles/styles.css` exists, stop and report — do not invent tokens.
   3. Live screenshots of the site's own rendered pages (captured by the orchestrator) — visual reference for section rhythm, card grids, and typography scale that a token file alone doesn't capture.
