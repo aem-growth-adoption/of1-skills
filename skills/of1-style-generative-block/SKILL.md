@@ -227,20 +227,11 @@ Target selectors for generated content use the `.generated-section` class added 
 .generated-section                         /* any generated section */
 .generated-section .hero                   /* generated hero block */
 .generated-section .cards                  /* generated cards block */
-.generated-section .adventure-cards        /* generated adventure cards */
 .generated-section .columns                /* generated columns */
 .generated-section .table                  /* generated table */
 ```
 
-### Step 5 — (Removed) Page chrome is automatic
-
-There is no separate page-chrome CSS step. `/of1` loads the site's own `styles/styles.css` exactly like every other page — the header/footer blocks render the branded nav/footer using the site's real `content/nav.html`/`content/footer.html`. Nothing needs to be duplicated or re-derived here.
-
-### Step 6 — (Folded into Step 7) No template or fragment copying needed
-
-`/of1` needs no `templates/`, `fragments/`, or `data-overlay`/`data-slot-passthrough` machinery. It is authored directly as a DA content document in Step 7 below, using the site's real `/nav` and `/footer` — the same paths every other page on the site already uses.
-
-### Step 6b — Guarantee the site's /nav and /footer chrome exist
+### Step 5 — Guarantee the site's /nav and /footer chrome exist
 
 The header/footer blocks fetch `/nav` and `/footer` on every page; if either is missing, **every page
 renders chromeless** — no nav, no footer, including `/of1`. These docs are *supposed* to exist by now
@@ -258,9 +249,9 @@ On a missing fragment it authors a minimal branded one from the pages actually d
 (so nav links only point at pages that exist). It fails loud (exit 1) if a fragment still can't be made
 live — a chromeless demo must not proceed silently.
 
-### Step 7 — Upload OF1 DA content
+### Step 6 — Upload OF1 DA content
 
-The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 6b above (whether from `stardust:replica`, the existing site, or the Step 6b fallback).
+The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 5 above (whether from `stardust:replica`, the existing site, or the Step 5 fallback).
 
 ```bash
 OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>https://of1-gen-web-service.franklin-prod.workers.dev</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr></table></div></div></main><footer></footer></body>'
@@ -286,9 +277,9 @@ fi
 
 **Do NOT include a `<title>` tag in the DA HTML** — EDS will render it as visible content.
 
-### Step 7b — Gate: verify DA content is live and renders correctly
+### Step 6b — Gate: verify DA content is live and renders correctly
 
-**Do NOT proceed to Step 8 until this gate passes.** The preview trigger above can silently fail (401, stale cache, missing auth headers). Verify the page actually exists and returns valid HTML.
+**Do NOT proceed to Step 7 until this gate passes.** The preview trigger above can silently fail (401, stale cache, missing auth headers). Verify the page actually exists and returns valid HTML.
 
 ```bash
 OF1_PREVIEW="https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1"
@@ -310,7 +301,7 @@ Common failures at this gate:
 | 401 on preview trigger | Missing `x-content-source-authorization` header or expired token | Re-authenticate DA token and re-run |
 | 404 on /of1 | PUT to DA source failed silently | Check the PUT response; verify `admin.da.live/source/...` path matches repo config |
 
-### Step 8 — Commit and push
+### Step 7 — Commit and push
 
 ```bash
 cd "$OF1_DEMO_REPO"
@@ -319,7 +310,7 @@ git commit -m "feat: OF1 page + brand-aligned block styling for ${DOMAIN}"
 git push origin "$BRANCH"
 ```
 
-### Step 9 — Verify the live `/of1` page renders correctly
+### Step 8 — Verify the live `/of1` page renders correctly
 
 After the push, EDS picks up the code change automatically. Open the live OF1 page in a browser and verify the three things that have to be right before handing back to the user:
 
@@ -341,9 +332,9 @@ playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/of1-render-chec
 
 Open the screenshot — the branded nav should be at the top, the branded footer at the bottom, and the OF1 search UI (title, input, suggestion chips) in the middle.
 
-### Step 9b — Verify generated content styling
+### Step 8b — Verify generated content styling
 
-The page chrome rendering (Step 9) is necessary but not sufficient. You MUST also verify that generated blocks render with proper layout — not just raw text.
+The page chrome rendering (Step 8) is necessary but not sufficient. You MUST also verify that generated blocks render with proper layout — not just raw text.
 
 1. Trigger a test query by clicking a suggestion chip or entering a query
 2. Wait for generated content to appear (sections stream in)
@@ -373,7 +364,7 @@ Common failures:
 
 | Symptom | Likely cause |
 |---|---|
-| `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 6b (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when replica/the existing site didn't provide one |
+| `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 5 (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when replica/the existing site didn't provide one |
 | `OF1 BLOCK MISSING` | `blocks/of1/of1.js` wasn't pushed, or the `of1` block table's `th` cell doesn't read exactly `of1` |
 | Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by `stardust:replica`'s deploy phase, or the preview hasn't picked up the latest push yet |
 
