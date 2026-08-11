@@ -79,7 +79,8 @@ No runtime patching is needed. `/of1` is authored as an ordinary content page (S
 - `stardust/current/DESIGN.md` — design direction
 - `styles/styles.css` — CSS custom properties (the actual deployed tokens; authoritative for a live site, not a guess). If neither `DESIGN.json` location nor `styles/styles.css` exists, stop and report — do not invent tokens.
 - `blocks/of1/of1.css` — the freshly-copied template you'll customize
-- `templates/templates-catalog.json` — template catalog (what the LLM generates)
+
+(This skill does NOT read `templates/templates-catalog.json` — it styles the fixed set of EDS block types the OF1 block emits at runtime, documented in Step 4's DOM reference. The catalog is written later by `of1-build-templates`(assemble), which runs after this skill, so it isn't available here anyway.)
 
 ### Step 2 — Generate brand-appropriate block styles
 
