@@ -18,11 +18,18 @@ Own the `/of1` page top to bottom: install the block, generate brand-aligned CSS
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
 
-Resolve `DA_TOKEN` and read repo config once at the top:
+Resolve `DA_TOKEN` (a shell local, not an input — canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`; see `of1-demo-orchestrator/knowledge/pipeline-contract.md` § "Environment variables") and read repo config once at the top:
 
 ```bash
-DA_TOKEN="${ADOBE_IMS_TOKEN:-$(jq -r .access_token "$OF1_TOKEN_FILE")}"
-[ -n "$DA_TOKEN" ] || { echo "FAIL: no DA token available" >&2; exit 1; }
+# Full resolution order: ADOBE_IMS_TOKEN → OF1_TOKEN_FILE → $PWD/.hlx/.da-token.json
+# → $OF1_DEMO_REPO/.hlx/.da-token.json.
+DA_TOKEN="${ADOBE_IMS_TOKEN:-}"
+for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
+  [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
+  [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
+done
+[ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] \
+  || { echo "FAIL: no DA token (set ADOBE_IMS_TOKEN or OF1_TOKEN_FILE, or provide .hlx/.da-token.json)" >&2; exit 1; }
 
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")

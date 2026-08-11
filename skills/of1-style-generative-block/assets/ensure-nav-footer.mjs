@@ -27,14 +27,29 @@ function fail(msg) {
   process.exit(1);
 }
 
+function readTokenFile(p) {
+  try {
+    return JSON.parse(fs.readFileSync(p, 'utf8')).access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+// Full resolution order, matching the shell steps in the pipeline:
+// DA_TOKEN (if the caller exported it) → ADOBE_IMS_TOKEN → OF1_TOKEN_FILE
+// → $PWD/.hlx/.da-token.json → $OF1_DEMO_REPO/.hlx/.da-token.json.
 function resolveToken() {
+  if (process.env.DA_TOKEN) return process.env.DA_TOKEN;
   if (process.env.ADOBE_IMS_TOKEN) return process.env.ADOBE_IMS_TOKEN;
-  const tokenFile = process.env.OF1_TOKEN_FILE;
-  if (tokenFile && fs.existsSync(tokenFile)) {
-    try {
-      return JSON.parse(fs.readFileSync(tokenFile, 'utf8')).access_token;
-    } catch {
-      return null;
+  const candidates = [
+    process.env.OF1_TOKEN_FILE,
+    path.join(process.env.PWD || '.', '.hlx', '.da-token.json'),
+    process.env.OF1_DEMO_REPO ? path.join(process.env.OF1_DEMO_REPO, '.hlx', '.da-token.json') : null,
+  ].filter(Boolean);
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      const t = readTokenFile(c);
+      if (t) return t;
     }
   }
   return null;
