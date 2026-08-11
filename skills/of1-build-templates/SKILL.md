@@ -281,7 +281,7 @@ esac
 
 ### Does NOT touch
 
-- `styles/of1-template-base.css` (owned by `assemble`)
+- `styles/of1-template-base.css` (owned by the `base` agent; intent agents only read it)
 - `templates/templates-catalog.json`, `of1/config/templates.json` (owned by `assemble`)
 - `gallery/`, `drafts/`, `tools/` (owned by `assemble`)
 - Any git operations
@@ -482,7 +482,7 @@ EOF
 
 ## Process — Mode: `all` (fallback)
 
-If `OF1_TG_MODE` is unset, run all three phases inline: `base` → 5 intents serially → `assemble`. Same artifacts as the fan-out; ~5× slower wall-clock because there's no parallelism. Prefer fan-out when the orchestrator supports it.
+If `OF1_TG_MODE` is unset, run all three phases inline: `base` → 5 intents serially → `assemble`. Same artifacts as the fan-out; ~3× slower wall-clock because there's no parallelism (fan-out collapses the five serial intent phases into ~one). Prefer fan-out when the orchestrator supports it.
 
 ```bash
 OF1_TG_MODE=base # re-invoke this skill's base path
