@@ -1,7 +1,7 @@
 ---
 name: of1-publish
 description: Commit config to git, sync to OF1 worker via EDS, generate demo hub, and verify generation works.
-user-invocable: false
+user-invocable: true
 ---
 
 # OF1 Deploy
