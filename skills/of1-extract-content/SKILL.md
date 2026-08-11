@@ -300,21 +300,12 @@ Use `download-images.mjs` — it downloads + uploads concurrently (8 workers), s
 ```bash
 cd "$OF1_DEMO_REPO"
 
-# Generate manifest from products.json
-python3 << 'EOF'
-import json
-with open("of1/config/products.json") as f:
-    products = json.load(f)
-manifest = [{"productId": p["id"], "urls": p.get("images", [])} for p in products if p.get("images")]
-with open("/tmp/image-manifest.json", "w") as f:
-    json.dump(manifest, f)
-print(f"Manifest: {len(manifest)} products with images")
-EOF
-
-# Parallel download + upload + rewrite products.json with DA URLs.
-# --max-per-product 8 matches the "up to 8 images" target (script default is 5).
+# download-images.mjs derives its work list straight from of1/config/products.json
+# (one entry per product with an images[] array) — no separate manifest file needed.
+# It downloads + uploads every image, previews it, and rewrites products.json image
+# URLs to the site's .aem.page/media/... paths. --max-per-product 8 matches the
+# "up to 8 images" target (script default is 5).
 node "$SKILL_DIR/assets/download-images.mjs" \
-  --input /tmp/image-manifest.json \
   --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
   --output /tmp/image-mapping.json \
   --max-per-product 8 \
@@ -326,7 +317,7 @@ The `--update-products` flag rewrites `products.json[*].images` to the site's `.
 #### Clean up temp files before any commit
 
 ```bash
-rm -rf /tmp/image-manifest.json /tmp/image-mapping.json
+rm -rf /tmp/image-mapping.json
 rm -rf of1/config/img-tmp of1/config/da-token.json of1/config/image-manifest.json
 ```
 

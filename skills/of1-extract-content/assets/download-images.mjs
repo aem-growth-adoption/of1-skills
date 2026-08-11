@@ -9,10 +9,10 @@
 //
 // Usage:
 //   node download-images.mjs \
-//     --input image-manifest.json \
 //     --owner aem-growth-adoption \
 //     --repo of1-demo-orchestrator \
 //     --branch wknd-2 \
+//     [--input image-manifest.json] \
 //     [--output image-mapping.json] \
 //     [--max-per-product 5] \
 //     [--workers 8] \
@@ -21,7 +21,13 @@
 //     [--token-file path/to/token.json] \
 //     [--mount-dir /mnt/da]
 //
-// Manifest shape:
+// Manifest source: pass --input to read an explicit manifest file, OR omit it
+// and the script derives the manifest directly from --products-json (default
+// of1/config/products.json) — one entry per product that has an images[] array.
+// The separate manifest file is redundant when products.json already carries the
+// source URLs, so the common path is to skip --input entirely.
+//
+// Manifest shape (when --input is used):
 //   [{"productId": "house-blend", "urls": ["https://...", "https://..."]}, ...]
 //
 // Token resolution order (first that works wins):
@@ -110,8 +116,8 @@ function parseArgs(argv) {
         process.exit(1);
     }
   }
-  if (!args.input || !args.owner || !args.repo || !args.branch) {
-    console.error('Required: --input, --owner, --repo, --branch');
+  if (!args.owner || !args.repo || !args.branch) {
+    console.error('Required: --owner, --repo, --branch (manifest comes from --input or --products-json)');
     process.exit(1);
   }
   return args;
@@ -274,8 +280,23 @@ async function main() {
 
   const mountDir = fs.existsSync(args.mountDir) ? args.mountDir : null;
 
-  const manifestContent = fs.readFileSync(args.input, 'utf8');
-  const manifest = JSON.parse(manifestContent);
+  let manifest;
+  if (args.input) {
+    manifest = JSON.parse(fs.readFileSync(args.input, 'utf8'));
+  } else {
+    // No explicit manifest — derive it from products.json (the common path).
+    if (!fs.existsSync(args.productsJson)) {
+      console.error(
+        `No --input manifest given and ${args.productsJson} not found — nothing to download.`,
+      );
+      process.exit(1);
+    }
+    const products = JSON.parse(fs.readFileSync(args.productsJson, 'utf8'));
+    manifest = products
+      .filter((p) => Array.isArray(p.images) && p.images.length)
+      .map((p) => ({ productId: p.id, urls: p.images }));
+    console.log(`Derived manifest from ${args.productsJson}: ${manifest.length} product(s) with images`);
+  }
 
   const tasks = [];
   for (const item of manifest) {
