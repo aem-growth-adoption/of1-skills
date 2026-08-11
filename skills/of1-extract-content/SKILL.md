@@ -18,11 +18,20 @@ Crawl a website to extract product data, user personas, use cases, features, and
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
 
-Resolve `DA_TOKEN` and read repo config:
+Resolve `DA_TOKEN` (a shell local, not an input — the canonical credential is
+`ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`; see `of1-demo-orchestrator/knowledge/pipeline-contract.md`
+§ "Environment variables"). Walk the full resolution order so a standalone run with only a
+local `.hlx/.da-token.json` still works:
 
 ```bash
-export DA_TOKEN="${ADOBE_IMS_TOKEN:-$(jq -r .access_token "$OF1_TOKEN_FILE")}"
-[ -n "$DA_TOKEN" ] || { echo "FAIL: no DA token available" >&2; exit 1; }
+DA_TOKEN="${ADOBE_IMS_TOKEN:-}"
+for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
+  [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
+  [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
+done
+export DA_TOKEN
+[ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] \
+  || { echo "FAIL: no DA token (set ADOBE_IMS_TOKEN or OF1_TOKEN_FILE, or provide .hlx/.da-token.json)" >&2; exit 1; }
 
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
@@ -38,7 +47,7 @@ If discovery output exists, read it to focus on the right product category:
 cat "$OF1_STATE_DIR/of1-discovery-output.md" 2>/dev/null
 ```
 
-Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` — § `products.json`, § `personas.json`, § `use-cases.json`, § `features.json`, § `faqs.json`.
+Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` — § `products.json`, § `personas.json`, § `use-cases.json`, § `features.json`, § `faqs.json`, § `testimonials.json`.
 
 ## Source resolution — live site vs replica
 
@@ -302,11 +311,13 @@ with open("/tmp/image-manifest.json", "w") as f:
 print(f"Manifest: {len(manifest)} products with images")
 EOF
 
-# Parallel download + upload + rewrite products.json with DA URLs
+# Parallel download + upload + rewrite products.json with DA URLs.
+# --max-per-product 8 matches the "up to 8 images" target (script default is 5).
 node "$SKILL_DIR/assets/download-images.mjs" \
   --input /tmp/image-manifest.json \
   --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
   --output /tmp/image-mapping.json \
+  --max-per-product 8 \
   --update-products
 ```
 
