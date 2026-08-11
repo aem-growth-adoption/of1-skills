@@ -26,7 +26,7 @@ Two modes, decided by `OF1_PIPELINE_MODE`:
      integration just forwards the env var to those dispatches.
   2. The site-integration track (`of1-build-templates`, `of1-style-generative-block`,
      `of1-build-cta-template`, `of1-generate-config-review`, `of1-publish`) does not start until
-     Stage 2 has finished. The orchestrator passes `OF1_REPLICA_DONE_FILE=<path>`; adopt-site waits
+     Stage 2 has finished. The orchestrator passes `OF1_REPLICA_DONE_FILE=<path>`; of1-integration waits
      for that file to exist before dispatching the site-integration track. The content track
      (`of1-extract-brand-voice`/`of1-extract-content` → `of1-build-quick-suggestions`) runs
      immediately, in parallel with the still-running replica.
@@ -49,7 +49,7 @@ HAS_DESIGN_JSON=false
 echo "DESIGN.json present: $HAS_DESIGN_JSON"
 ```
 
-If `HAS_DESIGN_JSON=false`, the extraction step invokes `stardust:extract` directly against the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`) to produce `stardust/current/DESIGN.json` (plus `PRODUCT.md`, `DESIGN.md`, and screenshots). If `true`, the extraction step is skipped entirely — the artifact-detection check above already confirmed a spec exists, so there is nothing for `stardust:extract` to do; adopt-site reports the extraction step's status as `"done"` either way (extraction is stardust's — no of1 status file is written for the skip case), so downstream dependency checks don't need to special-case the skip.
+If `HAS_DESIGN_JSON=false`, the extraction step invokes `stardust:extract` directly against the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`) to produce `stardust/current/DESIGN.json` (plus `PRODUCT.md`, `DESIGN.md`, and screenshots). If `true`, the extraction step is skipped entirely — the artifact-detection check above already confirmed a spec exists, so there is nothing for `stardust:extract` to do; of1-integration reports the extraction step's status as `"done"` either way (extraction is stardust's — no of1 status file is written for the skip case), so downstream dependency checks don't need to special-case the skip.
 
 `DESIGN.json` may carry `_provenance.mode: bounded-single` when produced by `stardust:replica`
 in bounded (`--pages`) mode — this is fully valid input. OF1 integration consumes the tokens the same
@@ -68,7 +68,7 @@ of1-check-dependencies (setup) → artifact detection (inline)
               │
        [DESIGN.json exists?]
          no → extraction (stardust:extract against the site's own preview URL)
-         yes → skip (adopt-site reuses the existing spec and reports done)
+         yes → skip (of1-integration reuses the existing spec and reports done)
               │
    ┌──────────┼───────────────┬───────────────────┬──────────────────┐
    ↓          ↓               ↓                   ↓                  ↓

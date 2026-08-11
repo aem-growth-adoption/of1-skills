@@ -1,7 +1,7 @@
 ---
 name: of1-build-templates
 description: Generate 15 branded OF1 templates (5 intents × 3 variations) for the OF1 worker — slot-based HTML pages it fills with personalized content at runtime, plus a shared design-token stylesheet, an inlined catalog, and a review gallery.
-user-invocable: false
+user-invocable: true
 ---
 
 # OF1 Template Generation
@@ -195,7 +195,7 @@ Both modes are normal — pick by `$HAS_PROTOTYPES`, don't treat a missing proto
 
   Don't trust `DESIGN.json` as the sole source — the prototypes are the visually-validated ground truth.
 
-- **Mode B — no prototypes (`$HAS_PROTOTYPES = false`):** running against an existing EDS site (e.g. via `of1-integration`). **This is the common path for adopt-site — `deliverables/prototype-*.html` is legitimately absent, NOT a blocker.** Do not hunt for prototypes or wait on them.
+- **Mode B — no prototypes (`$HAS_PROTOTYPES = false`):** running against an existing EDS site (e.g. via `of1-integration`). **This is the common path for `of1-integration` — `deliverables/prototype-*.html` is legitimately absent, NOT a blocker.** Do not hunt for prototypes or wait on them.
   1. `styles/styles.css` — the repo's real, deployed `:root` tokens. Canonical source here; the site is already live, so its own stylesheet IS the ground truth.
   2. `DESIGN.json` (resolve via `design-tokens-resolution.md`) — tiebreaker / fill-in for tokens not in `styles.css`. If neither `DESIGN.json` location nor `styles/styles.css` exists, stop and report — do not invent tokens.
   3. Live screenshots of the site's own rendered pages (captured by the orchestrator) — visual reference for section rhythm, card grids, and typography scale that a token file alone doesn't capture.
@@ -359,7 +359,7 @@ For each of the 3 variations, write all 4 files.
 
 **Sample data rules:**
 - **ASCII-safe text only** — no accented characters (`é`, `ñ`), no emoji (`🏄`, `⛷️`). Some downstream tooling chokes on non-ASCII. If you're tempted to use an emoji for an icon slot, use a short text label instead.
-- **Image URLs** — use the live site's real image URLs extracted from the prototype HTML (e.g. `https://wknd.site/content/dam/wknd/...`). Do NOT invent URLs from memory, do NOT use AEM author/publish URLs (`author-p*.adobeaemcloud.com`), do NOT use EDS `hlx.page` content-dam paths. The prototype HTML has the correct URLs — look them up.
+- **Image URLs** — **prefer the URLs already in `of1/config/products.json` when it's on disk** (its `images[]` are the real, self-hosted `.aem.page/media/...` URLs `of1-extract-content` uploaded + previewed — the same ones the worker will emit at runtime, so the gallery preview matches production). Fall back to the live site's real image URLs from the prototype HTML (e.g. `https://wknd.site/content/dam/wknd/...`) only when `products.json` isn't present yet or lacks an image for that slot. Either way: do NOT invent URLs from memory, do NOT use AEM author/publish URLs (`author-p*.adobeaemcloud.com`), do NOT use EDS `hlx.page` content-dam paths.
 - **Realistic but simple text** — brand-relevant, short, no placeholder "lorem ipsum."
 
 ### Validate JSON before declaring done
