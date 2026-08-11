@@ -21,8 +21,15 @@ Commit config files, trigger sync to the OF1 worker, generate the demo hub, run 
 Resolve `DA_TOKEN` (a shell local, not an input — canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`; see `of1-demo-orchestrator/knowledge/pipeline-contract.md` § "Environment variables") and read repo config:
 
 ```bash
-DA_TOKEN="${ADOBE_IMS_TOKEN:-$(jq -r .access_token "$OF1_TOKEN_FILE")}"
-[ -n "$DA_TOKEN" ] || { echo "FAIL: no DA token available" >&2; exit 1; }
+# Full resolution order (see pipeline-contract.md): ADOBE_IMS_TOKEN → OF1_TOKEN_FILE
+# → $PWD/.hlx/.da-token.json → $OF1_DEMO_REPO/.hlx/.da-token.json.
+DA_TOKEN="${ADOBE_IMS_TOKEN:-}"
+for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
+  [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
+  [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
+done
+[ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] \
+  || { echo "FAIL: no DA token (set ADOBE_IMS_TOKEN or OF1_TOKEN_FILE, or provide .hlx/.da-token.json)" >&2; exit 1; }
 
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
@@ -36,7 +43,7 @@ TENANT_ID="${BRANCH}--${REPO}--${OWNER}"
 WORKER_URL="https://of1-gen-web-service.franklin-prod.workers.dev"
 ```
 
-`playwright-cli` calls use modern @playwright/cli syntax: `open` + `--full-page` (bare boolean) + `--filename`. This works on both SLICC-native and CC `playwright-cli` binaries.
+`playwright-cli` calls follow `of1-demo-orchestrator/knowledge/common-pitfalls.md` § 9 "playwright-cli syntax" (`open`, `--full-page` bare, `--filename`, `eval` as a function form). Works on both SLICC-native and CC binaries.
 
 ## How config sync works
 
@@ -150,7 +157,7 @@ if [ "$READY" != "true" ]; then
 fi
 ```
 
-Required for `ready: true`: `hasOf1Endpoint`, `hasProducts`, `hasBrandVoice`, `hasSuggestions`, `hasTemplates`.
+Required for `ready: true` (from the worker's `isTenantReady`, `worker/src/tenant.js`): `hasProducts`, `hasPersonas`, `hasUseCases`, `hasFeatures`, `hasFaqs`, `hasSuggestions`, `hasOf1Endpoint`, `hasCtaTemplate` — ALL — plus **either** `hasBlockGuide` **or** `hasTemplates` (this pipeline ships templates). Note: `hasBrandVoice` is surfaced in status but is NOT part of the ready gate (still generate it — it drives prompt quality). To see which failed: `echo "$STATUS" | jq -r '.config | to_entries[] | select(.value == false) | .key'`.
 
 ### 7. Test generation
 
@@ -355,7 +362,7 @@ cat > "$OF1_STATE_DIR/of1-publish-status.json" <<EOF
     { "url": "${HUB_URL}", "label": "Demo hub" },
     { "url": "${OF1_URL}", "label": "OF1 page" }
   ],
-  "summary": "Deployed + all 5 pre-launch checks passed."
+  "summary": "Deployed + all 6 pre-launch checks passed."
 }
 EOF
 ```
