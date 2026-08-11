@@ -165,18 +165,6 @@ function extractFocus(discoveryOutput) {
   return extractSection(discoveryOutput, 'Demo Focus') || 'AI-Powered Experience';
 }
 
-function getLogoSvg(repoDir) {
-  const logoPath = path.join(repoDir, 'stardust', 'current', 'assets', 'logo.svg');
-  if (fs.existsSync(logoPath)) {
-    let svg = fs.readFileSync(logoPath, 'utf8').trim();
-    if (!svg.includes('height=')) {
-      svg = svg.replace('<svg', '<svg height="28"', 1);
-    }
-    return svg;
-  }
-  return '';
-}
-
 function findEdsPages(repoDir, branch, owner, repo) {
   const previewBase = `https://${branch}--${repo}--${owner}.aem.page`;
   const pages = [];
@@ -327,11 +315,9 @@ function main() {
 
   const edsPages = findEdsPages(repoDir, branch, owner, repo);
 
-  const logoSvg = getLogoSvg(repoDir);
-  void logoSvg;
-
   const of1Url = `${previewBase}/of1`;
   const galleryUrl = `${previewBase}/gallery/index.html`;
+
 
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const templatePath = path.join(scriptDir, 'demo-hub.html');

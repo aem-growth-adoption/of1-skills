@@ -148,8 +148,9 @@ function main(argv) {
   const template = fs.readFileSync(templatePath, 'utf8');
   const values = JSON.parse(fs.readFileSync(valuesPath, 'utf8'));
 
-  // Count items for grid
-  const itemKeys = ['item-1', 'item-2', 'item-3', 'item-4', 'item-5', 'item-6'];
+  // Count items for grid (item-1..item-9 — the full slot-key range, per the
+  // metadata convention; used only for the summary log line).
+  const itemKeys = ['item-1', 'item-2', 'item-3', 'item-4', 'item-5', 'item-6', 'item-7', 'item-8', 'item-9'];
   const itemCount = itemKeys.filter(
     (k) => values[`${k}.title`] || values[`${k}.body`],
   ).length;
