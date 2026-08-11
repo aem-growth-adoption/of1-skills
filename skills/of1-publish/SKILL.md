@@ -267,7 +267,7 @@ any current path (there is no brand-review step) — do not assert it. The home 
 **not** `/home` — assert `/`. `/nav` and `/footer` are the chrome fragments every page's
 header/footer blocks fetch (via `loadFragment` → `${path}.plain.html`); if either 404s, every page
 renders chromeless (Check 2 only inspects the `/of1` DOM — it does not prove the fragments exist), so
-assert `nav.plain.html` and `footer.plain.html` here too. `of1-style-generative-block` Step 5
+assert `nav.plain.html` and `footer.plain.html` here too. `of1-style-generative-block` Step 4
 guarantees these exist before deploy.
 
 ```bash

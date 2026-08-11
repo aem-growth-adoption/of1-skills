@@ -47,7 +47,7 @@ DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 
 ## Why this skill exists
 
-EDS block CSS is designed for statically-authored pages. When the LLM generates sections dynamically, the raw block CSS often looks too plain — no visual hierarchy between sections, cards render as flat lists, heroes lack full-bleed treatment, tables are unstyled, no transitions, no cohesive container. This skill bridges that gap by writing `blocks/of1/of1.css` (block-level styles for generated content). Page chrome (header/footer/site styles) is not this skill's concern — `/of1` is an ordinary content page and inherits `styles/styles.css` and the site's real header/footer blocks automatically.
+The OF1 block renders its own interactive UI — a search landing (title, input, suggestion chips), a loading skeleton while generating, a container for the sections the worker streams in, and follow-up suggestion controls. This skill writes `blocks/of1/of1.css` so that UI feels native to the brand. The **per-section visual design** of generated content is owned by each template's own stylesheet (produced by `of1-build-templates` and injected by the OF1 client SDK at runtime) — this skill does NOT style section internals (hero/cards/tables/columns). Page chrome (header/footer/site styles) is inherited automatically since `/of1` is an ordinary content page.
 
 ## Always start from the canonical base files
 
@@ -71,7 +71,7 @@ cp "$SKILL_DIR/assets/of1.css" blocks/of1/of1.css
 
 `of1.js` is deployed as-is. `of1.css` is the unbranded template — Step 3 customizes it in place with the site's brand tokens.
 
-No runtime patching is needed. `/of1` is authored as an ordinary content page (Step 6): the site's `blocks/header`/`blocks/footer` load `/nav`/`/footer` automatically like on every other page, and the `of1` block decorates normally like any other block in `<main>`. There is no page-template/overlay engine in vanilla `aem-boilerplate` that would otherwise replace `<main>`'s content.
+No runtime patching is needed. `/of1` is authored as an ordinary content page (Step 5): the site's `blocks/header`/`blocks/footer` load `/nav`/`/footer` automatically like on every other page, and the `of1` block decorates normally like any other block in `<main>`. There is no page-template/overlay engine in vanilla `aem-boilerplate` that would otherwise replace `<main>`'s content.
 
 ### Step 1 — Read design context
 
@@ -80,158 +80,45 @@ No runtime patching is needed. `/of1` is authored as an ordinary content page (S
 - `styles/styles.css` — CSS custom properties (the actual deployed tokens; authoritative for a live site, not a guess). If neither `DESIGN.json` location nor `styles/styles.css` exists, stop and report — do not invent tokens.
 - `blocks/of1/of1.css` — the freshly-copied template you'll customize
 
-### Step 2 — Generate brand-appropriate block styles
+### Step 2 — Generate brand-appropriate block UI styles
 
-The CSS must cover these key patterns:
+The CSS covers the OF1 block's own UI (NOT the internals of generated sections — those are styled by each template's stylesheet):
 
-- **Section-level styling** — spacing, backgrounds, max-width constraints
-- **Hero treatment** — full-bleed image background, gradient overlay, large typography
-- **Card grids** — proper grid layout, hover effects, image aspect ratios, card borders/shadows
-- **Comparison tables** — styled headers, alternating rows, responsive overflow
-- **Columns** — side-by-side with responsive stacking
-- **Suggestions UI** — follow-up chips with hover states, custom input, restart button
-- **Skeleton loading** — animated placeholder while generating
-- **Section animations** — fade + slide-up on appearance
+- **Search landing UI** — title, subtitle, input + submit button, quick-suggestion chips
+- **Loading skeleton** — animated placeholder while generating
+- **Follow-up suggestions** — chips with hover states, custom input, restart button
+- **Section container + animation** — fade + slide-up as each generated section streams in
 - **Debug panel** — side panel with timing waterfall (activated with `?debug`)
 
-Adapt these patterns to the current brand: use the site's actual CSS custom properties (`var(--primary-color)`, `var(--text-color)`, …), match the site's aesthetic (light/dark theme, border-radius, typography), ensure generated sections feel cohesive with the rest of the site.
+Adapt these to the current brand: use the site's actual CSS custom properties (`var(--primary-color)`, `var(--text-color)`, …), and match its aesthetic (light/dark theme, border-radius, typography).
 
 ### Step 3 — Customize `blocks/of1/of1.css` for the brand
 
-**This is what EDS auto-loads for the OF1 block.** All block-level styling (search UI, generated sections, cards, hero, suggestions, skeleton, debug) goes here.
+**This is what EDS auto-loads for the OF1 block.** The block's UI styling (search UI, chips, skeleton, follow-up suggestions, section container + animation, debug) goes here.
 
 ⚠️ **DO NOT put block styling in `styles/styles.css`** — that's the site's own foundation stylesheet, shared across every page. Block-level styling belongs only in `blocks/of1/of1.css`.
 
 Step 0 already copied the unbranded template to `blocks/of1/of1.css`. Now edit it in place:
 1. Replace ALL generic token values (e.g. `#000000`, `system-ui`) with brand values from `DESIGN.json`
-2. Add brand-specific visual enhancements
+2. Add brand-specific visual enhancements to the block's own UI
 
 The file is organized into these sections (keep the structure; just retune the values):
 
 ```
+/* ─── Brand Token Mapping ─── */
 /* ─── Container & Layout ─── */
 /* ─── Search Landing UI ─── */
 /* ─── Input & Submit ─── */
 /* ─── Quick Suggestion Chips ─── */
 /* ─── Loading Skeleton ─── */
-/* ─── Generated Sections (general) ─── */
-/* ─── Hero Sections ─── */
-/* ─── Card Grids ─── */
-/* ─── Columns ─── */
-/* ─── Tables ─── */
-/* ─── Text Sections ─── */
+/* ─── Generated Sections (container + fade-in only) ─── */
 /* ─── Follow-up Suggestions ─── */
-/* ─── Error State ─── */
-/* ─── Debug Panel ─── */
-/* ─── Animations ─── */
 /* ─── Responsive ─── */
 ```
 
-### Step 4 — Verify block class names
+Do NOT add rules that target generated-section internals (`.generated-section .hero`, `.cards`, `.table`, `.columns`) — that content is template HTML styled by the template's own injected stylesheet.
 
-After `decorateMain` + `loadSections`, the DOM structure is:
-
-```html
-<main>
-  <div class="section of1-container">        <!-- of1 search UI -->
-    <div class="of1-wrapper">
-      <div class="of1 block">…</div>
-    </div>
-  </div>
-  <div class="section hero-container">       <!-- generated hero -->
-    <div class="hero-wrapper">
-      <div class="hero block">…</div>
-    </div>
-  </div>
-  <div class="section cards-container">      <!-- generated cards -->
-    <div class="cards-wrapper">
-      <div class="cards block">…</div>
-    </div>
-  </div>
-  <div class="section generative-suggestions"> <!-- follow-up -->
-    …
-  </div>
-</main>
-```
-
-## EDS Block DOM Reference (after decorateMain)
-
-**This is the actual DOM you are styling. Do NOT assume any other structure.**
-
-EDS's `decorateMain()` always produces this three-level wrapper for every block:
-
-```
-.section.<blockname>-container > .<blockname>-wrapper > .<blockname>.block > div (rows) > div (cells)
-```
-
-### Hero
-```
-.section.hero-container
-  > .hero-wrapper
-    > .hero.block
-      > div                    ← row (flexbox item)
-        > div                  ← cell: h1, p, a (text content)
-        > div                  ← cell: <picture><img> (NOT img directly on .hero)
-```
-- The `.hero` div does NOT contain the image directly — it's inside a `<picture>` inside a cell inside a row
-- Text and image are sibling cells within a row div
-
-### Cards
-```
-.section.cards-container
-  > .cards-wrapper
-    > .cards.block             ← THIS is the grid container
-      > div                    ← one per card (row)
-        > div                  ← cell content (picture, h3, p, a)
-```
-- `.cards` itself is the grid container — NOT `.cards > div`
-- Each direct child `> div` of `.cards` is one card
-
-### Columns
-```
-.section.columns-container
-  > .columns-wrapper
-    > .columns.block
-      > div                    ← single row
-        > div + div            ← column cells (2+ siblings)
-```
-
-### Table
-```
-.section.table-container
-  > .table-wrapper
-    > .table.block
-      > div                    ← header row (div-based, NOT <th>)
-        > div + div + div      ← cells (NOT <td>)
-      > div                    ← data row
-        > div + div + div      ← cells
-```
-- **NO `<table>`, `<th>`, `<td>` elements** — everything is div-based
-- First `> div` child = header row; subsequent `> div` children = data rows
-
-### Common selector mistakes to avoid
-
-| Wrong selector | Why it fails | Correct selector |
-|---|---|---|
-| `.cards > div` as grid | That targets individual cards, not the grid | `.cards` is the grid |
-| `.cards > div > div` for cards | That's cell content inside a card | `.cards > div` for each card |
-| `table`, `th`, `td` | EDS uses divs, not HTML table elements | `.table > div` for rows, `.table > div > div` for cells |
-| `.hero img` positioned absolute | img is inside `<picture>` inside a cell div | `.hero picture` positioned absolute |
-| `[class*="-wrapper"] { max-width: 100% }` | Kills content constraint on cards/columns/table wrappers | Only override `.hero-wrapper` for full-bleed |
-
----
-
-Target selectors for generated content use the `.generated-section` class added by the OF1 block JS:
-
-```css
-.generated-section                         /* any generated section */
-.generated-section .hero                   /* generated hero block */
-.generated-section .cards                  /* generated cards block */
-.generated-section .columns                /* generated columns */
-.generated-section .table                  /* generated table */
-```
-
-### Step 5 — Guarantee the site's /nav and /footer chrome exist
+### Step 4 — Guarantee the site's /nav and /footer chrome exist
 
 The header/footer blocks fetch `/nav` and `/footer` on every page; if either is missing, **every page
 renders chromeless** — no nav, no footer, including `/of1`. These docs are *supposed* to exist by now
@@ -249,9 +136,9 @@ On a missing fragment it authors a minimal branded one from the pages actually d
 (so nav links only point at pages that exist). It fails loud (exit 1) if a fragment still can't be made
 live — a chromeless demo must not proceed silently.
 
-### Step 6 — Upload OF1 DA content
+### Step 5 — Upload OF1 DA content
 
-The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 5 above (whether from `stardust:replica`, the existing site, or the Step 5 fallback).
+The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 4 above (whether from `stardust:replica`, the existing site, or the Step 4 fallback).
 
 ```bash
 OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>https://of1-gen-web-service.franklin-prod.workers.dev</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr></table></div></div></main><footer></footer></body>'
@@ -277,9 +164,9 @@ fi
 
 **Do NOT include a `<title>` tag in the DA HTML** — EDS will render it as visible content.
 
-### Step 6b — Gate: verify DA content is live and renders correctly
+### Step 5b — Gate: verify DA content is live and renders correctly
 
-**Do NOT proceed to Step 7 until this gate passes.** The preview trigger above can silently fail (401, stale cache, missing auth headers). Verify the page actually exists and returns valid HTML.
+**Do NOT proceed to Step 6 until this gate passes.** The preview trigger above can silently fail (401, stale cache, missing auth headers). Verify the page actually exists and returns valid HTML.
 
 ```bash
 OF1_PREVIEW="https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1"
@@ -301,7 +188,7 @@ Common failures at this gate:
 | 401 on preview trigger | Missing `x-content-source-authorization` header or expired token | Re-authenticate DA token and re-run |
 | 404 on /of1 | PUT to DA source failed silently | Check the PUT response; verify `admin.da.live/source/...` path matches repo config |
 
-### Step 7 — Commit and push
+### Step 6 — Commit and push
 
 ```bash
 cd "$OF1_DEMO_REPO"
@@ -310,7 +197,7 @@ git commit -m "feat: OF1 page + brand-aligned block styling for ${DOMAIN}"
 git push origin "$BRANCH"
 ```
 
-### Step 8 — Verify the live `/of1` page renders correctly
+### Step 7 — Verify the live `/of1` page renders correctly
 
 After the push, EDS picks up the code change automatically. Open the live OF1 page in a browser and verify the three things that have to be right before handing back to the user:
 
@@ -332,39 +219,33 @@ playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/of1-render-chec
 
 Open the screenshot — the branded nav should be at the top, the branded footer at the bottom, and the OF1 search UI (title, input, suggestion chips) in the middle.
 
-### Step 8b — Verify generated content styling
+### Step 7b — Verify generated content styling
 
-The page chrome rendering (Step 8) is necessary but not sufficient. You MUST also verify that generated blocks render with proper layout — not just raw text.
+The page chrome rendering (Step 7) is necessary but not sufficient. Also confirm a query returns styled content. Generated sections are template HTML styled by each template's own injected stylesheet, so this is an end-to-end smoke test that the block, the client SDK, and the templates work together — not a check of `of1.css` selectors.
 
-1. Trigger a test query by clicking a suggestion chip or entering a query
-2. Wait for generated content to appear (sections stream in)
-3. Screenshot the result and verify:
-   - **Cards** render as a grid (not a vertical list of unstyled divs)
-   - **Hero** shows image as background with text overlay (not image then text stacked)
-   - **Table** renders with visible header row and aligned columns (not a blob of text)
-   - **Columns** sit side-by-side (not stacked vertically on desktop)
-4. If any block renders as unstyled/broken, inspect the DOM and compare selectors in `of1.css` against the actual EDS DOM structure documented in Step 4
+1. Trigger a test query by clicking a suggestion chip
+2. Wait for generated content to stream in
+3. Screenshot and visually confirm the sections are styled (branded typography, spacing, imagery) — not raw unstyled text
 
 ```bash
 # Click first suggestion chip to trigger generation
 playwright-cli click ".of1-chip:first-child"
-sleep 8  # wait for LLM to generate + render
+sleep 8  # wait for the worker to generate + render
 
-# Screenshot the generated result
+# Screenshot the generated result for visual review
 playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/of1-generated-check.png"
 
-# Spot-check that blocks decorated correctly
-playwright-cli eval "() => (document.querySelector('.generated-section .cards') ? 'cards OK' : 'CARDS MISSING')"
-playwright-cli eval "() => (document.querySelector('.generated-section .hero') ? 'hero OK' : 'HERO MISSING')"
+# Confirm at least one generated section rendered
+playwright-cli eval "() => (document.querySelector('.generated-section') ? 'generated OK' : 'NO GENERATED CONTENT')"
 ```
 
-If selectors don't match, the CSS is targeting the wrong DOM structure. Refer to the EDS Block DOM Reference in Step 4 and fix `blocks/of1/of1.css` accordingly.
+If nothing renders, check the worker sync / tenant status (see `of1-publish`) and that the template catalog deployed. Per-section visual problems are the templates' CSS (`of1-build-templates`), not this skill.
 
 Common failures:
 
 | Symptom | Likely cause |
 |---|---|
-| `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 5 (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when replica/the existing site didn't provide one |
+| `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 4 (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when replica/the existing site didn't provide one |
 | `OF1 BLOCK MISSING` | `blocks/of1/of1.js` wasn't pushed, or the `of1` block table's `th` cell doesn't read exactly `of1` |
 | Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by `stardust:replica`'s deploy phase, or the preview hasn't picked up the latest push yet |
 
@@ -372,13 +253,11 @@ Fix any failures and re-push before Completion.
 
 ## Key principles
 
-- **Generated content must look as good as hand-crafted pages** — this is a demo, impressions matter
 - **Use the brand's actual tokens** — don't hardcode colors; use `var(--primary-color)`
-- **Style generated sections specifically** — don't break existing static page styling
-- **Full-bleed heroes** — dramatic, not constrained to max-width
-- **Card images are critical** — the LLM outputs image URLs; they must render at proper aspect ratios in a grid
-- **Responsive by default** — grids collapse, heroes scale, tables scroll
+- **The block's own UI must feel native to the brand** — search landing, chips, skeleton, and follow-up suggestions carry the first impression
 - **Animations add polish** — fade-in + slide-up on each section as it streams in
+- **Responsive by default** — the search UI, chips, and skeleton adapt to mobile
+- **Per-section visual design is the templates' job** — `of1.css` styles the block UI + section container only; never the section internals
 
 ## Completion — HARD STOP for user review
 
@@ -419,6 +298,4 @@ Cross-cutting rules (SLICC Node.js shim, EDS class collisions) live in `of1-demo
 | Using whatever `of1.css` is in the demo repo as base | 5+ min stale/wrong | Always copy fresh from `$SKILL_DIR/assets/of1.css` and customize in place |
 | Modifying `of1.js` to add brand logic | Breaks block | JS is shared infrastructure — NEVER touch it, only customize CSS |
 | Forgetting to commit `of1.js` alongside `of1.css` | Blank page | Always `git add blocks/of1/` to include both files |
-| **Generated sections constrained to 980px max-width** | **Content has huge side padding, doesn't fill viewport** | **Generated sections MUST be full-width (`max-width: 100%` or `none`). Only inner content (cards grid, text) should have max-width.** |
-| **Section padding over 60px** | **Huge vertical gaps between sections** | **Use 40–56px vertical padding max. Base template uses 56px — don't increase it.** |
-| **Start over button icon misaligned** | **SVG icon floating above/below text** | **`.suggestion-restart` needs `display: inline-flex; align-items: center; gap: 6px;`** |
+| Adding rules for generated-section internals (`.generated-section .hero`/`.cards`/`.table`) | Wasted effort — dead selectors | That content is template HTML styled by the template's own injected stylesheet; `of1.css` styles only the block UI + section container |
