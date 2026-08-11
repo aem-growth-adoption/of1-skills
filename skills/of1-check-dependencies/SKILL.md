@@ -121,7 +121,13 @@ rm -f PRODUCT.md
 rm -rf "$OF1_STATE_DIR"/of1-*-status.json
 rm -f "$OF1_STATE_DIR/discovery.html"
 
-git add -A
+# Stage ONLY the cleaned paths (scoped `-A -- <pathspec>`, never a bare `git add -A`/`.`
+# — see common-pitfalls.md § 6; a bare add can wipe the repo on a partial SLICC tree).
+# Quoted globs are expanded by git against tracked files, so they stage the deletions.
+git add -A -- \
+  stardust deliverables templates fragments content drafts gallery of1/config \
+  tools output screenshots tmp da PRODUCT.md \
+  'styles/of1-*.css' 'styles/prototype-*.css' 2>/dev/null || true
 if ! git diff --cached --quiet; then
   git commit -m "chore: clean slate for ${BRANCH}"
   git push origin "$BRANCH"
@@ -174,7 +180,8 @@ The boilerplate `.hlxignore` must NOT include `of1/` or `of1/config/`:
 
 ```bash
 if [ -f .hlxignore ] && grep -q '^of1' .hlxignore; then
-  sed -i '/^of1/d' .hlxignore
+  # -i.bak works on both GNU and BSD/macOS sed (bare `-i` fails on BSD); drop the backup after.
+  sed -i.bak '/^of1/d' .hlxignore && rm -f .hlxignore.bak
   echo "✓ Removed of1 exclusion from .hlxignore"
 fi
 ```
