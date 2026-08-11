@@ -34,7 +34,7 @@ existing** — it is not written by `verify.sh`; Part 2 writes it.
 
 ### What verify.sh checks
 
-1. The pipeline's OF1 skills are installed — the orchestrator (`of1-demo-orchestrator`) plus every step skill it dispatches (`of1-discovery`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-generate-config-review`, `of1-publish`, `of1-style-generative-block`, `of1-integration`). The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
+1. The pipeline's OF1 skills are installed — the orchestrator (`of1-demo-orchestrator`) plus every step skill it dispatches (`of1-discovery`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`, `of1-style-generative-block`, `of1-integration`). Config review is not a skill — it is an inline step in `of1-integration` (a static `config-review.html` asset). The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
 2. The Adobe EDS skills `stardust` (incl. `stardust:replica`), `impeccable` are installed
 3. Shell tools: `node`, `python3`, `jq`, `git`, `curl`
 4. `playwright-cli` — probed for the modern `open` subcommand (warns if the binary is present but missing it)
@@ -182,7 +182,13 @@ fi
 **Do NOT add `of1/` to `.hlxignore`** — the config files must be served on
 the CDN.
 
-### 6. Write `of1-endpoint.json` + push (skip if continuing and file already committed)
+### 6. Write `of1-endpoint.json` + `config.json` + push (skip if continuing and files already committed)
+
+`config.json` is a small served meta file (NOT a worker tenant config — the worker's
+`CONFIG_FILES` allowlist ignores it). It carries the target `domain` (which can differ from the
+EDS host) plus owner/repo/branch, so same-origin client-side deliverables (e.g.
+`deliverables/config-review.html`) can label themselves without reading the un-served
+`repo-config.json`.
 
 ```bash
 mkdir -p of1/config
@@ -191,11 +197,19 @@ cat > of1/config/of1-endpoint.json <<EOF
   "url": "https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1"
 }
 EOF
-git add of1/config/of1-endpoint.json
+cat > of1/config/config.json <<EOF
+{
+  "domain": "${DOMAIN}",
+  "owner": "${OWNER}",
+  "repo": "${REPO}",
+  "branch": "${BRANCH}"
+}
+EOF
+git add of1/config/of1-endpoint.json of1/config/config.json
 if ! git diff --cached --quiet; then
-  git commit -m "feat: of1-endpoint config for ${DOMAIN}"
+  git commit -m "feat: of1-endpoint + config meta for ${DOMAIN}"
   git push origin "$BRANCH"
-  echo "✓ of1-endpoint.json committed + pushed"
+  echo "✓ of1-endpoint.json + config.json committed + pushed"
 fi
 ```
 
