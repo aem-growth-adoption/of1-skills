@@ -75,8 +75,31 @@ function renderAudit(stateDir) {
     return '';
   }
 
-  const totalTokens = audit.totalTokens || 0;
-  const totalDuration = audit.totalDurationMs || 0;
+  // Orchestrators sometimes leave the top-level summary fields unset/zero
+  // even though every per-stage record carries real totalTokens/durationMs —
+  // derive from the records rather than trust the top-level field blindly.
+  const sumStageTokens = stages.reduce((sum, s) => sum + (s.totalTokens || 0), 0);
+  const totalTokens = audit.totalTokens || sumStageTokens;
+
+  // Wall-clock must span the earliest dispatch to the latest return, not the
+  // sum of per-stage durations (stages 3's skills dispatch in parallel, so
+  // summing would double-count and wildly overstate the real elapsed time).
+  const stageWindows = stages
+    .map((s) => {
+      const startedAt = Date.parse(s.startedAt ?? '');
+      if (!Number.isFinite(startedAt)) return null;
+      return { start: startedAt, end: startedAt + (s.durationMs || 0) };
+    })
+    .filter(Boolean);
+  const derivedSpanMs = stageWindows.length
+    ? Math.max(...stageWindows.map((w) => w.end)) - Math.min(...stageWindows.map((w) => w.start))
+    : 0;
+  const topLevelSpanMs = (() => {
+    const start = Date.parse(audit.startedAt ?? '');
+    const end = Date.parse(audit.completedAt ?? '');
+    return Number.isFinite(start) && Number.isFinite(end) ? end - start : 0;
+  })();
+  const totalDuration = audit.totalDurationMs || topLevelSpanMs || derivedSpanMs;
   const totalMins = totalDuration / 60000;
   const stageCount = audit.stageCount ?? audit.stepCount ?? stages.length;
 
