@@ -246,28 +246,16 @@ function renderDiscovery(repoDir, previewBase) {
 }
 
 // Prototypes are the standalone HTML redesign pages. Stage 2b (of1-prototype, wrapping
-// stardust:prototype) writes them to `stardust/prototypes/prototype-<slug>.html` (NOT
-// `stardust/current/prototypes/`, which was the old — and wrong — path this script used,
-// so prototypes never showed). of1-publish copies each into `deliverables/prototype-<slug>.html`
-// and deploys it so it is browsable; this renderer links those deployed copies.
+// stardust:prototype) copies them into `deliverables/prototype-<slug>.html` and commits them;
+// EDS serves that dir. This renderer links those deployed copies directly. We read from
+// `deliverables/` (the committed, served location) rather than `stardust/prototypes/`, which may
+// be gitignored — and whose basenames already start with `prototype-`, so prefixing them again
+// produced broken `deliverables/prototype-prototype-<slug>.html` links.
 function renderPrototypes(repoDir, previewBase) {
   let html = '';
-  const protoDir = path.join(repoDir, 'stardust', 'prototypes');
   const delivDir = path.join(repoDir, 'deliverables');
 
-  if (fs.existsSync(protoDir)) {
-    const files = fs
-      .readdirSync(protoDir)
-      .filter((f) => f.endsWith('.html'))
-      .sort();
-    for (const file of files) {
-      const stem = path.basename(file, '.html');
-      const label = titleCase(stem.replace(/-/g, ' ').replace('proposed', '').replace('prototype ', '')).trim();
-      html += `  <a href="${previewBase}/deliverables/prototype-${stem}.html"><span class="badge badge--orange">Standalone</span> ${htmlEscape(label)}</a>\n`;
-    }
-  }
-
-  if (!html && fs.existsSync(delivDir)) {
+  if (fs.existsSync(delivDir)) {
     const files = fs
       .readdirSync(delivDir)
       .filter((f) => f.startsWith('prototype-') && f.endsWith('.html'))
