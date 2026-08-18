@@ -72,23 +72,18 @@ done
 
 `of1-endpoint.json` must exist (created by `of1-check-dependencies`). If missing, fail — don't recreate it here.
 
-### 2. Deploy the prototypes as standalone deliverables
+### 2. Confirm the prototype deliverables are present
 
-Stage 2b (`of1-prototype`, wrapping `stardust:prototype`) writes the redesigned page prototypes to
-`stardust/prototypes/prototype-*.html`, but nothing serves them — so they're invisible in the
-demo. Copy each into `deliverables/` (EDS serves that dir statically, exactly like `discovery.html`),
-where the "Commit and push" step's `git add deliverables/` picks them up and the hub links them:
+Stage 2b (`of1-prototype`, wrapping `stardust:prototype`) already copies the redesigned page
+prototypes into `deliverables/prototype-*.html` and commits them (EDS serves that dir statically,
+exactly like `discovery.html`). There is nothing to copy here — just confirm they're present so the
+hub can link them (a content-only demo, or a skipped Stage 2b, legitimately has none):
 
 ```bash
-if ls stardust/prototypes/*.html >/dev/null 2>&1; then
-  mkdir -p deliverables
-  for f in stardust/prototypes/*.html; do
-    stem=$(basename "$f" .html)
-    cp "$f" "deliverables/prototype-${stem}.html"
-    echo "  ✓ deployed prototype-${stem}.html"
-  done
+if ls deliverables/prototype-*.html >/dev/null 2>&1; then
+  echo "  ✓ prototypes present: $(ls deliverables/prototype-*.html | wc -l | tr -d ' ') page(s)"
 else
-  echo "  (no stardust/prototypes/*.html — content-only demo or Stage 2b skipped)"
+  echo "  (no deliverables/prototype-*.html — content-only demo or Stage 2b skipped)"
 fi
 ```
 
