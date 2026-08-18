@@ -49,7 +49,12 @@ HAS_DESIGN_JSON=false
 echo "DESIGN.json present: $HAS_DESIGN_JSON"
 ```
 
-If `HAS_DESIGN_JSON=false`, the extraction step invokes `stardust:extract` directly against the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`) to produce `stardust/current/DESIGN.json` (plus `PRODUCT.md`, `DESIGN.md`, and screenshots). If `true`, the extraction step is skipped entirely — the artifact-detection check above already confirmed a spec exists, so there is nothing for `stardust:extract` to do; of1-integration reports the extraction step's status as `"done"` either way (extraction is stardust's — no of1 status file is written for the skip case), so downstream dependency checks don't need to special-case the skip.
+If `HAS_DESIGN_JSON=false`, the extraction step runs the `of1-extract-design` skill (inline via
+the Skill tool) against the site's own EDS preview URL
+(`https://<branch>--<repo>--<owner>.aem.page`) to produce `stardust/current/DESIGN.json` (plus
+`DESIGN.md`, screenshots, and `deliverables/brand-review.html`). If `true`, the extraction step
+is skipped entirely — of1-integration reports the extraction step's status as `"done"` either
+way.
 
 `DESIGN.json` may carry `_provenance.mode: bounded-single` when produced by `stardust:replica`
 in bounded (`--pages`) mode — this is fully valid input. OF1 integration consumes the tokens the same
@@ -67,7 +72,7 @@ sections describe *what each step does*, not a competing order.
 of1-check-dependencies (setup) → artifact detection (inline)
               │
        [DESIGN.json exists?]
-         no → extraction (stardust:extract against the site's own preview URL)
+         no → extraction (of1-extract-design against the site's own preview URL)
          yes → skip (of1-integration reuses the existing spec and reports done)
               │
    ┌──────────┼───────────────┬───────────────────┬──────────────────┐
