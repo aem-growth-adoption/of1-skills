@@ -75,7 +75,7 @@ No runtime patching is needed. `/of1` is authored as an ordinary content page (S
 
 ### Step 1 — Read design context
 
-- `DESIGN.json` — design tokens (colors, fonts, spacing, radius). **Resolve its path via `of1-demo-orchestrator/knowledge/design-tokens-resolution.md`** — it may live at `stardust/current/DESIGN.json` OR project root (`./DESIGN.json`, on a bounded-single replica run). Read whichever exists.
+- `DESIGN.json` — design tokens (colors, fonts, spacing, radius). **Resolve its path via `of1-demo-orchestrator/knowledge/design-tokens-resolution.md`** — written by Stage 2a (`of1-extract-design`) to `stardust/current/DESIGN.json`.
 - `stardust/current/DESIGN.md` — design direction
 - `styles/styles.css` — CSS custom properties (the actual deployed tokens; authoritative for a live site, not a guess). If neither `DESIGN.json` location nor `styles/styles.css` exists, stop and report — do not invent tokens.
 - `blocks/of1/of1.css` — the freshly-copied template you'll customize
@@ -122,9 +122,10 @@ Do NOT add rules that target generated-section internals (`.generated-section .h
 
 The header/footer blocks fetch `/nav` and `/footer` on every page; if either is missing, **every page
 renders chromeless** — no nav, no footer, including `/of1`. These docs are *supposed* to exist by now
-(`stardust:replica` authors them for the e2e pipeline; the existing site already has them for
-`of1-integration`), but replica does **not** create them when the source was bot-blocked — it
-emits empty `<header></header>` pages and skips the fragments. Do not assume; guarantee. This guard is
+(Stage 2c, `of1-snowflake`, authors them for the e2e pipeline; the existing site already has them for
+`of1-integration`). A bot-blocked source is now caught upstream — Stage 2a (`of1-extract-design`)
+fails loud on a blocked capture rather than letting an unmeasurable site flow downstream to an empty
+`<header></header>` — but guarantee the fragments regardless of provenance rather than assume. This guard is
 idempotent — if both already return 200 it changes nothing, and it **never overwrites** an existing
 chrome doc:
 
@@ -138,7 +139,7 @@ live — a chromeless demo must not proceed silently.
 
 ### Step 5 — Upload OF1 DA content
 
-The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 4 above (whether from `stardust:replica`, the existing site, or the Step 4 fallback).
+The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 4 above (whether from Stage 2c's `of1-snowflake`, the existing site, or the Step 4 fallback).
 
 ```bash
 OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>https://of1-gen-web-service.franklin-prod.workers.dev</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr></table></div></div></main><footer></footer></body>'
@@ -245,9 +246,9 @@ Common failures:
 
 | Symptom | Likely cause |
 |---|---|
-| `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 4 (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when replica/the existing site didn't provide one |
+| `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 4 (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when Stage 2c/the existing site didn't provide one |
 | `OF1 BLOCK MISSING` | `blocks/of1/of1.js` wasn't pushed, or the `of1` block table's `th` cell doesn't read exactly `of1` |
-| Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by `stardust:replica`'s deploy phase, or the preview hasn't picked up the latest push yet |
+| Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by Stage 2c's (`of1-snowflake`) deploy phase, or the preview hasn't picked up the latest push yet |
 
 Fix any failures and re-push before Completion.
 

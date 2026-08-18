@@ -245,11 +245,11 @@ function renderDiscovery(repoDir, previewBase) {
   return html || '  <span style="color:var(--dim)">No discovery report for this flow</span>';
 }
 
-// Prototypes are the standalone HTML replica archetypes. stardust:replica writes
-// them to `stardust/prototypes/<slug>-proposed.html` (NOT `stardust/current/prototypes/`,
-// which was the old — and wrong — path this script used, so prototypes never showed).
-// of1-publish copies each into `deliverables/prototype-<slug>.html` and deploys it so
-// it is browsable; this renderer links those deployed copies.
+// Prototypes are the standalone HTML redesign pages. Stage 2b (of1-prototype, wrapping
+// stardust:prototype) writes them to `stardust/prototypes/prototype-<slug>.html` (NOT
+// `stardust/current/prototypes/`, which was the old — and wrong — path this script used,
+// so prototypes never showed). of1-publish copies each into `deliverables/prototype-<slug>.html`
+// and deploys it so it is browsable; this renderer links those deployed copies.
 function renderPrototypes(repoDir, previewBase) {
   let html = '';
   const protoDir = path.join(repoDir, 'stardust', 'prototypes');

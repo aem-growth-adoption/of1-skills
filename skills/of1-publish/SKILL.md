@@ -72,10 +72,10 @@ done
 
 `of1-endpoint.json` must exist (created by `of1-check-dependencies`). If missing, fail — don't recreate it here.
 
-### 2. Deploy the replica prototypes as standalone deliverables
+### 2. Deploy the prototypes as standalone deliverables
 
-`stardust:replica` writes the standalone prototype archetypes to
-`stardust/prototypes/<slug>-proposed.html`, but nothing serves them — so they're invisible in the
+Stage 2b (`of1-prototype`, wrapping `stardust:prototype`) writes the redesigned page prototypes to
+`stardust/prototypes/prototype-*.html`, but nothing serves them — so they're invisible in the
 demo. Copy each into `deliverables/` (EDS serves that dir statically, exactly like `discovery.html`),
 where the "Commit and push" step's `git add deliverables/` picks them up and the hub links them:
 
@@ -88,7 +88,7 @@ if ls stardust/prototypes/*.html >/dev/null 2>&1; then
     echo "  ✓ deployed prototype-${stem}.html"
   done
 else
-  echo "  (no stardust/prototypes/*.html — content-only demo or replica skipped)"
+  echo "  (no stardust/prototypes/*.html — content-only demo or Stage 2b skipped)"
 fi
 ```
 
@@ -204,7 +204,7 @@ playwright-cli eval "() => (document.querySelector('footer .footer') ? 'footer O
 - At least one nav link is present inside the header block
 - `footer .footer` block renders with styled content (not empty)
 
-**If fails:** the site's `content/nav.html`/`content/footer.html` didn't push correctly, or the preview hasn't picked up the latest deploy yet — re-check `stardust:replica` (for the full e2e pipeline, which produces the replica site's nav/footer chrome) or the existing site's own chrome (for `of1-integration`, where nav/footer already existed before this pipeline ran).
+**If fails:** the site's `content/nav.html`/`content/footer.html` didn't push correctly, or the preview hasn't picked up the latest deploy yet — re-check Stage 2c (`of1-snowflake`, for the full e2e pipeline, which produces the converted site's nav/footer chrome) or the existing site's own chrome (for `of1-integration`, where nav/footer already existed before this pipeline ran).
 
 ### Check 3: All products have ≥4 images
 
