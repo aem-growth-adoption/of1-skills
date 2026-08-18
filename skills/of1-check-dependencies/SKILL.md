@@ -34,8 +34,8 @@ existing** — it is not written by `verify.sh`; Part 2 writes it.
 
 ### What verify.sh checks
 
-1. The pipeline's OF1 skills are installed — the orchestrator (`of1-demo-orchestrator`) plus every step skill it dispatches (`of1-discovery`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`, `of1-style-generative-block`, `of1-integration`). Config review is not a skill — it is an inline step in `of1-integration` (a static `config-review.html` asset). The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
-2. The Adobe EDS skills `stardust` (incl. `stardust:replica`), `impeccable` are installed
+1. The pipeline's OF1 skills are installed — the orchestrator (`of1-demo-orchestrator`) plus every step skill it dispatches (`of1-discovery`, `of1-extract-design`, `of1-prototype`, `of1-snowflake`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`, `of1-style-generative-block`, `of1-integration`). Config review is not a skill — it is an inline step in `of1-integration` (a static `config-review.html` asset). The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
+2. The Adobe EDS skills `stardust` (incl. `stardust:extract` and `stardust:prototype`), `impeccable`, and the `snowflake` skill (`aem-edge-delivery-services` plugin) are installed — the three Stage-2 skills `of1-extract-design`/`of1-prototype`/`of1-snowflake` depend on these directly
 3. Shell tools: `node`, `python3`, `jq`, `git`, `curl`
 4. `playwright-cli` — probed for the modern `open` subcommand (warns if the binary is present but missing it)
 5. `$OF1_DEMO_REPO` is a git checkout with EDS structural files

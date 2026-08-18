@@ -55,7 +55,8 @@ fix_cmd() {
 
 REQUIRED_SKILLS=(
   of1-demo-orchestrator
-  of1-discovery of1-build-templates of1-style-generative-block
+  of1-discovery of1-extract-design of1-prototype of1-snowflake
+  of1-build-templates of1-style-generative-block
   of1-extract-brand-voice of1-extract-content of1-build-quick-suggestions
   of1-build-cta-template of1-publish
   of1-integration
@@ -148,11 +149,23 @@ for S in "${ADOBE_EDS_SKILLS[@]}"; do
   fi
 done
 
-# ---------- stardust:replica (Stage 2 depends on it) ----------
-if find "${SKILL_ROOTS[@]}" -path "*/skills/replica/SKILL.md" 2>/dev/null | grep -q .; then
-  ok "stardust:replica present"
+# ---------- stardust:extract / stardust:prototype / snowflake (Stage 2's three substeps depend on these) ----------
+if find "${SKILL_ROOTS[@]}" -path "*/skills/extract/SKILL.md" 2>/dev/null | grep -q .; then
+  ok "stardust:extract present"
 else
-  fail "stardust:replica skill not found — Stage 2 requires it. Update the stardust plugin: $(fix_cmd '/plugin update stardust' 'upskill adobe/skills --path plugins/stardust --all')"
+  fail "stardust:extract skill not found — Stage 2a (of1-extract-design) requires it. Update the stardust plugin: $(fix_cmd '/plugin update stardust' 'upskill adobe/skills --path plugins/stardust --all')"
+fi
+
+if find "${SKILL_ROOTS[@]}" -path "*/skills/prototype/SKILL.md" 2>/dev/null | grep -q .; then
+  ok "stardust:prototype present"
+else
+  fail "stardust:prototype skill not found — Stage 2b (of1-prototype) requires it. Update the stardust plugin: $(fix_cmd '/plugin update stardust' 'upskill adobe/skills --path plugins/stardust --all')"
+fi
+
+if find "${SKILL_ROOTS[@]}" -path "*/skills/snowflake/SKILL.md" 2>/dev/null | grep -q .; then
+  ok "snowflake present"
+else
+  fail "snowflake skill not found — Stage 2c (of1-snowflake) requires it. Update the aem-edge-delivery-services plugin: $(fix_cmd '/plugin update aem-edge-delivery-services' 'upskill aem-growth-adoption/aem-edge-delivery-services --path plugins/snowflake --all')"
 fi
 
 # ---------- 3. Shell tools ----------

@@ -18,18 +18,19 @@ Two modes, decided by `OF1_PIPELINE_MODE`:
 
 - **Standalone (default, `OF1_PIPELINE_MODE` unset):** everything below behaves exactly as
   documented today. Content is extracted from the existing EDS site's own preview URL.
-- **Pipeline (`OF1_PIPELINE_MODE=1`):** invoked by the full demo orchestrator alongside a
-  running `stardust:replica`. Two differences only:
+- **Pipeline (`OF1_PIPELINE_MODE=1`):** invoked by the full demo orchestrator alongside its
+  running Stage 2 (the sequential `of1-extract-design` → `of1-prototype` → `of1-snowflake` chain).
+  Two differences only:
   1. The content track (`of1-extract-brand-voice`/`of1-extract-content`/`of1-build-quick-suggestions`)
      extracts from the real external domain — the orchestrator passes `OF1_CONTENT_SOURCE=<domain>`,
      which the content-track skills honor (see each skill's "Source resolution" section). OF1
      integration just forwards the env var to those dispatches.
   2. The site-integration track (`of1-build-templates`, `of1-style-generative-block`,
      `of1-build-cta-template`, `config-review`, `of1-publish`) does not start until
-     Stage 2 has finished. The orchestrator passes `OF1_REPLICA_DONE_FILE=<path>`; of1-integration waits
+     Stage 2 has finished. The orchestrator passes `OF1_STAGE2_DONE_FILE=<path>`; of1-integration waits
      for that file to exist before dispatching the site-integration track. The content track
      (`of1-extract-brand-voice`/`of1-extract-content` → `of1-build-quick-suggestions`) runs
-     immediately, in parallel with the still-running replica.
+     immediately, in parallel with the still-running Stage 2 chain.
 
 ## Verify dependencies + repo state (inline)
 
@@ -41,11 +42,10 @@ After it succeeds, read `<STATE_DIR>/setup.json` for `stateDir`/`of1Repo` and `<
 
 ```bash
 cd "$OF1_DEMO_REPO"
-# Resolve DESIGN.json via the shared resolver: stardust/current/ (full replica)
-# OR project root ./ (bounded-single replica). See
+# Resolve DESIGN.json via the shared resolver: stardust/current/DESIGN.json. See
 # of1-demo-orchestrator/knowledge/design-tokens-resolution.md
 HAS_DESIGN_JSON=false
-[ -f stardust/current/DESIGN.json ] || [ -f ./DESIGN.json ] && HAS_DESIGN_JSON=true
+[ -f stardust/current/DESIGN.json ] && HAS_DESIGN_JSON=true
 echo "DESIGN.json present: $HAS_DESIGN_JSON"
 ```
 
@@ -55,10 +55,6 @@ the Skill tool) against the site's own EDS preview URL
 `DESIGN.md`, screenshots, and `deliverables/brand-review.html`). If `true`, the extraction step
 is skipped entirely — of1-integration reports the extraction step's status as `"done"` either
 way.
-
-`DESIGN.json` may carry `_provenance.mode: bounded-single` when produced by `stardust:replica`
-in bounded (`--pages`) mode — this is fully valid input. OF1 integration consumes the tokens the same
-way regardless of provenance; do NOT reject or re-extract on a bounded-single spec.
 
 ## Step graph
 
@@ -116,10 +112,10 @@ of1-build-templates(assemble)           │
 
 The step graph's DEPENDENCIES are unchanged; only the START GATE differs:
 
-- **Content track — dispatch immediately on entry** (parallel with replica): `of1-extract-brand-voice`,
-  `of1-extract-content` → `of1-build-quick-suggestions`.
+- **Content track — dispatch immediately on entry** (parallel with Stage 2's extract→prototype→snowflake
+  chain): `of1-extract-brand-voice`, `of1-extract-content` → `of1-build-quick-suggestions`.
   These need only the live external site (`OF1_CONTENT_SOURCE`) + the narrative focus.
-- **Site-integration track — dispatch only after `OF1_REPLICA_DONE_FILE` exists**:
+- **Site-integration track — dispatch only after `OF1_STAGE2_DONE_FILE` exists**:
   `of1-build-templates`(base) → `of1-build-templates`(intent-*) → `of1-build-templates`(assemble) ∥
   `of1-style-generative-block` ∥ `of1-build-cta-template`, then `config-review` (needs
   `of1-extract-brand-voice`+`of1-extract-content`+`of1-build-quick-suggestions`+`of1-build-cta-template`),
@@ -128,13 +124,13 @@ The step graph's DEPENDENCIES are unchanged; only the START GATE differs:
 ```bash
 # Site-integration gate (pipeline mode only)
 if [ -n "$OF1_PIPELINE_MODE" ]; then
-  echo "Waiting for replica to finish: $OF1_REPLICA_DONE_FILE"
+  echo "Waiting for Stage 2 (extract->prototype->snowflake) to finish: $OF1_STAGE2_DONE_FILE"
   # Event-driven on SLICC (scoop-notify) / sequential await on CC. Do NOT sleep-poll on SLICC.
-  until [ -f "$OF1_REPLICA_DONE_FILE" ]; do :; done   # CC inline fallback only
+  until [ -f "$OF1_STAGE2_DONE_FILE" ]; do :; done   # CC inline fallback only
 fi
 ```
 
-In standalone mode there is no replica and no gate — all five siblings (`of1-build-templates`(base),
+In standalone mode there is no Stage 2 chain and no gate — all five siblings (`of1-build-templates`(base),
 `of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`,
 `of1-build-cta-template`) dispatch together exactly as the Trigger table above already says.
 
@@ -155,7 +151,7 @@ Same step-graph, same dependency rules on both runtimes. Only the invocation mec
 - Each skill (except artifact detection and `config-review`, which are inline) is a single `Agent` dispatch. Sub-agents see none of this conversation — the prompt must be self-contained: read the target skill's `SKILL.md`, export the same env vars the orchestrator exports (`OF1_STATE_DIR`, `OF1_DEMO_REPO`, `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`, `SKILL_DIR`), state the branch/owner/repo, list which prior-skill output files it needs, and require the same JSON status block: `{"stage":3,"skill":"<skill>","status":"done"|"review"|"failed","summary":"...","deliverables":[...]}`.
 - **The extraction step's dispatch runs the `of1-extract-design` skill** (via the `Skill` tool) targeting the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`) — do not point it at any external domain, and do not run it at all if `HAS_DESIGN_JSON=true` from the artifact-detection step.
 - In pipeline mode also export `OF1_CONTENT_SOURCE` (to `of1-extract-brand-voice`/`of1-extract-content`/`of1-build-quick-suggestions` dispatches) and pass
-  `OF1_REPLICA_DONE_FILE` to the orchestrator's own site-track gate (not to the skill agents).
+  `OF1_STAGE2_DONE_FILE` to the orchestrator's own site-track gate (not to the skill agents).
 - **Parallelism is mandatory** at each fan-out point — the top-level orchestrator dispatches all eligible skills in a single message with multiple Agent tool-use blocks. (This is possible precisely because the *top level* is dispatching; a Stage-3 subagent could not, hence the "who dispatches on CC" note above.)
 - Model assignment: same rule of thumb the orchestrator uses — Opus only where output quality cascades downstream. Since this pipeline skips discovery/prototype entirely, the only Opus-worthy skills are `of1-style-generative-block` (OF1 styling — multi-step DA authoring) and `of1-extract-design` when it actually runs (design-token quality cascades). Everything else (`sonnet`): `of1-build-templates`(base), `of1-build-templates`(intent-*), `of1-build-templates`(assemble), `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`.
 - Auto-approve by default (mirrors the orchestrator's one-shot mode) — mark each `review`-status task completed and continue immediately, unless the user explicitly asked to pause between steps.
@@ -166,7 +162,7 @@ Same step-graph, same dependency rules on both runtimes. Only the invocation mec
 
 - Dispatch each skill as a `scoop_scoop()` call with `writablePaths` covering `/scoops/<name>/`, `/shared/`, and the project repo path. **The extraction step's scoop runs the `of1-extract-design` skill against the site's own EDS preview URL** — same reason as the Claude Code column: point it at the wrong target and extraction crawls an external domain instead of the site itself.
 - In pipeline mode also export `OF1_CONTENT_SOURCE` (to `of1-extract-brand-voice`/`of1-extract-content`/`of1-build-quick-suggestions` dispatches) and pass
-  `OF1_REPLICA_DONE_FILE` to the orchestrator's own site-track gate (not to the skill agents).
+  `OF1_STAGE2_DONE_FILE` to the orchestrator's own site-track gate (not to the skill agents).
 - Each scoop writes its own `/shared/of1-demo-orchestrator/of1-<skill>-status.json` on completion (phase scoops of `of1-build-templates` write `of1-build-templates-<phase>-status.json`), exactly like every skill already documents in its own "Completion" section — **do not** additionally push to a sprinkle. There is nothing listening for `sprinkle_send` on this skill.
 - Handle completions event-driven, not via polling: end your turn after dispatching, and react when a scoop-completion notification arrives — read its status file, check if it unblocks the next dispatch per the table above, and dispatch the next batch.
 - Model assignment: same as the Claude Code column above, using `claude-opus-4-8`/`claude-sonnet-5` model strings per `of1-demo-orchestrator`'s own convention.
