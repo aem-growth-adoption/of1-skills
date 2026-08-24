@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OF1 Demo Hub — {{DOMAIN}}</title>
+<style>
+  :root { --bg: #1C1917; --fg: #F5F0E8; --accent: #00E5A0; --orange: #DC6E52; --blue: #6BA3FF; --dim: rgba(245,240,232,0.55); --border: rgba(245,240,232,0.1); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: 'JetBrains Mono', monospace; padding: 40px 24px; max-width: 900px; margin: 0 auto; }
+  h1 { font-family: 'Cormorant Garamond', serif; font-size: 36px; font-weight: 600; margin-bottom: 8px; }
+  .subtitle { color: var(--dim); font-size: 13px; margin-bottom: 40px; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 2px; color: var(--accent); margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  .links { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+  a { color: var(--fg); text-decoration: none; padding: 8px 16px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; }
+  a:hover { border-color: var(--accent); background: rgba(0,229,160,0.05); }
+  .badge { font-size: 9px; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+  .badge--green { background: rgba(0,229,160,0.15); color: var(--accent); }
+  .badge--orange { background: rgba(220,110,82,0.15); color: var(--orange); }
+  .badge--blue { background: rgba(107,163,255,0.15); color: var(--blue); }
+  .narrative { font-size: 13px; line-height: 1.6; color: var(--fg); margin-bottom: 8px; }
+  .narrative .focus { color: var(--accent); font-weight: 500; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+<h1>{{DOMAIN}}</h1>
+<p class="subtitle">OF1 Demo Hub &bull; Branch: {{BRANCH}} &bull; Generated {{DATE}}</p>
+
+<h2>Demo Narrative</h2>
+<p class="narrative"><span class="focus">{{FOCUS}}</span> &mdash; {{NARRATIVE}}</p>
+
+<h2>Discovery &amp; Extraction</h2>
+<div class="links">
+{{DISCOVERY}}
+</div>
+
+<h2>Prototypes</h2>
+<div class="links">
+{{PROTOTYPES}}
+</div>
+
+<h2>EDS Pages (Live Preview)</h2>
+<div class="links">
+{{EDS_PAGES}}
+</div>
+
+<h2>OF1 Generative</h2>
+<div class="links">
+  <a href="{{OF1_URL}}"><span class="badge badge--green">AEM Preview</span> OF1 Page</a>
+  <a href="{{GALLERY_URL}}"><span class="badge badge--orange">Standalone</span> Template Gallery</a>
+  <a href="{{PREVIEW_BASE}}/deliverables/config-review.html"><span class="badge badge--blue">Config</span> Config Review</a>
+</div>
+
+<h2>Configuration</h2>
+<div class="links">
+  <a href="{{PREVIEW_BASE}}/of1/config/products.json"><span class="badge badge--blue">Config</span> Products ({{NUM_PRODUCTS}})</a>
+  <a href="{{PREVIEW_BASE}}/of1/config/brand-voice.json"><span class="badge badge--blue">Config</span> Brand Voice</a>
+  <a href="{{PREVIEW_BASE}}/of1/config/suggestions.json"><span class="badge badge--blue">Config</span> Suggestions</a>
+  <a href="{{PREVIEW_BASE}}/of1/config/cta-template.json"><span class="badge badge--blue">Config</span> CTA Template</a>
+  <a href="{{PREVIEW_BASE}}/of1/config/personas.json"><span class="badge badge--blue">Config</span> Personas</a>
+  <a href="{{PREVIEW_BASE}}/of1/config/templates.json"><span class="badge badge--blue">Config</span> Templates Catalog</a>
+</div>
+
+<h2>Repository</h2>
+<div class="links">
+  <a href="https://github.com/{{OWNER}}/{{REPO}}/tree/{{BRANCH}}"><span class="badge badge--green">GitHub</span> {{BRANCH}} branch</a>
+</div>
+
+{{PIPELINE_AUDIT}}
+</body>
+</html>
