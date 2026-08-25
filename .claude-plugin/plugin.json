@@ -1,23 +1,20 @@
 {
-  "name": "of1-demo-skills",
+  "name": "of1-skills",
   "version": "0.1.0",
-  "description": "Turn any website into an OF1 generative-search demo on Adobe Edge Delivery Services, or introduce OF1 onto an existing EDS/Stardust site. Ships one runtime-agnostic orchestrator plus 10 step skills, plus a standalone signals.json authoring skill.",
+  "description": "Integrate OF1 (generative-search) into an existing Adobe Edge Delivery Services project: verify prerequisites, extract/reuse design tokens, generate templates and CTA config, style the generative block, and publish. Runs standalone against any EDS/Stardust repo — no demo-building or site-crawling steps.",
   "skills": "./skills/",
   "entrypoints": {
     "skills": [
-      "of1-demo-orchestrator",
       "of1-check-dependencies",
-      "of1-discovery",
+      "of1-integration",
+      "of1-extract-design",
       "of1-build-templates",
       "of1-style-generative-block",
       "of1-extract-brand-voice",
       "of1-extract-content",
       "of1-build-quick-suggestions",
       "of1-build-cta-template",
-      "of1-generate-config-review",
-      "of1-publish",
-      "of1-signals",
-      "of1-integration"
+      "of1-publish"
     ]
   },
   "dependencies": [
@@ -26,6 +23,6 @@
     "impeccable@impeccable"
   ],
   "_notes": {
-    "entrypoints": "of1-demo-orchestrator is the single runtime-agnostic orchestrator — it detects Claude Code vs SLICC at start and follows knowledge/dispatch-cc.md or knowledge/dispatch-slicc.md accordingly. of1-signals is a standalone skill, not a numbered pipeline step — it authors extension-only config (signals.json) that neither the sync/deploy pipeline nor the OF1 worker ever reads."
+    "entrypoints": "of1-integration is the standalone entry point — invoke it directly against an existing EDS repo. It dispatches every other skill in this plugin per its own step graph (see of1-integration/SKILL.md). of1-check-dependencies is of1-integration's own step 1; it also supports a demo-track check (of1-demo-orchestrator/of1-discovery/of1-prototype/of1-snowflake) used only when invoked from the of1-demo-skills plugin in pipeline mode."
   }
 }
