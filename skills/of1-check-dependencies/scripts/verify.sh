@@ -53,14 +53,26 @@ fix_cmd() {
 
 # ---------- 1. OF1 step skills (project- or user-scoped) ----------
 
-REQUIRED_SKILLS=(
-  of1-demo-orchestrator
-  of1-discovery of1-extract-design of1-prototype of1-snowflake
+# Base set: the of1-skills plugin's own skills, required for every invocation
+# (standalone of1-integration, or dispatched from of1-demo-skills).
+BASE_REQUIRED_SKILLS=(
+  of1-integration of1-extract-design
   of1-build-templates of1-style-generative-block
   of1-extract-brand-voice of1-extract-content of1-build-quick-suggestions
   of1-build-cta-template of1-publish
-  of1-integration
 )
+# Demo-track set: only required when the caller is of1-demo-orchestrator
+# (signaled by OF1_PIPELINE_MODE) — these skills live in the separate
+# of1-demo-skills plugin and are never installed for a standalone
+# of1-integration run.
+DEMO_TRACK_REQUIRED_SKILLS=(
+  of1-demo-orchestrator of1-discovery of1-prototype of1-snowflake
+)
+if [ -n "${OF1_PIPELINE_MODE:-}" ]; then
+  REQUIRED_SKILLS=("${BASE_REQUIRED_SKILLS[@]}" "${DEMO_TRACK_REQUIRED_SKILLS[@]}")
+else
+  REQUIRED_SKILLS=("${BASE_REQUIRED_SKILLS[@]}")
+fi
 # of1-signals is intentionally omitted — it's a standalone operator tool, not a pipeline step (see its SKILL.md).
 # of1-check-dependencies is omitted because it's the skill running this check.
 
@@ -102,9 +114,9 @@ if [ ${#MISSING[@]} -eq 0 ]; then
   ok "All $TOTAL OF1 skills present"
 elif [ ${#MISSING[@]} -eq "$TOTAL" ]; then
   # None found at all — almost always a detector/path problem, not a real absence.
-  fail "found 0 of $TOTAL OF1 skills — is this a local checkout with the plugin not installed to a searched root? fix: $(fix_cmd '/plugin install of1-demo-skills@<marketplace>' 'upskill aem-growth-adoption/of1-demo-skills --all')"
+  fail "found 0 of $TOTAL OF1 skills — is this a local checkout with the plugin not installed to a searched root? fix: $(fix_cmd '/plugin install of1-skills@<marketplace>' 'upskill aem-growth-adoption/of1-skills --all')"
 else
-  fail "Missing $((${#MISSING[@]})) of $TOTAL OF1 skills: ${MISSING[*]} — fix: $(fix_cmd '/plugin install of1-demo-skills@<marketplace>' 'upskill aem-growth-adoption/of1-demo-skills --all')"
+  fail "Missing $((${#MISSING[@]})) of $TOTAL OF1 skills: ${MISSING[*]} — fix: $(fix_cmd '/plugin install of1-skills@<marketplace>' 'upskill aem-growth-adoption/of1-skills --all')"
 fi
 
 # ---------- 2. Adobe EDS skills: stardust + impeccable ----------
