@@ -191,11 +191,14 @@ the CDN.
 
 ### 6. Write `of1-endpoint.json` + `config.json` + push (skip if continuing and files already committed)
 
-`config.json` is a small served meta file (NOT a worker tenant config — the worker's
-`CONFIG_FILES` allowlist ignores it). It carries the target `domain` (which can differ from the
-EDS host) plus owner/repo/branch, so same-origin client-side deliverables (e.g.
-`deliverables/config-review.html`) can label themselves without reading the un-served
-`repo-config.json`.
+`config.json` is a small served meta + tenant-mode file. It carries the target `domain`
+(which can differ from the EDS host) plus owner/repo/branch, so same-origin client-side
+deliverables (e.g. `deliverables/config-review.html`) can label themselves without reading
+the un-served `repo-config.json`. It also carries **`knowledgeMode`**, which the worker
+reads (`config` is in the worker's `CONFIG_FILES` → `tenant.config`): `"da-document"` tells
+the worker to personalize purely via interests → RAG retrieval and **skip the static
+persona/use-case archetype matching** (the v5 direction). Omit it or use another value to
+keep legacy persona/use-case behavior.
 
 ```bash
 mkdir -p of1/config
@@ -209,7 +212,8 @@ cat > of1/config/config.json <<EOF
   "domain": "${DOMAIN}",
   "owner": "${OWNER}",
   "repo": "${REPO}",
-  "branch": "${BRANCH}"
+  "branch": "${BRANCH}",
+  "knowledgeMode": "da-document"
 }
 EOF
 git add of1/config/of1-endpoint.json of1/config/config.json
