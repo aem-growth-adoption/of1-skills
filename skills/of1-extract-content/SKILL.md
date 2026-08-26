@@ -6,7 +6,7 @@ user-invocable: true
 
 # Content Metadata Populator
 
-Crawl a website to extract product data, user personas, use cases, features, and FAQs, producing JSON files for the OF1 worker tenant config.
+Crawl a website to extract product data, user personas, use cases, features, and FAQs, producing JSON files for the OF1 worker tenant config and publishing `products`/`features`/`faqs` to DA as `of1-config` blocks so authors can edit the tenant's knowledge in Document Authoring.
 
 ## Env — orchestrator exports these (see `of1-check-dependencies`)
 
@@ -354,6 +354,41 @@ EOF
 
 **Do NOT write the completion status until this passes.** Go back and download more images if any product has fewer than 4.
 
+### 10. Publish config to DA (`products`, `features`, `faqs`)
+
+The worker reads these three files from **DA** as `of1-config` key/value blocks
+(`{file}.plain.html`), so authors can edit the tenant's knowledge in Document
+Authoring instead of hand-editing JSON in git. It only falls back to the
+committed `of1/config/{file}.json` when the DA doc is missing or parses to zero
+records. New demos are configured with `knowledgeMode: "da-document"` (set by
+`of1-check-dependencies` in `config.json`), so the DA doc is the source of truth
+— publishing it is required, not optional.
+
+Run this **after** Step 9, so product `images` already carry their final
+`.aem.page/media/...` URLs and get embedded in the DA doc:
+
+```bash
+cd "$OF1_DEMO_REPO"
+
+# Reads of1/config/{products,features,faqs}.json, renders each record as an
+# of1-config block, uploads the doc to DA, and previews it so {file}.plain.html
+# is live. Resolves the DA token the same way as download-images.mjs.
+node "$SKILL_DIR/assets/publish-config-da.mjs" \
+  --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+  --files products,features,faqs
+```
+
+The committed JSON is **kept** as the fallback safety net — do NOT delete it.
+The DA doc and the JSON stay in sync because both are generated from the same
+extracted records here. (Format + migration contract:
+`of1-gen-web/docs/da-config-authoring.md`.)
+
+`personas.json` / `use-cases.json` are **not** published to DA: under
+`knowledgeMode: "da-document"` the worker disables server-side persona/use-case
+matching (personalization is interests → RAG retrieval only), so those files are
+inert. Keep writing them in Step 7 for backward-compat with non-knowledgeMode
+tenants, but they need no DA doc.
+
 ## Tips
 
 - IDs must be URL-friendly slugs (lowercase, hyphens)
@@ -368,14 +403,15 @@ EOF
 1. Run `download-images.mjs` with `--update-products` (Step 9 above)
 2. Verified ALL product image URLs return HTTP 200 (the verify script above)
 3. Confirmed all images are `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...` URLs (site domain, previewed), NOT `https://content.da.live/...` (access-restricted, not public)
+4. Run `publish-config-da.mjs` (Step 10) and confirmed all three files published (`✓ All config files published to DA`)
 
-If ANY of these are false, GO BACK and complete Step 9. Do not proceed.
+If ANY of these are false, GO BACK and complete Step 9 / Step 10. Do not proceed.
 
 This skill runs alongside `of1-extract-brand-voice`. Both must complete before the content track is treated as done.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-content-status.json" <<EOF
-{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] products, [M] personas, [P] use cases, [Q] features, [R] FAQs. All images on DA."}
+{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] products, [M] personas, [P] use cases, [Q] features, [R] FAQs. All images on DA. products/features/faqs published to DA as of1-config blocks."}
 EOF
 ```
 
