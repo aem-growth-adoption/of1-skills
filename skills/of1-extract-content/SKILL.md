@@ -1,6 +1,6 @@
 ---
 name: of1-extract-content
-description: Scrape product data, personas, use cases, features, and FAQs from a website for the tenant config
+description: Crawl a website to extract its knowledge (products, features, FAQs, testimonials) and personas for the tenant config
 user-invocable: true
 ---
 
@@ -216,13 +216,13 @@ This isn't just cosmetic: it renders as the demo's Intent Map radar, but when a 
 
 ### 8. Cross-reference check
 
-Verify all ID references are consistent across files. Fix mismatches.
+Verify ID references are consistent: `persona` values on `knowledge.json` product entities must match real IDs in `personas.json`, and `personas.json`'s `recommendedProducts` must match real `knowledge.json` product IDs. Fix mismatches.
 
 ### 9. Download + upload product images to DA
 
 ⛔ **HARD GATE — DO NOT SKIP THIS STEP. DO NOT MARK THIS SKILL AS COMPLETE WITHOUT RUNNING `download-images.mjs`.** If you write the completion status file without first downloading and uploading images to DA, the demo WILL fail the pre-launch checklist and the entire pipeline run is wasted. This step is NOT optional. Placeholder URLs written by hand instead of running the script are NOT valid — they will 404.
 
-**ALL product images MUST be self-hosted on DA and previewed on EDS.** Never leave external CDN URLs in `products.json` — external URLs break due to CORS, referrer policies, encoding issues, and EDS image optimization rewriting. `content.da.live` is DA's authoring/source store — it is access-restricted and NOT a public delivery endpoint. Images must be uploaded to DA AND previewed (so EDS's Media Bus ingests them), then referenced via the site's own domain: `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/{filename}`. `download-images.mjs` does both steps automatically.
+**ALL product images MUST be self-hosted on DA and previewed on EDS.** Never leave external CDN URLs in `knowledge.json` — external URLs break due to CORS, referrer policies, encoding issues, and EDS image optimization rewriting. `content.da.live` is DA's authoring/source store — it is access-restricted and NOT a public delivery endpoint. Images must be uploaded to DA AND previewed (so EDS's Media Bus ingests them), then referenced via the site's own domain: `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/{filename}`. `download-images.mjs` does both steps automatically.
 
 **Minimum 4 images per product, up to 8.** The pre-launch checklist FAILS if any product has fewer than 4. Templates often render 3–6 item cards with images — fewer than 4 images per product leaves visible gaps. If a product page has only 1–3 images, look on the category/listing page, manufacturer press galleries, related model pages, or lifestyle/editorial pages for additional angles.
 
@@ -238,7 +238,7 @@ playwright-cli eval "() => (
 )"
 ```
 
-Stage the source URLs in `products.json`'s `images` arrays.
+Stage the source URLs in `knowledge.json`'s `images` arrays.
 
 #### Parallel download + upload
 
@@ -276,19 +276,21 @@ These are working files from `download-images.mjs` — do NOT commit them to git
 python3 << 'EOF'
 import json, subprocess, sys
 
-with open("of1/config/products.json") as f:
-    products = json.load(f)
+with open("of1/config/knowledge.json") as f:
+    entities = json.load(f)
+
+products = [e for e in entities if e.get("type") == "product"]
 
 all_good = True
 for p in products:
     images = p.get("images", [])
     if len(images) < 4:
-        print(f"  ✗ {p['name']}: only {len(images)} image(s) — MUST have ≥4")
+        print(f"  ✗ {p['title']}: only {len(images)} image(s) — MUST have ≥4")
         all_good = False
     else:
         r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", images[0]], capture_output=True, text=True)
         status = "✓" if r.stdout.strip() == "200" else "✗"
-        print(f"  {status} {p['name']}: {len(images)} images (HTTP {r.stdout.strip()})")
+        print(f"  {status} {p['title']}: {len(images)} images (HTTP {r.stdout.strip()})")
         if r.stdout.strip() != "200":
             all_good = False
 
@@ -340,7 +342,7 @@ backward-compat with non-knowledgeMode tenants, but it needs no DA doc.
 - IDs must be URL-friendly slugs (lowercase, hyphens)
 - Don't fabricate data — if not on the page, omit it
 - Persona keywords should be words users would type, not marketing terms
-- 10–30 well-described products work better than 200 sparse entries
+- 10–30 well-described `type:"product"` knowledge entities work better than 200 sparse entries
 - Never use invented/fabricated image URLs — only URLs extracted from the live site that actually downloaded successfully (> 10 KB)
 
 ## Completion (pipeline mode)
@@ -349,7 +351,7 @@ backward-compat with non-knowledgeMode tenants, but it needs no DA doc.
 1. Run `download-images.mjs` with `--update-products` (Step 9 above)
 2. Verified ALL product image URLs return HTTP 200 (the verify script above)
 3. Confirmed all images are `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...` URLs (site domain, previewed), NOT `https://content.da.live/...` (access-restricted, not public)
-4. Run `publish-config-da.mjs` (Step 10) and confirmed all three files published (`✓ All config files published to DA`)
+4. Run `publish-config-da.mjs` (Step 10) with `--files knowledge` and confirmed knowledge published (`✓ knowledge published to DA`)
 
 If ANY of these are false, GO BACK and complete Step 9 / Step 10. Do not proceed.
 
@@ -357,7 +359,7 @@ This skill runs alongside `of1-extract-brand-voice`. Both must complete before t
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-content-status.json" <<EOF
-{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] products, [M] personas, [P] use cases, [Q] features, [R] FAQs. All images on DA. products/features/faqs published to DA as of1-config blocks."}
+{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] knowledge entities ([N1] products, [N2] features, [N3] FAQs, [N4] testimonials), [M] personas. All images on DA. knowledge published to DA as of1-config blocks."}
 EOF
 ```
 
