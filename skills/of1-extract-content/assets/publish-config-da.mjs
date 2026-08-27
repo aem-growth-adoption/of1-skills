@@ -65,7 +65,7 @@ export const FILE_FIELDS = {
   },
   knowledge: {
     idFrom: 'title',
-    order: ['title', 'description', 'keywords', 'facts', 'images', 'persona', 'useCase'],
+    order: ['title', 'type', 'description', 'keywords', 'facts', 'images', 'persona', 'useCase'],
     list: new Set(['keywords', 'facts']),
     images: new Set(['images']),
   },
