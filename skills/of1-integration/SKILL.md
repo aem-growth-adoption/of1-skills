@@ -194,3 +194,7 @@ Then emit the review deliverable + `review` status for the approval gate (step i
 After `config-review` is approved AND `of1-build-templates`(assemble) + `of1-style-generative-block` are both done, run the `of1-publish` skill inline (read it and follow it directly — same as `of1-demo-orchestrator`'s deploy step). Export `SKILL_DIR` to that skill's directory first, exactly as the orchestrator does for a dispatched skill.
 
 `of1-publish`'s pre-launch checklist is self-contained and already flow-aware — its Check 5 only asserts the discovery deliverable when `of1-discovery-output.md` exists (so it self-skips in this flow, where discovery never runs). Follow the skill's checklist as written; there is nothing to adapt here.
+
+## Author-facing re-sync (Sync OF1 DA app)
+
+After deploy, later edits to `/of1/config/*` only reach the worker on a **sync**. The **Sync OF1** DA app gives authors a one-click sync from inside the DA editor. It is **not** part of this pipeline (no dispatch, no gate) — it's a one-time site setup: add one row to the site's DA `library` sheet pointing at the worker's `/da-app`. of1-labs lab sites get it installed automatically during provisioning. Full install + usage: `knowledge/da-sync-app.md`.
