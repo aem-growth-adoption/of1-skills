@@ -6,7 +6,7 @@ user-invocable: true
 
 # Quick Suggestions Generator
 
-Generate domain-specific quick suggestion chips, placeholder text, and search UI copy based on the site's products and content.
+Generate domain-specific quick suggestion chips, placeholder text, and search UI copy based on the site's knowledge entities and content.
 
 ## Env — orchestrator exports these (see `of1-check-dependencies`)
 
@@ -22,21 +22,23 @@ mkdir -p of1/config
 
 Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `suggestions.json`.
 
-This skill does not crawl the site — it is a pure transform over `products.json`, `personas.json`,
+This skill does not crawl the site — it is a pure transform over `knowledge.json`, `personas.json`,
 and `brand-voice.json` (already produced by `of1-extract-content` and `of1-extract-brand-voice`, which
 own the live-site-vs-replica source resolution). There is no `OF1_CONTENT_SOURCE` handling here; output
 files and JSON shapes are identical in pipeline and standalone modes.
 
 ## Inputs
 
-- `of1/config/{products,personas,brand-voice}.json` — produced by `of1-extract-content` and `of1-extract-brand-voice` (read below)
+- `of1/config/knowledge.json` — knowledge-only entity list (`id, type, title, description, keywords, facts, images, persona`; `type` in `product|feature|faq|testimonial`), produced by `of1-extract-content`
+- `of1/config/{personas,brand-voice}.json` — produced by `of1-extract-brand-voice` (read below)
 - Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge)
 
 **REQUIRED — read the content-extraction outputs before generating suggestions.** This skill runs AFTER `of1-extract-brand-voice` and `of1-extract-content` complete, so these files exist:
 
 ```bash
-# Product names — suggestions MUST reference only real products that exist
-cat of1/config/products.json | jq -r '.[].name'
+# Entity titles — prefer type:"product" entities as the candidate list, fall back to all entities
+# if there are no product-typed entities. knowledge.json has no `.name` field — use `.title`.
+cat of1/config/knowledge.json | jq -r '[.[] | select(.type == "product")] as $products | if ($products | length) > 0 then $products else . end | .[].title'
 
 # Personas — each suggestion should target a real persona
 cat of1/config/personas.json | jq -r '.[].name'
@@ -45,14 +47,14 @@ cat of1/config/personas.json | jq -r '.[].name'
 cat of1/config/brand-voice.json | jq '{tone, vocabulary, avoidWords}'
 ```
 
-**Every suggestion chip must reference products/activities that actually exist in `products.json`.** Do NOT invent product names from memory — if the site doesn't have snowboarding trips, don't suggest "skiing vs snowboarding." The product list is the ground truth.
+**Every suggestion chip must reference real knowledge entities in `knowledge.json`.** Do NOT invent product names from memory — if the site doesn't have snowboarding trips, don't suggest "skiing vs snowboarding." The knowledge entity list (`type: "product"` entities, falling back to all entities) is the ground truth.
 
 ## Process
 
 ### 1. Generate suggestions
 
-Based on the actual product catalog, personas, and brand voice, generate 8–12 quick suggestion chips that:
-- **Only reference products/categories that exist in products.json**
+Based on the actual knowledge entities, personas, and brand voice, generate 8–12 quick suggestion chips that:
+- **Only reference real knowledge entities that exist in knowledge.json**
 - Cover different personas (from personas.json)
 - Cover different intents (`comparison`, `recommendation`, `deep-dive`, `discovery`, `budget` — the same five the templates use; see the Intent coverage list below)
 - Use natural language a real user would type
