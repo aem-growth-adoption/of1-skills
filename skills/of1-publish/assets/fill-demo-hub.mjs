@@ -201,7 +201,8 @@ function findEdsPages(repoDir, branch, owner, repo) {
       const name = path.basename(line, path.extname(line));
       if (name === 'nav' || name === 'footer') continue;
       const label = titleCase(name.replace(/-/g, ' ').replace('prototype ', ''));
-      pages.push({ url: `${previewBase}/${name}`, label });
+      const url = name === 'index' ? previewBase : `${previewBase}/${name}`;
+      pages.push({ url, label });
     }
   }
 
@@ -216,7 +217,8 @@ function findEdsPages(repoDir, branch, owner, repo) {
         const slug = path.basename(file, '.html');
         if (slug === 'nav' || slug === 'footer') continue;
         const label = titleCase(slug.replace(/-/g, ' ').replace('prototype ', ''));
-        pages.push({ url: `${previewBase}/${slug}`, label });
+        const url = slug === 'index' ? previewBase : `${previewBase}/${slug}`;
+        pages.push({ url, label });
       }
     }
   }
