@@ -45,7 +45,7 @@ Selected by `OF1_TG_MODE`. The orchestrator runs the three phases in order: `bas
 Available before invocation, in addition to the env above:
 
 - **Sample/preview realism (optional, best-effort) → `$OF1_DEMO_REPO/of1/config/knowledge.json`** — real knowledge entities, facts, and images to make the `sample.json` gallery previews look close to reality. This is produced by the **parallel** `of1-extract-content` skill and **may not be on disk yet** when you run — treat it as nice-to-have, **never a blocker**. When present, it's a **bare JSON array** (`[ {…}, {…} ]`), NOT `{"knowledge": […]}` — so `jq '.[] | .title'` works and `jq '.knowledge…'` errors. Per-item keys: `id, type, title, description, keywords, facts, images, persona` (`type` is one of `product|feature|faq|testimonial`). Prefer `type == "product"` entities for product-like preview realism, falling back to all entities when there are none. See the Sample-data section below.
-- Design tokens → `DESIGN.json` (from the replica/extraction stage) — resolve its path via `of1-demo-orchestrator/knowledge/design-tokens-resolution.md` (`$OF1_DEMO_REPO/stardust/current/DESIGN.json` OR `$OF1_DEMO_REPO/DESIGN.json`)
+- Design tokens → `DESIGN.json` (from the replica/extraction stage) — resolve its path via `of1-integration/knowledge/design-tokens-resolution.md` (`$OF1_DEMO_REPO/stardust/current/DESIGN.json` OR `$OF1_DEMO_REPO/DESIGN.json`)
 - Demo narrative → `$OF1_STATE_DIR/of1-discovery-output.md` (from `of1-discovery`)
 - Pixel-perfect prototypes → `$OF1_DEMO_REPO/deliverables/prototype-*.html` (from the replica stage), when they exist — self-contained HTML with inline `<style>`; the primary visual/structural reference, read directly
 - Prototype screenshots → captured by the orchestrator directly from the static `deliverables/prototype-*.html` files (see "Pre-fan-out" in the orchestrator skill), when prototypes exist
@@ -191,7 +191,7 @@ Both modes are normal — pick by `$HAS_PROTOTYPES`, don't treat a missing proto
 
 - **Mode A — prototypes exist (`$HAS_PROTOTYPES = true`):** the demo built pixel-perfect prototypes (Track A / the full crawl-and-recreate flow).
   1. Prototype inline CSS — the `<style>` block inside `deliverables/prototype-*.html` (search `:root { … }` + custom-property declarations). Canonical token source here — extract directly.
-  2. `DESIGN.json` — resolve its path via `of1-demo-orchestrator/knowledge/design-tokens-resolution.md`. Tiebreaker / fill-in for tokens not in the prototypes. Schema drifts between runs; tolerate variation.
+  2. `DESIGN.json` — resolve its path via `of1-integration/knowledge/design-tokens-resolution.md`. Tiebreaker / fill-in for tokens not in the prototypes. Schema drifts between runs; tolerate variation.
 
   Don't trust `DESIGN.json` as the sole source — the prototypes are the visually-validated ground truth.
 

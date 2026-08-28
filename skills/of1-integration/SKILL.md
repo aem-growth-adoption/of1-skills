@@ -43,7 +43,7 @@ After it succeeds, read `<STATE_DIR>/setup.json` for `stateDir`/`of1Repo` and `<
 ```bash
 cd "$OF1_DEMO_REPO"
 # Resolve DESIGN.json via the shared resolver: stardust/current/DESIGN.json. See
-# of1-demo-orchestrator/knowledge/design-tokens-resolution.md
+# of1-integration/knowledge/design-tokens-resolution.md
 HAS_DESIGN_JSON=false
 [ -f stardust/current/DESIGN.json ] && HAS_DESIGN_JSON=true
 echo "DESIGN.json present: $HAS_DESIGN_JSON"
