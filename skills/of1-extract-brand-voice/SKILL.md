@@ -26,7 +26,7 @@ cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
 
-Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `brand-voice.json`.
+Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `brand-voice.json`.
 
 ## Source resolution — live site vs replica
 

@@ -30,7 +30,7 @@ fi
 # If neither DESIGN.json location nor styles/styles.css exists, stop — do not invent tokens.
 ```
 
-Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `cta-template.json`.
+Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `cta-template.json`.
 
 ## Output
 

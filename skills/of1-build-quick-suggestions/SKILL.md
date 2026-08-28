@@ -20,7 +20,7 @@ cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
 
-Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `suggestions.json`.
+Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `suggestions.json`.
 
 This skill does not crawl the site — it is a pure transform over `knowledge.json`, `personas.json`,
 and `brand-voice.json` (already produced by `of1-extract-content` and `of1-extract-brand-voice`, which

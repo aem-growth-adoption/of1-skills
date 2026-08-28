@@ -47,7 +47,7 @@ If discovery output exists, read it to focus on the right product category:
 cat "$OF1_STATE_DIR/of1-discovery-output.md" 2>/dev/null
 ```
 
-Schema reference: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` — § `knowledge.json`, § `personas.json`.
+Schema reference: `of1-integration/knowledge/worker-config-schemas.md` — § `knowledge.json`, § `personas.json`.
 
 ## Source resolution — live site vs replica
 
@@ -210,7 +210,7 @@ Mapping rules:
 
 `intentProfile` (object, 0–1 per axis): where this persona typically sits on the shopping-intent funnel — `explore` (browsing broadly, no target yet), `research` (digging into specs/details), `compare` (weighing alternatives), `purchase` (ready to buy), `deals` (price/promo-sensitive), `support` (needs help/service, post-sale). Infer it from the persona's `priorities`/`description` — give each persona a clearly dominant axis (≥0.7) and at least one clearly low axis (≤0.3) so personas render as visibly different shapes rather than a uniform hexagon.
 
-This isn't just cosmetic: it renders as the demo's Intent Map radar, but when a viewer clicks "Personalize" for that persona, this exact value is sent to the OF1 worker's personalize endpoint and directly drives real generation — which template gets selected (from the catalog's candidates for the resolved intent), the RAG retrieval mode, and the intent context put in the LLM prompt (see `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `personas.json` for the full trace). Get it wrong and the persona won't just look wrong on the radar — it'll get shown content for the wrong intent.
+This isn't just cosmetic: it renders as the demo's Intent Map radar, but when a viewer clicks "Personalize" for that persona, this exact value is sent to the OF1 worker's personalize endpoint and directly drives real generation — which template gets selected (from the catalog's candidates for the resolved intent), the RAG retrieval mode, and the intent context put in the LLM prompt (see `of1-integration/knowledge/worker-config-schemas.md` § `personas.json` for the full trace). Get it wrong and the persona won't just look wrong on the radar — it'll get shown content for the wrong intent.
 
 `keywords` (10–12 strings) are matched against the user's query. Without them, persona matching fails silently and defaults to the first persona.
 

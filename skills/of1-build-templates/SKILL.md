@@ -51,7 +51,7 @@ Available before invocation, in addition to the env above:
 - Prototype screenshots → captured by the orchestrator directly from the static `deliverables/prototype-*.html` files (see "Pre-fan-out" in the orchestrator skill), when prototypes exist
 - **Fallback (no prototypes — e.g. `of1-integration` running against an existing EDS site):** `DESIGN.json` (resolved via `design-tokens-resolution.md`) + live screenshots of the site's own rendered EDS pages (captured by the `of1-integration` orchestrator the same way Track A captures EDS reference screenshots) + the repo's real `styles/styles.css` tokens
 
-Worker-side schemas: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `templates.json`, § `knowledge.json`.
+Worker-side schemas: `of1-integration/knowledge/worker-config-schemas.md` § `templates.json`, § `knowledge.json`.
 
 ## Sample data — realistic gallery previews (best-effort)
 
