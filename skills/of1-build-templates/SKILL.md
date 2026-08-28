@@ -44,14 +44,14 @@ Selected by `OF1_TG_MODE`. The orchestrator runs the three phases in order: `bas
 
 Available before invocation, in addition to the env above:
 
-- **Sample/preview realism (optional, best-effort) → `$OF1_DEMO_REPO/of1/config/products.json`** — real products, prices, and counts to make the `sample.json` gallery previews look close to reality. This is produced by the **parallel** `of1-extract-content` skill and **may not be on disk yet** when you run — treat it as nice-to-have, **never a blocker**. When present, it's a **bare JSON array** (`[ {…}, {…} ]`), NOT `{"products": […]}` — so `jq '.[] | .price'` works and `jq '.products…'` errors. Per-item keys: `id, name, title, category, description, price, currency, keywords, highlights, features, images, url, persona, useCase`. `price` may be a string (`"499.00"`) or a number (`14.99`). See the Sample-data section below.
+- **Sample/preview realism (optional, best-effort) → `$OF1_DEMO_REPO/of1/config/knowledge.json`** — real knowledge entities, facts, and images to make the `sample.json` gallery previews look close to reality. This is produced by the **parallel** `of1-extract-content` skill and **may not be on disk yet** when you run — treat it as nice-to-have, **never a blocker**. When present, it's a **bare JSON array** (`[ {…}, {…} ]`), NOT `{"knowledge": […]}` — so `jq '.[] | .title'` works and `jq '.knowledge…'` errors. Per-item keys: `id, type, title, description, keywords, facts, images, persona` (`type` is one of `product|feature|faq|testimonial`). Prefer `type == "product"` entities for product-like preview realism, falling back to all entities when there are none. See the Sample-data section below.
 - Design tokens → `DESIGN.json` (from the replica/extraction stage) — resolve its path via `of1-demo-orchestrator/knowledge/design-tokens-resolution.md` (`$OF1_DEMO_REPO/stardust/current/DESIGN.json` OR `$OF1_DEMO_REPO/DESIGN.json`)
 - Demo narrative → `$OF1_STATE_DIR/of1-discovery-output.md` (from `of1-discovery`)
 - Pixel-perfect prototypes → `$OF1_DEMO_REPO/deliverables/prototype-*.html` (from the replica stage), when they exist — self-contained HTML with inline `<style>`; the primary visual/structural reference, read directly
 - Prototype screenshots → captured by the orchestrator directly from the static `deliverables/prototype-*.html` files (see "Pre-fan-out" in the orchestrator skill), when prototypes exist
 - **Fallback (no prototypes — e.g. `of1-integration` running against an existing EDS site):** `DESIGN.json` (resolved via `design-tokens-resolution.md`) + live screenshots of the site's own rendered EDS pages (captured by the `of1-integration` orchestrator the same way Track A captures EDS reference screenshots) + the repo's real `styles/styles.css` tokens
 
-Worker-side schemas: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `templates.json`, § `products.json`.
+Worker-side schemas: `of1-demo-orchestrator/knowledge/worker-config-schemas.md` § `templates.json`, § `knowledge.json`.
 
 ## Sample data — realistic gallery previews (best-effort)
 
@@ -60,7 +60,7 @@ The templates you author are slot-based **shells**. At runtime the OF1 worker fi
 Because of that, sample data is **nice-to-have realism, not a correctness gate**:
 
 - **Always generate all 15 templates**, every intent included. Missing preview data is never a reason to skip or block a template — a shell with placeholder values is still a valid, deployable template.
-- **When `of1/config/products.json` is on disk, prefer its real values** (names, prices, categories) for `sample.json` so the gallery looks like the real store. `price` may be a string or a number — read it type-agnostically.
+- **When `of1/config/knowledge.json` is on disk, prefer its real values** (titles, descriptions, facts — preferring `type == "product"` entities, falling back to all entities) for `sample.json` so the gallery looks like the real store.
 - **When it isn't there yet** (it's written by the parallel `of1-extract-content` skill and ordering isn't guaranteed), use plausible placeholder values. Don't wait on it, don't fail on it.
 - This applies equally to the `budget` intent — generate its `price-tiers` / `cost-breakdown` / `roi-story` shells regardless; use real prices for the preview if available, placeholders otherwise.
 
@@ -359,7 +359,7 @@ For each of the 3 variations, write all 4 files.
 
 **Sample data rules:**
 - **ASCII-safe text only** — no accented characters (`é`, `ñ`), no emoji (`🏄`, `⛷️`). Some downstream tooling chokes on non-ASCII. If you're tempted to use an emoji for an icon slot, use a short text label instead.
-- **Image URLs** — **prefer the URLs already in `of1/config/products.json` when it's on disk** (its `images[]` are the real, self-hosted `.aem.page/media/...` URLs `of1-extract-content` uploaded + previewed — the same ones the worker will emit at runtime, so the gallery preview matches production). Fall back to the live site's real image URLs from the prototype HTML (e.g. `https://wknd.site/content/dam/wknd/...`) only when `products.json` isn't present yet or lacks an image for that slot. Either way: do NOT invent URLs from memory, do NOT use AEM author/publish URLs (`author-p*.adobeaemcloud.com`), do NOT use EDS `hlx.page` content-dam paths.
+- **Image URLs** — **prefer the URLs already in `of1/config/knowledge.json` when it's on disk** (preferring `type == "product"` entities, falling back to all entities; its `images[]` are the real, self-hosted `.aem.page/media/...` URLs `of1-extract-content` uploaded + previewed — the same ones the worker will emit at runtime, so the gallery preview matches production). Fall back to the live site's real image URLs from the prototype HTML (e.g. `https://wknd.site/content/dam/wknd/...`) only when `knowledge.json` isn't present yet or lacks an image for that slot. Either way: do NOT invent URLs from memory, do NOT use AEM author/publish URLs (`author-p*.adobeaemcloud.com`), do NOT use EDS `hlx.page` content-dam paths.
 - **Realistic but simple text** — brand-relevant, short, no placeholder "lorem ipsum."
 
 ### Validate JSON before declaring done

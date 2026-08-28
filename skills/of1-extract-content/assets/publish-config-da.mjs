@@ -18,7 +18,7 @@
 //     --repo of1-demo-orchestrator \
 //     --branch wknd-2 \
 //     [--config-dir of1/config] \
-//     [--files products,features,faqs] \
+//     [--files knowledge] \
 //     [--token-file path/to/token.json]
 //
 // Token resolution order (first that works wins):
@@ -65,14 +65,14 @@ export const FILE_FIELDS = {
   },
   knowledge: {
     idFrom: 'title',
-    order: ['title', 'description', 'keywords', 'facts', 'images', 'persona', 'useCase'],
+    order: ['title', 'type', 'description', 'keywords', 'facts', 'images', 'persona'],
     list: new Set(['keywords', 'facts']),
     images: new Set(['images']),
   },
 };
 
 function parseArgs(argv) {
-  const args = { configDir: 'of1/config', files: ['products', 'features', 'faqs'] };
+  const args = { configDir: 'of1/config', files: ['knowledge'] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--owner') args.owner = argv[++i];

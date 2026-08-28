@@ -299,10 +299,11 @@ function main() {
 
   const previewBase = `https://${branch}--${repo}--${owner}.aem.page`;
 
-  let products = loadJson(path.join(repoDir, 'of1', 'config', 'products.json'));
-  if (products !== null && typeof products === 'object' && !Array.isArray(products)) {
-    products = products.products ?? [];
+  let knowledge = loadJson(path.join(repoDir, 'of1', 'config', 'knowledge.json'));
+  if (knowledge !== null && typeof knowledge === 'object' && !Array.isArray(knowledge)) {
+    knowledge = knowledge.knowledge ?? [];
   }
+  const products = Array.isArray(knowledge) ? knowledge.filter((e) => e && e.type === 'product') : [];
   let personas = loadJson(path.join(repoDir, 'of1', 'config', 'personas.json'));
   if (personas !== null && typeof personas === 'object' && !Array.isArray(personas)) {
     personas = personas.personas ?? [];

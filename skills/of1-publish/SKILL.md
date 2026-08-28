@@ -52,7 +52,7 @@ The OF1 worker syncs config from the EDS repo directly:
 1. Config JSON files are committed to git at `/of1/config/*.json`
 2. EDS serves them as static files at `${PREVIEW_BASE}/of1/config/{file}.json`
 3. `POST ${WORKER_URL}/api/tenants/${TENANT_ID}/sync` tells the worker to fetch each config from EDS and store in R2
-4. The worker auto-indexes vectors for products, features, and faqs
+4. The worker auto-indexes vectors from the knowledge doc's entities
 
 **Tenant ID format:** `{branch}--{repo}--{owner}` (e.g. `frescopa--labs-abc123--of1-labs`)
 
@@ -61,7 +61,7 @@ The OF1 worker syncs config from the EDS repo directly:
 ### 1. Verify config files exist
 
 ```bash
-for f in brand-voice products personas use-cases features faqs suggestions cta-template of1-endpoint; do
+for f in brand-voice knowledge personas suggestions cta-template of1-endpoint; do
   if [ -f "of1/config/${f}.json" ]; then
     echo "  ✓ ${f}.json ($(wc -c < "of1/config/${f}.json") bytes)"
   else
@@ -152,7 +152,7 @@ if [ "$READY" != "true" ]; then
 fi
 ```
 
-Required for `ready: true` (from the worker's `isTenantReady`, `worker/src/tenant.js`): `hasProducts`, `hasPersonas`, `hasUseCases`, `hasFeatures`, `hasFaqs`, `hasSuggestions`, `hasOf1Endpoint`, `hasCtaTemplate` — ALL — plus **either** `hasBlockGuide` **or** `hasTemplates` (this pipeline ships templates). Note: `hasBrandVoice` is surfaced in status but is NOT part of the ready gate (still generate it — it drives prompt quality). To see which failed: `echo "$STATUS" | jq -r '.config | to_entries[] | select(.value == false) | .key'`.
+Required for `ready: true` (from the worker's `isTenantReady`, `worker/src/tenant.js`): `hasKnowledge` (or, for legacy tenants, `hasProducts` + `hasFeatures` + `hasFaqs`), plus `hasSuggestions`, `hasOf1Endpoint`, `hasCtaTemplate` — and **either** `hasBlockGuide` **or** `hasTemplates` (this pipeline ships templates). `hasPersonas`/`hasUseCases` are NOT part of the gate. `hasBrandVoice` is surfaced but not gated (still generate it — it drives prompt quality). To see which failed: `echo "$STATUS" | jq -r '.config | to_entries[] | select(.value == false) | .key'`.
 
 ### 7. Test generation
 
@@ -201,26 +201,27 @@ playwright-cli eval "() => (document.querySelector('footer .footer') ? 'footer O
 
 **If fails:** the site's `content/nav.html`/`content/footer.html` didn't push correctly, or the preview hasn't picked up the latest deploy yet — re-check Stage 2c (`of1-snowflake`, for the full e2e pipeline, which produces the converted site's nav/footer chrome) or the existing site's own chrome (for `of1-integration`, where nav/footer already existed before this pipeline ran).
 
-### Check 3: All products have ≥4 images
+### Check 3: All product entities have ≥4 images
 
 ```bash
 python3 << 'EOF'
 import json, sys
 
-with open('of1/config/products.json') as f:
-    products = json.load(f)
+with open('of1/config/knowledge.json') as f:
+    entities = json.load(f)
 
+products = [e for e in entities if e.get('type') == 'product']
 all_good = True
 for p in products:
     images = p.get('images', [])
     if len(images) < 4:
-        print(f"  ✗ {p.get('name', 'Unknown')}: only {len(images)} image(s)")
+        print(f"  ✗ {p.get('title', 'Unknown')}: only {len(images)} image(s)")
         all_good = False
 
 if not all_good:
-    print("\n✗ FAIL: Some products have fewer than 4 images")
+    print("\n✗ FAIL: Some product entities have fewer than 4 images")
     sys.exit(1)
-print(f"\n✓ All {len(products)} products have ≥4 images")
+print(f"\n✓ All {len(products)} product entities have ≥4 images")
 EOF
 ```
 
@@ -325,7 +326,7 @@ Only mark this deploy step (`of1-publish`) done if ALL 6 pass:
 |---|-------|
 | 1 | OF1 page loads with styled search UI |
 | 2 | OF1 nav/footer renders via the standard header/footer blocks (concrete element checks) |
-| 3 | All products have ≥4 images |
+| 3 | All product entities have ≥4 images |
 | 4 | Template catalog has 15 of1-* entries across all 5 intents |
 | 5 | All deliverable URLs return 200 |
 | 6 | `/api/generate` returns ≥2 sections (end-to-end worker test) |

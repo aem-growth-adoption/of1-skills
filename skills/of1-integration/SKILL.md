@@ -102,7 +102,7 @@ of1-build-templates(assemble)           │
 | Extraction done (ran or skipped) | `of1-build-templates`(base) AND `of1-style-generative-block` AND `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-cta-template` (5 dispatches in one message) |
 | `of1-build-templates`(base) done | `of1-build-templates`(intent-comparison…intent-discovery) (5 intent dispatches in one message) |
 | `of1-build-templates`(intent-*) all done | `of1-build-templates`(assemble) (1 dispatch, sequential) |
-| `of1-extract-brand-voice` + `of1-extract-content` done | `of1-build-quick-suggestions` (needs products.json + brand-voice.json) |
+| `of1-extract-brand-voice` + `of1-extract-content` done | `of1-build-quick-suggestions` (needs knowledge.json + brand-voice.json) |
 | `of1-extract-brand-voice` + `of1-extract-content` + `of1-build-quick-suggestions` + `of1-build-cta-template` ALL done | `config-review` (inline — do NOT run until all four are confirmed done) |
 | `of1-build-templates`(assemble) + `of1-style-generative-block` + `config-review` ALL done | `of1-publish` |
 
@@ -136,7 +136,7 @@ In standalone mode there is no Stage 2 chain and no gate — all five siblings (
 
 **Common mistakes to avoid** (same class of mistake `of1-demo-orchestrator` already warns about):
 - Do NOT run `config-review` before ALL of `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template` return `done`.
-- Do NOT run `of1-build-quick-suggestions` before BOTH `of1-extract-brand-voice` and `of1-extract-content` return — it needs products.json + brand-voice.json.
+- Do NOT run `of1-build-quick-suggestions` before BOTH `of1-extract-brand-voice` and `of1-extract-content` return — it needs knowledge.json + brand-voice.json.
 - Do NOT dispatch `of1-build-templates`(intent-*) agents before `of1-build-templates`(base) returns — they read its output.
 
 ## Dispatch
