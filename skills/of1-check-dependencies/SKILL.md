@@ -199,7 +199,7 @@ else
 fi
 ```
 
-### 5. Ensure `.hlxignore` does NOT block `of1/config/`
+### 6. Ensure `.hlxignore` does NOT block `of1/config/`
 
 The OF1 extension reads config files from the EDS CDN (`/of1/config/*.json`).
 The boilerplate `.hlxignore` must NOT include `of1/` or `of1/config/`:
@@ -215,7 +215,7 @@ fi
 **Do NOT add `of1/` to `.hlxignore`** — the config files must be served on
 the CDN.
 
-### 6. Write `of1-endpoint.json` + `config.json` + push (skip if continuing and files already committed)
+### 7. Write `of1-endpoint.json` + `config.json` + push (skip if continuing and files already committed)
 
 `config.json` is a small served meta + tenant-mode file. It carries the target `domain`
 (which can differ from the EDS host) plus owner/repo/branch, so same-origin client-side
@@ -250,7 +250,7 @@ if ! git diff --cached --quiet; then
 fi
 ```
 
-### 7. Write `repo-config.json`
+### 8. Write `repo-config.json`
 
 ```bash
 mkdir -p "$OF1_STATE_DIR"
