@@ -173,6 +173,32 @@ else
 fi
 ```
 
+### 5. AEM preview authorization check (da-blocks-slots requirement)
+
+`of1-build-templates` authors templates as DA documents that MUST be EDS-previewed before the OF1
+worker can sync them (a DA write with no preview is invisible to `materializeDaTemplates()`). AEM
+preview/publish authorization is a **separate grant from DA write access** — the design doc recorded a
+project-wide `403 [admin] not authorized` on `of1-labs` with a valid DA token. Probe it up front so the
+pipeline fails here with a clear provisioning message rather than deep inside `assemble`:
+
+```bash
+AEM_TOKEN="${AEM_TOKEN:-$DA_TOKEN}"
+PV_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+  "https://admin.hlx.page/status/${OWNER}/${REPO}/main/index" \
+  -H "Authorization: Bearer $AEM_TOKEN")
+# status returns the preview/live/code authorization triplet; a 403 here is the
+# org-level gap. Treat non-200 as a hard prerequisite failure for the
+# da-blocks-slots template flow.
+if [ "$PV_STATUS" = "200" ]; then
+  echo "✓ AEM preview authorization present on ${OWNER}/${REPO}"
+else
+  echo "✗ FAIL: AEM preview authorization missing (status ${PV_STATUS}) on ${OWNER}/${REPO}." >&2
+  echo "  This account can write to DA but cannot preview/publish, so da-blocks-slots templates" >&2
+  echo "  would sync as zero. Provision AEM preview/publish rights on the org before proceeding." >&2
+  exit 1
+fi
+```
+
 ### 5. Ensure `.hlxignore` does NOT block `of1/config/`
 
 The OF1 extension reads config files from the EDS CDN (`/of1/config/*.json`).

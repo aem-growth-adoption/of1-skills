@@ -55,10 +55,35 @@ function loadText(p) {
   }
 }
 
-function countTemplates(repoDir) {
-  const tplDir = path.join(repoDir, 'templates');
-  if (!fs.existsSync(tplDir)) return 0;
-  return fs.readdirSync(tplDir).filter((f) => f.startsWith('of1-') && f.endsWith('.html')).length;
+// da-blocks-slots: templates are DA documents, not git-committed files. The
+// of1-publish SKILL writes their names (one per line, no extension) to
+// /tmp/da-templates.txt (mirroring the /tmp/da-pages.txt convention). Read that
+// list; return [] when absent so the hub still renders.
+function loadDaTemplateNames() {
+  try {
+    return fs
+      .readFileSync('/tmp/da-templates.txt', 'utf8')
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// Render one "edit in DA" link per template — the authoring showcase.
+function renderDaTemplates(names, owner, repo, previewBase) {
+  if (!names.length) return '  <!-- no DA templates listed -->';
+  return names
+    .map((name) => {
+      const edit = `https://da.live/edit#/${owner}/${repo}/templates/${name}`;
+      const preview = `${previewBase}/templates/${htmlEscape(name)}.plain.html`;
+      return (
+        `  <a href="${edit}"><span class="badge badge--orange">Edit</span> ${htmlEscape(name)}</a>\n` +
+        `  <a href="${preview}"><span class="badge badge--green">Preview</span> ${htmlEscape(name)}.plain.html</a>`
+      );
+    })
+    .join('\n');
 }
 
 function renderAudit(stateDir) {
@@ -321,7 +346,8 @@ function main() {
   const narrative = extractNarrative(discovery);
   const focus = extractFocus(discovery);
 
-  const numTemplates = countTemplates(repoDir);
+  const daTemplateNames = loadDaTemplateNames();
+  const numTemplates = daTemplateNames.length;
   const numSuggestions =
     suggestions !== null && typeof suggestions === 'object' && !Array.isArray(suggestions)
       ? (suggestions.suggestions ?? []).length
@@ -330,7 +356,7 @@ function main() {
   const edsPages = findEdsPages(repoDir, branch, owner, repo);
 
   const of1Url = `${previewBase}/of1`;
-  const galleryUrl = `${previewBase}/gallery/index.html`;
+  const daTemplatesUrl = `https://da.live/#/${owner}/${repo}/templates`;
 
 
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -348,7 +374,8 @@ function main() {
     '{{NARRATIVE}}': htmlEscape(narrative),
     '{{NUM_PRODUCTS}}': String(products.length),
     '{{OF1_URL}}': of1Url,
-    '{{GALLERY_URL}}': galleryUrl,
+    '{{DA_TEMPLATES_URL}}': daTemplatesUrl,
+    '{{DA_TEMPLATES}}': renderDaTemplates(daTemplateNames, owner, repo, previewBase),
     '{{PREVIEW_BASE}}': previewBase,
     '{{DISCOVERY}}': renderDiscovery(repoDir, previewBase),
     '{{PROTOTYPES}}': prototypesHtml,
