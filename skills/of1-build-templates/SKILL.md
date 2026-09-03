@@ -86,6 +86,24 @@ slot-specific, single-template block.**
 4. **New blocks must be positional** (read `block.children` by index, like `cards.js`). Never author the
    snowflake label/value convention (`cells[0]`=name, `cells[1]`=value) — it decorates into the wrong
    shape here.
+5. **Keep alignment consistent within a template.** A generated page stacks several blocks in one
+   `<main>`; they must read as one designed layout, not a pile of mismatched sections. Decide a single
+   alignment intent per template (usually centered for these generative landing pages) and make **every**
+   block obey it — heading, body, media, and CTAs. Concretely: if most blocks in the template center their
+   content, do not leave one block left-aligned (the common offender is a `hero`/`featured` block whose
+   Stage-2 CSS defaults to a left image + left text while the `cards`/`columns` below it center). When a
+   reused block's own CSS fights the template's alignment, either pick a variant that matches, or add a new
+   general block that centers — **never** restyle the reused block (rule 2). New blocks you author must
+   center their content by default so they compose cleanly with the centered majority. The alignment
+   decision is per-template and must be recorded in the block plan so every intent agent composes the same
+   way.
+6. **Wire any search / query input to `/of1`.** If a template authors a search input, "ask a question"
+   field, or a search-styled CTA, its submit must navigate to the site's generative page at `/of1` (carry
+   the typed text as `?q=<encoded>` when there is one) — a raw `<input>` that goes nowhere is a dead end on
+   a generated page. Prefer a whole-cell `<a href="/of1">` CTA (a real link the worker keeps `static`), or
+   author the input inside a `<form action="/of1" method="get">` with the field named `q`. This is the one
+   correct destination for on-page search in an OF1 demo; never leave it unbound and never point it at the
+   brand's original search endpoint.
 
 ## The da-blocks-slots authored-template contract
 
@@ -138,7 +156,10 @@ Selected by `OF1_TG_MODE`. The orchestrator runs them in order: `base` → `inte
 ### Phase: `base`
 
 1. **Determine use cases → intents → block plan.** Read discovery + knowledge; decide, per intent, the
-   template shapes and the block palette (reuse vs new) per Block Strategy.
+   template shapes and the block palette (reuse vs new) per Block Strategy. Also fix the **alignment
+   intent** here (usually `center`) and record it in the plan (CRITICAL RULE 5): when a reused block's
+   Stage-2 CSS won't honor it, note the matching variant to use or flag that a centered new block is
+   needed, so no template ships with one stray left-aligned block among centered ones.
 2. **Inventory the reusable blocks:**
    ```bash
    export TENANT_REPO_DIR="$OF1_DEMO_REPO"
@@ -198,7 +219,8 @@ For each template variation this intent's plan calls for:
 1. **Compose the document** from the planned blocks (reused + any new ones, all now deployed), filled
    with realistic example content per the contract above. Author image-role cells (`<img>`/`<picture>`)
    where the worker+LLM should swap a real image; author label/value rows for spec/price tables; use
-   single-hyphen variants.
+   single-hyphen variants. Honor the plan's **alignment intent** across every block in the doc (CRITICAL
+   RULE 5), and point any search / query input at `/of1` (CRITICAL RULE 6).
 2. **Add the `section-metadata` block** with `Template Intent = <intent>`, a short structurally-distinct
    `Template Description`, and `Template Min Items` / `Template Max Items`. No commas in values.
 3. **Wrap** the body `<body><header></header><main><div>…</div></main><footer></footer></body>` and
