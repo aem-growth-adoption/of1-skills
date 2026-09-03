@@ -155,13 +155,17 @@ echo "✓ DA content cleaned"
 
 ```bash
 PREVIEW_URL="https://${BRANCH}--${REPO}--${OWNER}.aem.page/"
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$PREVIEW_URL")
+# Bound every probe: an unbounded curl here can hang install-dependencies. Cap
+# the wait to ~60s total — this check only WARNs on non-200 and proceeds
+# regardless (Code Sync may still be catching up), so a long block only risks
+# tripping the 3-minute install-dependencies watchdog for no benefit.
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 15 "$PREVIEW_URL")
 
 if [ "$STATUS" != "200" ]; then
   echo "WARN: Preview URL returned $STATUS — waiting for Code Sync..."
-  for i in $(seq 1 30); do
+  for i in $(seq 1 12); do
     sleep 5
-    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$PREVIEW_URL")
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 15 "$PREVIEW_URL")
     [ "$STATUS" = "200" ] && break
   done
 fi
