@@ -97,26 +97,31 @@ slot-specific, single-template block.**
    center their content by default so they compose cleanly with the centered majority. The alignment
    decision is per-template and must be recorded in the block plan so every intent agent composes the same
    way.
-6. **Compose a full page, not two blocks — 2–6 content sections, target 4–5.** A template is a landing
-   page a visitor lands on, not a snippet. Author **at least 2 and at most 6** content blocks per template
-   (excluding `section-metadata`), and **aim for 4–5**. Two blocks is the hard floor for the sparsest
-   intent only (e.g. a bare deep-dive), never the default. Build the page as: a **lead** block
-   (`hero`/`featured`), the **primary** content block (`cards`/`comparison-grid`), then **supporting**
-   sections that make it feel complete — an intro/framing `columns`, a secondary `cards` or `stat-row`, a
-   testimonial/quote, and a closing CTA band. Pull every extra section from **reused** blocks first (Block
-   Strategy order); never invent a slot-specific block just to pad. Per-intent starting recipes (extend,
-   don't shrink):
-   - **recommendation:** `hero`/`featured` pick → framing `columns` → alternatives `cards` → CTA band. (4)
-   - **comparison:** `hero`/`featured` framing → `comparison-grid` → supporting `cards` of the options →
+6. **Size the page to its purpose — richness is not fixed.** 1–6 content sections (excluding
+   `section-metadata`). Match the count to what the template is *for*, keyed off its `Template Max Items`:
+   - **Quick / direct answer** (`Max Items ≤ 2` — a single deep-dive, a focused two-item comparison): **1–2
+     blocks is fine.** Do not pad a direct answer into a full landing page; a bare spec sheet or a lead +
+     one content block is complete.
+   - **Exploratory / landing** (`Max Items ≥ 3` — recommendation, budget, discovery grids): **target 4–5**
+     (max 6). A grid of options that lands as *only* a lead + grid feels like a stub — build it out.
+   For an exploratory template, compose: a **lead** block (`hero`/`featured`), the **primary** content
+   block (`cards`/`comparison-grid`), then **supporting** sections that make it feel complete — an
+   intro/framing `columns`, a secondary `cards` or `stat-row`, a testimonial/quote, a closing CTA band.
+   Pull every extra section from **reused** blocks first (Block Strategy order); never invent a
+   slot-specific block just to pad. Per-intent starting recipes:
+   - **recommendation** (exploratory): `hero`/`featured` pick → framing `columns` → alternatives `cards` →
      CTA band. (4)
-   - **deep-dive:** `hero`/`featured` → intro `columns` → `comparison-grid.simple` spec sheet → related
-     `cards` → CTA band. (4–5; 2-block bare spec sheet allowed only when the site's block vocabulary can't
-     support more.)
-   - **budget:** `featured` best-value → priced `cards` → one pick's price-breakdown `comparison-grid` →
-     CTA band. (4)
-   - **discovery:** `hero`/`featured` → filter/framing `columns` → browse `cards` grid → CTA band. (4)
-   Keep alignment consistent across all of them (rule 5). `assemble` **rejects** any template with fewer
-   than 2 content blocks and **warns** on fewer than 3.
+   - **comparison:** focused 2-item → `hero`/`featured` framing → `comparison-grid` (2 blocks, fine); or
+     build out with supporting `cards` of the options + CTA band. (2–4)
+   - **deep-dive** (quick answer): `hero`/`featured` → `comparison-grid.simple` spec sheet (2 blocks, fine);
+     add an intro `columns` / related `cards` only if it genuinely enriches the answer. (1–3)
+   - **budget** (exploratory): `featured` best-value → priced `cards` → one pick's price-breakdown
+     `comparison-grid` → CTA band. (4)
+   - **discovery** (exploratory): `hero`/`featured` → filter/framing `columns` → browse `cards` grid → CTA
+     band. (4)
+   Keep alignment consistent across all of them (rule 5). `assemble` **rejects** an empty template (0
+   content blocks) and **warns** when an exploratory template (`Max Items ≥ 3`) has fewer than 3 blocks;
+   quick-answer templates are never warned for being small.
 7. **Wire any search / query input to `/of1`.** If a template authors a search input, "ask a question"
    field, or a search-styled CTA, its submit must navigate to the site's generative page at `/of1` (carry
    the typed text as `?q=<encoded>` when there is one) — a raw `<input>` that goes nowhere is a dead end on
@@ -176,9 +181,10 @@ Selected by `OF1_TG_MODE`. The orchestrator runs them in order: `base` → `inte
 ### Phase: `base`
 
 1. **Determine use cases → intents → block plan.** Read discovery + knowledge; decide, per intent, the
-   template shapes and the block palette (reuse vs new) per Block Strategy. For **each** template, plan a
-   **full page of 2–6 content sections, target 4–5** (CRITICAL RULE 6) — list the ordered block sequence
-   (lead → primary → supporting → CTA) in the plan so intent agents compose rich pages, not 2-block stubs.
+   template shapes and the block palette (reuse vs new) per Block Strategy. For **each** template, size it
+   to its purpose (CRITICAL RULE 6): quick-answer templates 1–2 blocks, exploratory templates target 4–5 —
+   list the ordered block sequence (lead → primary → supporting → CTA) in the plan so exploratory intents
+   compose rich pages, not 2-block stubs.
    Also fix the **alignment intent** here (usually `center`) and record it in the plan (CRITICAL RULE 5):
    when a reused block's Stage-2 CSS won't honor it, note the matching variant to use or flag that a
    centered new block is needed, so no template ships with one stray left-aligned block among centered ones.
@@ -242,8 +248,8 @@ For each template variation this intent's plan calls for:
    with realistic example content per the contract above. Author image-role cells (`<img>`/`<picture>`)
    where the worker+LLM should swap a real image; author label/value rows for spec/price tables; use
    single-hyphen variants. Honor the plan's **alignment intent** across every block in the doc (CRITICAL
-   RULE 5), compose 2–6 content sections (target 4–5, CRITICAL RULE 6), and point any search / query
-   input at `/of1` (CRITICAL RULE 7).
+   RULE 5), size the page to its purpose — quick-answer 1–2 blocks, exploratory target 4–5 (CRITICAL
+   RULE 6), and point any search / query input at `/of1` (CRITICAL RULE 7).
 2. **Add the `section-metadata` block** with `Template Intent = <intent>`, a short structurally-distinct
    `Template Description`, and `Template Min Items` / `Template Max Items`. No commas in values.
 3. **Wrap** the body `<body><header></header><main><div>…</div></main><footer></footer></body>` and
@@ -281,18 +287,22 @@ Run once after all 5 intent agents complete.
    block's row count and per-row cell count match what was authored (the harvested fingerprint). A 404
    means preview didn't materialize; a shape mismatch means markdown-intermediate mangling — fix before
    proceeding.
-3. **Enforce template richness (CRITICAL RULE 6).** Count the content blocks in each template's
-   `.plain.html` (every `div.<name>.block` under `<main>`, excluding `section-metadata`). **Reject** any
-   template with fewer than 2 — an intent agent produced a stub; do NOT ship it. **Warn** on exactly 2
-   (below the 4–5 target) so it's visible in the run.
+3. **Check template richness against purpose (CRITICAL RULE 6).** Count the content blocks in each
+   template's `.plain.html` (every block wrapper under `<main>`, excluding `section-metadata`). **Reject**
+   only an empty template (0 blocks). For **exploratory** templates (`Template Max Items ≥ 3`), **warn**
+   when the count is below 3 (they should target 4–5). **Quick-answer** templates (`Max Items ≤ 2`) are
+   fine at 1–2 and are not warned.
    ```bash
    for path in $(da_list templates | jq -r '.[].path' 2>/dev/null); do
      name="${path#/}"
      html=$(curl -sf "https://${BRANCH}--${REPO}--${OWNER}.aem.page/${name}.plain.html") || continue
-     # count block wrappers, drop section-metadata
+     # content blocks = block wrappers minus section-metadata
      n=$(printf '%s' "$html" | grep -oE 'class="[a-z0-9-]+ block"' | grep -vc 'section-metadata block')
-     [ "$n" -lt 2 ] && { echo "ABORT: $name has $n content block(s) (<2) — stub template, fix before assemble" >&2; exit 1; }
-     [ "$n" -eq 2 ] && echo "WARN: $name has only 2 content blocks (target 4–5)" >&2
+     [ "$n" -eq 0 ] && { echo "ABORT: $name has 0 content blocks — empty template, fix before assemble" >&2; exit 1; }
+     maxItems=$(printf '%s' "$html" | grep -oiE 'Template Max Items</div>[[:space:]]*<div>[[:space:]]*[0-9]+' | grep -oE '[0-9]+$' | head -1)
+     if [ -n "$maxItems" ] && [ "$maxItems" -ge 3 ] && [ "$n" -lt 3 ]; then
+       echo "WARN: exploratory $name (Max Items $maxItems) has only $n content blocks (target 4–5)" >&2
+     fi
    done
    ```
 4. **Write the tenant config** (git-committed — this is the only committed template artifact besides new
