@@ -57,6 +57,12 @@ Read `setup.json` for `owner`, `repo`, `branch`, `of1Repo`, and resolve
 token source `verify.sh` already found (do not re-derive it — `verify.sh` already validated it exists):
 
 ```bash
+# Never let a git op block on an interactive credential prompt — in the
+# container git has no TTY/askpass, so a push whose token is rejected/expired
+# would hang install-dependencies indefinitely. Force git to fail fast instead.
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=true GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=20
+
 SETUP=$(cat "$OF1_STATE_DIR/setup.json")
 OWNER=$(echo "$SETUP" | jq -r .owner)
 REPO=$(echo "$SETUP" | jq -r .repo)
@@ -140,12 +146,12 @@ fi
 Then clean DA content for the branch:
 
 ```bash
-DA_LIST=$(curl -s -H "Authorization: Bearer $DA_TOKEN" \
+DA_LIST=$(curl -s --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $DA_TOKEN" \
   "https://admin.da.live/list/${OWNER}/${REPO}" 2>/dev/null || echo "[]")
 
 echo "$DA_LIST" | jq -r '.[] | select(.ext == "html") | .name' 2>/dev/null | while read -r name; do
   [ -n "$name" ] || continue
-  curl -s -X DELETE -H "Authorization: Bearer $DA_TOKEN" \
+  curl -s --connect-timeout 10 --max-time 30 -X DELETE -H "Authorization: Bearer $DA_TOKEN" \
     "https://admin.da.live/source/${OWNER}/${REPO}/${name}.html" >/dev/null
 done
 echo "✓ DA content cleaned"
