@@ -213,7 +213,13 @@ cat > of1/config/config.json <<EOF
   "owner": "${OWNER}",
   "repo": "${REPO}",
   "branch": "${BRANCH}",
-  "knowledgeMode": "da-document"
+  "knowledgeMode": "da-document",
+  "contentIngestion": {
+    "enabled": true,
+    "includePaths": ["/of1/knowledge/**"],
+    "maxChunkTokens": 400,
+    "contentTopK": 4
+  }
 }
 EOF
 git add of1/config/of1-endpoint.json of1/config/config.json
@@ -223,6 +229,28 @@ if ! git diff --cached --quiet; then
   echo "✓ of1-endpoint.json + config.json committed + pushed"
 fi
 ```
+
+### 6b. Query-index coverage (verify-only)
+
+The worker discovers knowledge pages from the site-root `query-index.json`.
+Most repos index all pages by default, so `/of1/knowledge/**` is covered with
+no config. Only if this repo's `helix-query.yaml` *excludes* `/of1/**` do you
+need to add an include rule for `/of1/knowledge/**`:
+
+```bash
+if [ -f helix-query.yaml ] && grep -qE "exclude|/of1" helix-query.yaml; then
+  echo "⚠ helix-query.yaml has explicit rules — confirm /of1/knowledge/** is NOT excluded from the site index." >&2
+  echo "  If content.indexed is 0 after of1-publish's sync (Task 4), add an include for /of1/knowledge/** here." >&2
+else
+  echo "✓ default all-pages index covers /of1/knowledge/** — no helix-query change needed"
+fi
+```
+
+`contentIngestion.includePaths` (Step 6) is the single source of truth for the
+knowledge folder — do NOT author a second scope in `helix-query.yaml` in the
+normal case. The real coverage proof is `of1-publish`'s `content.indexed > 0`
+gate: a single knob (`includePaths`) plus one post-sync check, no second
+source of truth to drift.
 
 ### 7. Write `repo-config.json`
 
