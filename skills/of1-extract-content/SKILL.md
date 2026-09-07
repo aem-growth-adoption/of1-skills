@@ -124,10 +124,19 @@ for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
       });
       return { url: location.href, title, blocks };
     }"
-    # Append each result ({ url, title, blocks }) to
-    # of1/config/knowledge-pages.json (a JSON array). Skip pages whose
-    # blocks is empty. These are the same pages already opened — do not
-    # open extra tabs.
+    # Append each captured page to of1/config/knowledge-pages.json — use jq so
+    # the array stays valid JSON (never hand-concatenate); skip empty-blocks
+    # pages. Same tabs already open — do not open extra tabs.
+    CAP='<the { url, title, blocks } object the eval above returned, as JSON>'
+    if [ "$(jq '.blocks | length' <<<"$CAP")" -gt 0 ]; then
+      mkdir -p of1/config
+      if [ -f of1/config/knowledge-pages.json ]; then
+        jq --argjson p "$CAP" '. + [$p]' of1/config/knowledge-pages.json > of1/config/knowledge-pages.json.tmp \
+          && mv of1/config/knowledge-pages.json.tmp of1/config/knowledge-pages.json
+      else
+        jq -n --argjson p "$CAP" '[$p]' > of1/config/knowledge-pages.json
+      fi
+    fi
   done
 
   # Close batch tabs before opening the next batch

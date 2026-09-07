@@ -61,6 +61,7 @@ export function resolveSlug(entry) {
 const HEADINGS = new Set(['h1', 'h2', 'h3']);
 
 export function renderKnowledgeDoc(entry) {
+  const title = String(entry.title || '').trim();
   const parts = [`<h1>${escapeHtml(entry.title || '')}</h1>`];
   const blocks = Array.isArray(entry.blocks) ? entry.blocks : [];
   let liRun = [];
@@ -70,6 +71,7 @@ export function renderKnowledgeDoc(entry) {
   for (const b of blocks) {
     const text = String(b?.text || '').trim();
     if (!text) continue;
+    if (text === title) continue; // drop captured block that repeats the title (no duplicate h1)
     const tag = HEADINGS.has(b.tag) ? b.tag : (b.tag === 'li' ? 'li' : 'p');
     if (tag === 'li') { liRun.push(text); continue; }
     flushLi();
