@@ -40,7 +40,10 @@ DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 cd "$OF1_DEMO_REPO"
 PREVIEW_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
 TENANT_ID="${BRANCH}--${REPO}--${OWNER}"
-WORKER_URL="https://of1-gen-web-service.franklin-prod.workers.dev"
+# gen-web worker the pipeline syncs + generates against. Defaults to prod;
+# override per run with OF1_GENWEB_URL (of1-labs "gen-web worker URL" advanced
+# field) to point a branch/dev deploy at a dev worker without touching prod.
+WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.dev}"
 ```
 
 `playwright-cli` calls follow `of1-demo-orchestrator/knowledge/common-pitfalls.md` § 9 "playwright-cli syntax" (`open`, `--full-page` bare, `--filename`, `eval` as a function form). Works on both SLICC-native and CC binaries.

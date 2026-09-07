@@ -142,7 +142,11 @@ live — a chromeless demo must not proceed silently.
 The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 4 above (whether from Stage 2c's `of1-snowflake`, the existing site, or the Step 4 fallback).
 
 ```bash
-OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>https://of1-gen-web-service.franklin-prod.workers.dev</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr></table></div></div></main><footer></footer></body>'
+# The api-endpoint baked here is the worker the *deployed* /of1 page calls at
+# runtime. Defaults to prod; OF1_GENWEB_URL (of1-labs "gen-web worker URL"
+# advanced field) points a branch/dev run's live page at a dev worker.
+WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.dev}"
+OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>'${WORKER_URL}'</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr></table></div></div></main><footer></footer></body>'
 
 curl -s -X PUT \
   -H "Authorization: Bearer ${DA_TOKEN}" \
