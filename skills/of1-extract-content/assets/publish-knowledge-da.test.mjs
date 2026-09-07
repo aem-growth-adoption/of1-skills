@@ -33,3 +33,17 @@ test('renderKnowledgeDoc emits bare h1 + blocks, escaped, no block tables', () =
   assert.doesNotMatch(html, /<p><\/p>/); // empty block dropped
   assert.match(html, /^<body>/);
 });
+
+test('renderKnowledgeDoc drops a captured block that repeats the title (no duplicate h1)', () => {
+  const html = renderKnowledgeDoc({
+    title: 'Multi-entity accounting',
+    blocks: [
+      { tag: 'h1', text: 'Multi-entity accounting' },
+      { tag: 'p', text: 'Consolidate every entity.' },
+    ],
+  });
+  const h1Count = (html.match(/<h1>/g) || []).length;
+  assert.equal(h1Count, 1);
+  assert.match(html, /<h1>Multi-entity accounting<\/h1>/);
+  assert.match(html, /<p>Consolidate every entity\.<\/p>/);
+});
