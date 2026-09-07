@@ -35,7 +35,7 @@
   - `slugify(input: string): string` — lowercased, non-alphanumerics → `-`, collapsed, trimmed; empty → `"page"`.
   - `resolveSlug(entry): string` — `entry.slug` if present, else `slugify(last path segment of entry.url)`.
   - `renderKnowledgeDoc(entry): string` — EDS HTML: `<body><header></header><main><div><h1>{title}</h1> + one tag per block …</div></main><footer></footer></body>`, all text HTML-escaped, empty-text blocks dropped, `li` runs wrapped in a single `<ul>`.
-- Produces (side effects): uploads `of1/knowledge/{slug}.html` to DA, previews `of1/knowledge/{slug}`, writes created resource paths to `of1/config/knowledge-pages.txt` (one per line).
+- Produces (side effects): uploads `of1/knowledge/{slug}.html` to DA and previews `of1/knowledge/{slug}` per entry; prints the created paths. (No `knowledge-pages.txt` — the post-sync gate derives its count from `knowledge-pages.json`.)
 
 - [ ] **Step 1: Write the failing test**
 
@@ -94,7 +94,7 @@ Copy the token/upload/preview plumbing verbatim from `publish-config-da.mjs` (`r
 // ["/of1/knowledge/**"]). Content, not craft: <h1> + <h2>/<p>/<li>, no blocks.
 //
 // Input:  of1/config/knowledge-pages.json  (array of {slug?,url?,title,blocks})
-// Output: of1/knowledge/{slug}.html (DA) + preview; of1/config/knowledge-pages.txt
+// Output: of1/knowledge/{slug}.html (DA) + EDS preview per page
 //
 // Usage: node publish-knowledge-da.mjs --owner O --repo R --branch B
 //        [--config-dir of1/config] [--knowledge-dir of1/knowledge]
@@ -239,7 +239,6 @@ async function main() {
   }
 
   const ok = results.filter((r) => r.ok);
-  fs.writeFileSync(path.join(args.configDir, 'knowledge-pages.txt'), ok.map((r) => r.resourcePath).join('\n') + '\n');
   for (const r of results) console.log(r.ok ? `  ✓ ${r.resourcePath}` : `  ✗ ${r.slug}: ${r.err}`);
   const failed = results.length - ok.length;
   if (failed > 0) { console.error(`\n✗ ${failed} knowledge page(s) failed`); process.exit(1); }
@@ -272,7 +271,7 @@ git commit -m "feat(of1-extract-content): publish-knowledge-da.mjs — bare DA c
 
 **Interfaces:**
 - Consumes: `publish-knowledge-da.mjs` (Task 1), `$SKILL_DIR`, `$OWNER/$REPO/$BRANCH` (already resolved in the skill).
-- Produces: `of1/config/knowledge-pages.json` (capture manifest) and, via the script, live `/of1/knowledge/**` pages + `knowledge-pages.txt`.
+- Produces: `of1/config/knowledge-pages.json` (capture manifest) and, via the script, live `/of1/knowledge/**` pages.
 
 - [ ] **Step 1: Add block capture to the Step 3 crawl**
 
@@ -315,7 +314,6 @@ node "$SKILL_DIR/assets/publish-knowledge-da.mjs" \
   --owner "$OWNER" --repo "$REPO" --branch "$BRANCH"
 ```
 
-Writes `of1/config/knowledge-pages.txt` (the live `/of1/knowledge/**` paths).
 `of1-check-dependencies` enables `contentIngestion` for `/of1/knowledge/**`
 and `of1-publish`'s sync indexes them. Do NOT convert these to EDS blocks.
 ````
@@ -354,7 +352,7 @@ git commit -m "feat(of1-extract-content): capture page content + publish /of1/kn
 
 **Interfaces:**
 - Consumes: `$DOMAIN/$OWNER/$REPO/$BRANCH` (already resolved in Step 6).
-- Produces: `of1/config/config.json` with a `contentIngestion` block; a verified/patched `helix-query.yaml` indexing `/of1/knowledge/**`.
+- Produces: `of1/config/config.json` with a `contentIngestion` block — the **single source of truth** for the knowledge folder. `helix-query.yaml` is verify-only (see Step 2).
 
 - [ ] **Step 1: Add `contentIngestion` to the config.json heredoc**
 
@@ -380,43 +378,35 @@ EOF
 ```
 ````
 
-- [ ] **Step 2: Add a helix-query.yaml coverage step**
+- [ ] **Step 2: Add a query-index coverage NOTE (verify-only, no second config)**
 
-Add a new step after Step 6 (before Step 7):
+`contentIngestion.includePaths` (Step 1) is the single source of truth for the
+knowledge folder. Do NOT author a second scope in `helix-query.yaml` in the
+normal case — most EDS repos ship a default index over all pages, so
+`/of1/knowledge/**` pages are indexed automatically and appear in the site-root
+`query-index.json` the worker reads. Add a new step after Step 6 (before Step 7)
+that only checks for the exclusion exception:
 
 ````markdown
-### 6b. Ensure `/of1/knowledge/**` is indexed (query-index coverage)
+### 6b. Query-index coverage (verify-only)
 
-The worker discovers knowledge pages via the site's `query-index.json`, which
-EDS builds from `helix-query.yaml`. If that folder isn't indexed, ingestion
-finds nothing. Ensure an index definition covers it:
+The worker discovers knowledge pages from the site-root `query-index.json`.
+Most repos index all pages by default, so `/of1/knowledge/**` is covered with
+no config. Only if this repo's `helix-query.yaml` *excludes* `/of1/**` do you
+need to add an include rule for `/of1/knowledge/**`:
 
 ```bash
-if [ ! -f helix-query.yaml ] || ! grep -q "of1/knowledge" helix-query.yaml; then
-  cat >> helix-query.yaml <<'EOF'
-version: 1
-indices:
-  of1-knowledge:
-    include:
-      - '/of1/knowledge/**'
-    target: /of1/knowledge/query-index.json
-    properties:
-      title:
-        select: head > meta[property="og:title"]
-        value: attribute(el, "content")
-EOF
-  git add helix-query.yaml
-  git commit -m "chore: index /of1/knowledge for content-RAG discovery" && git push origin "$BRANCH"
-  echo "✓ helix-query.yaml now indexes /of1/knowledge/**"
+if [ -f helix-query.yaml ] && grep -qE "exclude|/of1" helix-query.yaml; then
+  echo "⚠ helix-query.yaml has explicit rules — confirm /of1/knowledge/** is NOT excluded from the site index." >&2
+  echo "  If content.indexed is 0 after of1-publish's sync (Task 4), add an include for /of1/knowledge/** here." >&2
 else
-  echo "✓ /of1/knowledge already indexed"
+  echo "✓ default all-pages index covers /of1/knowledge/** — no helix-query change needed"
 fi
 ```
 
-Note: the worker fetches the site-root `query-index.json`; if this demo uses a
-per-folder index (`target:` above), confirm the root index also lists these
-pages, or set `contentIngestion.includePaths` to the folder index the worker
-reads. Verify with `of1-publish`'s `content.indexed` gate (Task 4).
+The real coverage proof is `of1-publish`'s `content.indexed > 0` gate (Task 4):
+a single knob (`includePaths`) plus one post-sync check, no second source of
+truth to drift.
 ````
 
 - [ ] **Step 3: Verify structurally**
@@ -444,7 +434,7 @@ git commit -m "feat(of1-check-dependencies): enable contentIngestion + index /of
 - Modify: `skills/of1-publish/SKILL.md`
 
 **Interfaces:**
-- Consumes: the worker `/api/tenants/:id/sync` JSON response (has `content: { indexed }`), `of1/config/knowledge-pages.txt` (created-page count from Task 2).
+- Consumes: the worker `/api/tenants/:id/sync` JSON response (has `content: { indexed }`), `of1/config/knowledge-pages.json` (captured-page count from Task 2).
 - Produces: a pass/fail gate on knowledge ingestion.
 
 - [ ] **Step 1: Add a verification step after the sync call**
@@ -453,14 +443,14 @@ Locate the step where `of1-publish` POSTs `/api/tenants/:id/sync` and captures i
 
 ````markdown
 **Verify knowledge ingestion.** The sync response includes `content.indexed`
-(page chunks embedded into the RAG). If `of1/config/knowledge-pages.txt`
-exists (knowledge pages were published), confirm ingestion ran:
+(page chunks embedded into the RAG). If knowledge pages were captured
+(`of1/config/knowledge-pages.json` non-empty), confirm ingestion ran:
 
 ```bash
 INDEXED=$(jq -r '.content.indexed // 0' <<<"$SYNC_RESPONSE")
-PAGES=$( [ -f of1/config/knowledge-pages.txt ] && grep -c . of1/config/knowledge-pages.txt || echo 0 )
+PAGES=$( [ -f of1/config/knowledge-pages.json ] && jq 'length' of1/config/knowledge-pages.json || echo 0 )
 if [ "$PAGES" -gt 0 ] && [ "$INDEXED" -eq 0 ]; then
-  echo "✗ ${PAGES} knowledge page(s) published but content.indexed=0 — check query-index coverage / preview propagation (of1-check-dependencies Step 6b)" >&2
+  echo "✗ ${PAGES} knowledge page(s) published but content.indexed=0 — the pages aren't in the query-index the worker reads. Fix: confirm /of1/knowledge/** isn't excluded from the site index (of1-check-dependencies Step 6b), and that previews propagated." >&2
 else
   echo "✓ content RAG: ${INDEXED} chunk(s) indexed from ${PAGES} knowledge page(s)"
 fi
@@ -473,7 +463,7 @@ fi
 
 ```bash
 grep -q "content.indexed" skills/of1-publish/SKILL.md \
-  && grep -q "knowledge-pages.txt" skills/of1-publish/SKILL.md \
+  && grep -q "knowledge-pages.json" skills/of1-publish/SKILL.md \
   && echo "OK: ingestion verification present"
 ```
 Expected: `OK: ingestion verification present`.
@@ -492,13 +482,13 @@ git commit -m "feat(of1-publish): verify content.indexed after sync"
 **Spec coverage:**
 - §Design 1 (capture during crawl) → Task 2 Step 1. ✓
 - §Design 2 (bare DA docs via publish-knowledge-da.mjs) → Task 1 + Task 2 Step 2. ✓
-- §Design 3 (helix-query `/of1/knowledge/**`) → Task 3 Step 2. ✓
+- §Design 3 (query-index coverage) → Task 3 Step 2, **verify-only**: `includePaths` is the single source of truth; `helix-query.yaml` is patched only on the exclusion exception. ✓
 - §Design 4 (contentIngestion in config.json) → Task 3 Step 1. ✓
-- §Design 5 (trigger + verify via of1-publish) → Task 4. ✓
+- §Design 5 (trigger + verify via of1-publish) → Task 4, count derived from `knowledge-pages.json`. ✓
 - §"Where the changes land" table → Tasks 1–4 map 1:1. ✓
 - Worker unchanged → no worker task. ✓
-- Risk "slug collisions" → `publishEntry` hash-suffix (Task 1). Risk "helix-query coverage"/"preview timing" → Task 3 Step 2 note + Task 4 gate. ✓
+- Risk "slug collisions" → `publishEntry` hash-suffix (Task 1). Risk "query-index coverage"/"preview timing" → Task 3 Step 2 note + the Task 4 `content.indexed` gate (single knob + one post-sync check, no drift). ✓
 
 **Placeholder scan:** Tasks 2–4 anchor edits with grep-locatable section headings and give the exact text to add; verification is structural grep (SKILL.md is agent-instruction prose, not unit-testable) — this is the honest verification for those tasks, not a placeholder. Task 1 carries full runnable code + tests.
 
-**Type consistency:** manifest entry shape `{ slug?, url?, title, blocks:[{tag,text}] }` is produced by Task 2's capture eval (`{ url, title, blocks:[{tag,text}] }`) and consumed by Task 1 (`resolveSlug`/`renderKnowledgeDoc`). `knowledge-pages.json` (capture) vs `knowledge-pages.txt` (created paths) are distinct and used consistently across Tasks 1/2/4. `contentIngestion` value identical in Task 3 and the spec.
+**Type consistency:** manifest entry shape `{ slug?, url?, title, blocks:[{tag,text}] }` is produced by Task 2's capture eval (`{ url, title, blocks:[{tag,text}] }`) and consumed by Task 1 (`resolveSlug`/`renderKnowledgeDoc`). `knowledge-pages.json` is the single shared artifact — written in Task 2, published from in Task 1, counted in Task 4 (`jq 'length'`); no `knowledge-pages.txt` anywhere. `contentIngestion` value identical in Task 3 and the spec.
