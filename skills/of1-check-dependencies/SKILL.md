@@ -230,27 +230,48 @@ if ! git diff --cached --quiet; then
 fi
 ```
 
-### 6b. Query-index coverage (verify-only)
+### 6b. Ensure a query-index covers `/of1/knowledge/**` (author `helix-query.yaml`)
 
-The worker discovers knowledge pages from the site-root `query-index.json`.
-Most repos index all pages by default, so `/of1/knowledge/**` is covered with
-no config. Only if this repo's `helix-query.yaml` *excludes* `/of1/**` do you
-need to add an include rule for `/of1/knowledge/**`:
+The worker discovers knowledge pages from the **site-root `query-index.json`**,
+which EDS builds from `helix-query.yaml`. OF1 demo repos ship WITHOUT one — the
+root `query-index.json` 404s — so the published `/of1/knowledge/**` pages are
+undiscoverable and ingestion indexes nothing. Author an index that targets the
+root `/query-index.json` and includes `/of1/knowledge/**` — create it if absent:
 
 ```bash
-if [ -f helix-query.yaml ] && grep -qE "exclude|/of1" helix-query.yaml; then
-  echo "⚠ helix-query.yaml has explicit rules — confirm /of1/knowledge/** is NOT excluded from the site index." >&2
-  echo "  If content.indexed is 0 after of1-publish's sync (Task 4), add an include for /of1/knowledge/** here." >&2
+if [ ! -f helix-query.yaml ]; then
+  cat > helix-query.yaml <<'YAML'
+version: 1
+indices:
+  of1-knowledge:
+    include:
+      - '/of1/knowledge/**'
+    target: /query-index.json
+    properties:
+      title:
+        select: head > meta[property="og:title"]
+        value: attribute(el, "content")
+YAML
+  git add helix-query.yaml
+  git commit -m "chore: index /of1/knowledge into query-index for content-RAG" && git push origin "$BRANCH"
+  echo "✓ created helix-query.yaml (indexes /of1/knowledge/** → /query-index.json)"
+elif ! grep -q "of1/knowledge" helix-query.yaml; then
+  echo "⚠ helix-query.yaml exists but doesn't mention /of1/knowledge — confirm the site's" >&2
+  echo "  query-index includes /of1/knowledge/** (or add an index targeting /query-index.json)." >&2
+  echo "  content.indexed=0 after of1-publish's sync means it's still missing." >&2
 else
-  echo "✓ default all-pages index covers /of1/knowledge/** — no helix-query change needed"
+  echo "✓ helix-query.yaml already covers /of1/knowledge"
 fi
 ```
 
-`contentIngestion.includePaths` (Step 6) is the single source of truth for the
-knowledge folder — do NOT author a second scope in `helix-query.yaml` in the
-normal case. The real coverage proof is `of1-publish`'s `content.indexed > 0`
-gate: a single knob (`includePaths`) plus one post-sync check, no second
-source of truth to drift.
+These are two different layers, not a duplicated scope: `helix-query.yaml`
+controls what EDS puts *into* `query-index.json` (index membership, a build
+concern), while `contentIngestion.includePaths` (Step 6) is the worker-side
+*ingestion filter*. The worker needs both — the pages must be in the index to
+be found, and `includePaths` narrows what gets embedded. After the knowledge
+pages are published (`of1-extract-content` Step 11), EDS rebuilds
+`/query-index.json` to include them; `of1-publish`'s `content.indexed > 0` gate
+is the coverage proof.
 
 ### 7. Write `repo-config.json`
 
