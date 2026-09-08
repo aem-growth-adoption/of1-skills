@@ -110,6 +110,33 @@ for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
     playwright-cli eval "() => {
       // extract name, price, description, images, features, etc.
     }"
+
+    # Also capture each page's readable content for the knowledge RAG —
+    # same tab, no extra page load:
+    playwright-cli eval "() => {
+      const root = document.querySelector('main') || document.querySelector('article') || document.body;
+      const title = (document.querySelector('h1')?.innerText || document.title || '').trim();
+      const blocks = [];
+      root.querySelectorAll('h1,h2,h3,p,li').forEach((el) => {
+        if (el.closest('nav,header,footer,aside')) return;
+        const text = el.innerText.replace(/\s+/g, ' ').trim();
+        if (text) blocks.push({ tag: el.tagName.toLowerCase(), text });
+      });
+      return { url: location.href, title, blocks };
+    }"
+    # Append each captured page to of1/config/knowledge-pages.json — use jq so
+    # the array stays valid JSON (never hand-concatenate); skip empty-blocks
+    # pages. Same tabs already open — do not open extra tabs.
+    CAP='<the { url, title, blocks } object the eval above returned, as JSON>'
+    if [ "$(jq '.blocks | length' <<<"$CAP")" -gt 0 ]; then
+      mkdir -p of1/config
+      if [ -f of1/config/knowledge-pages.json ]; then
+        jq --argjson p "$CAP" '. + [$p]' of1/config/knowledge-pages.json > of1/config/knowledge-pages.json.tmp \
+          && mv of1/config/knowledge-pages.json.tmp of1/config/knowledge-pages.json
+      else
+        jq -n --argjson p "$CAP" '[$p]' > of1/config/knowledge-pages.json
+      fi
+    fi
   done
 
   # Close batch tabs before opening the next batch
@@ -337,6 +364,21 @@ the worker disables server-side persona matching (personalization is interests
 → RAG retrieval only), so that file is inert. Keep writing it in Step 7 for
 backward-compat with non-knowledgeMode tenants, but it needs no DA doc.
 
+### 11. Publish knowledge pages to DA (`of1/knowledge/**`)
+
+Turn the captured pages into bare DA content docs the worker's content-RAG
+ingests. Fast — content, not craft (no EDS blocks). Requires
+`of1/config/knowledge-pages.json` from Step 3.
+
+```bash
+cd "$OF1_DEMO_REPO"
+node "$SKILL_DIR/assets/publish-knowledge-da.mjs" \
+  --owner "$OWNER" --repo "$REPO" --branch "$BRANCH"
+```
+
+`of1-check-dependencies` enables `contentIngestion` for `/of1/knowledge/**`
+and `of1-publish`'s sync indexes them. Do NOT convert these to EDS blocks.
+
 ## Tips
 
 - IDs must be URL-friendly slugs (lowercase, hyphens)
@@ -352,6 +394,7 @@ backward-compat with non-knowledgeMode tenants, but it needs no DA doc.
 2. Verified ALL product image URLs return HTTP 200 (the verify script above)
 3. Confirmed all images are `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...` URLs (site domain, previewed), NOT `https://content.da.live/...` (access-restricted, not public)
 4. Run `publish-config-da.mjs` (Step 10) with `--files knowledge` and confirmed knowledge published (`✓ knowledge published to DA`)
+5. Run `publish-knowledge-da.mjs` (Step 11) and confirmed knowledge pages published (`✓ N knowledge page(s) published to DA under of1/knowledge/`)
 
 If ANY of these are false, GO BACK and complete Step 9 / Step 10. Do not proceed.
 

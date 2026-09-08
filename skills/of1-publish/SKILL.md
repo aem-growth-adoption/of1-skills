@@ -142,6 +142,22 @@ if [ "$OK" != "true" ]; then
 fi
 ```
 
+**Verify knowledge ingestion.** The sync response includes `content.indexed`
+(page chunks embedded into the RAG). If knowledge pages were captured
+(`of1/config/knowledge-pages.json` non-empty), confirm ingestion ran:
+
+```bash
+INDEXED=$(jq -r '.content.indexed // 0' <<<"$RESPONSE")
+PAGES=$( [ -f of1/config/knowledge-pages.json ] && jq 'length' of1/config/knowledge-pages.json || echo 0 )
+if [ "$PAGES" -gt 0 ] && [ "$INDEXED" -eq 0 ]; then
+  echo "✗ ${PAGES} knowledge page(s) published but content.indexed=0 — the pages aren't in the query-index the worker reads. Fix: confirm /of1/knowledge/** isn't excluded from the site index (of1-check-dependencies Step 6b), and that previews propagated." >&2
+else
+  echo "✓ content RAG: ${INDEXED} chunk(s) indexed from ${PAGES} knowledge page(s)"
+fi
+```
+
+(`$RESPONSE` is the raw JSON body from the `/sync` POST above.)
+
 ### 6. Verify tenant is ready
 
 ```bash
