@@ -10,6 +10,15 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-28-of1-knowledge-pages-to-rag.md`
 
+## Post-e2e revisions (2026-09-08 — supersede the original Task text below)
+
+The end-to-end run `of1-8a15f5ce` surfaced two EDS facts that changed two tasks. The **shipped code/SKILLs reflect these**; the original Task 1/Task 3 prose below is kept for history but is superseded here:
+
+1. **query-index is publish-only** — preview never indexes (verified). So **Task 1 `publish-knowledge-da.mjs` now previews AND live-publishes** each page (`POST admin.hlx.page/live/...` after preview), or the worker discovers nothing. (commit `f9e85dc`)
+2. **demo repos ship no `helix-query.yaml`** → root `query-index.json` 404s. So **Task 3 `of1-check-dependencies` now AUTHORS `helix-query.yaml`** (index `/of1/knowledge/**` → `/query-index.json`) when absent — not the "verify-only" note originally written. (commit `c17c958`)
+
+Scope is **publish-only**; the preview-iteration / arbitrary-glob / DA-list-discovery redesign is parked as future work.
+
 ## Global Constraints
 
 - Knowledge pages live under `/of1/knowledge/{slug}` — a separate namespace from the existing structured `of1-config` docs at `/of1/config/knowledge`. Never conflate them.
