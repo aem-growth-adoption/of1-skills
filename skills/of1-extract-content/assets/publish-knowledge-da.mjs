@@ -102,6 +102,18 @@ async function triggerPreview(token, owner, repo, branch, resourcePath) {
   } catch (e) { return `preview error: ${e.message}`; }
 }
 
+async function triggerLive(token, owner, repo, branch, resourcePath) {
+  // Publish to LIVE — the EDS query-index indexer builds only from published
+  // pages, so preview alone leaves /of1/knowledge out of query-index.json and
+  // the worker's content-RAG discovers nothing.
+  try {
+    const resp = await fetch(`https://admin.hlx.page/live/${owner}/${repo}/${branch}/${resourcePath}`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+    });
+    return resp.ok ? null : `live HTTP ${resp.status}`;
+  } catch (e) { return `live error: ${e.message}`; }
+}
+
 function parseArgs(argv) {
   const args = { configDir: 'of1/config', knowledgeDir: 'of1/knowledge', concurrency: 8 };
   for (let i = 0; i < argv.length; i++) {
@@ -133,6 +145,8 @@ async function publishEntry(entry, token, args, seen) {
   if (upErr) return { slug, ok: false, err: upErr };
   const prevErr = await triggerPreview(token, args.owner, args.repo, args.branch, resourcePath);
   if (prevErr) return { slug, ok: false, err: prevErr };
+  const liveErr = await triggerLive(token, args.owner, args.repo, args.branch, resourcePath);
+  if (liveErr) return { slug, ok: false, err: liveErr };
   return { slug, ok: true, resourcePath: `/${resourcePath}` };
 }
 
