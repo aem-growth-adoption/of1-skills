@@ -46,7 +46,7 @@ function escapeHtml(str) {
 }
 
 export function hashSrc(src) {
-  return crypto.createHash('sha1').update(String(src || '')).digest('hex').slice(0, 12);
+  return crypto.createHash('sha1').update(String(src || '').trim()).digest('hex').slice(0, 12);
 }
 
 export function slugify(input) {

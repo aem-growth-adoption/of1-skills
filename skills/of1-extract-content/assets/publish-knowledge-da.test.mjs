@@ -54,6 +54,10 @@ test('hashSrc is stable and 12 hex chars', () => {
   assert.notEqual(hashSrc('https://x/a.png'), hashSrc('https://x/b.png'));
 });
 
+test('hashSrc trims surrounding whitespace so both pipeline sides agree', () => {
+  assert.equal(hashSrc('  https://x/a.png  '), hashSrc('https://x/a.png'));
+});
+
 test('renderContentDoc rewrites image blocks to rehosted DA urls, in order', () => {
   const src = 'https://wknd.site/media_abc.png?width=750';
   const map = { [hashSrc(src)]: ['https://main--r--o.aem.page/media/product-abc-1.png'] };
