@@ -117,8 +117,13 @@ for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
       const root = document.querySelector('main') || document.querySelector('article') || document.body;
       const title = (document.querySelector('h1')?.innerText || document.title || '').trim();
       const blocks = [];
-      root.querySelectorAll('h1,h2,h3,p,li').forEach((el) => {
+      root.querySelectorAll('h1,h2,h3,p,li,img').forEach((el) => {
         if (el.closest('nav,header,footer,aside')) return;
+        if (el.tagName.toLowerCase() === 'img') {
+          const src = el.currentSrc || el.src || '';
+          if (src) blocks.push({ tag: 'img', src, alt: (el.alt || '').trim() });
+          return;
+        }
         const text = el.innerText.replace(/\s+/g, ' ').trim();
         if (text) blocks.push({ tag: el.tagName.toLowerCase(), text });
       });
@@ -370,10 +375,34 @@ Turn the captured pages into bare DA content docs the worker's content-RAG
 ingests. Fast — content, not craft (no EDS blocks). Requires
 `of1/config/knowledge-pages.json` from Step 3.
 
+Rehost the captured page images to DA, then author the knowledge docs with
+inline `<img>` pointing at the rehosted URLs. `download-images.mjs` is reused
+unchanged — `build-image-manifest.mjs` feeds it a per-image manifest keyed by a
+hash of each source URL, and `publish-knowledge-da.mjs --image-map` maps each
+captured `<img>` back to its rehosted DA url by that same key. Images that fail
+to download/upload are dropped from the doc; the text still publishes.
+
 ```bash
 cd "$OF1_DEMO_REPO"
+
+# 1. captured images -> download-images input manifest (unique srcs, hash-keyed)
+node "$SKILL_DIR/assets/build-image-manifest.mjs" \
+  --config-dir of1/config \
+  --output /tmp/knowledge-image-manifest.json
+
+# 2. download + upload each image to DA, preview into the Media Bus
+#    (skip if the manifest is empty — no images captured)
+if [ "$(jq 'length' /tmp/knowledge-image-manifest.json)" -gt 0 ]; then
+  node "$SKILL_DIR/assets/download-images.mjs" \
+    --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+    --input /tmp/knowledge-image-manifest.json \
+    --output /tmp/knowledge-image-mapping.json
+fi
+
+# 3. author the bare knowledge docs with inline <img> (text-only if no map)
 node "$SKILL_DIR/assets/publish-knowledge-da.mjs" \
-  --owner "$OWNER" --repo "$REPO" --branch "$BRANCH"
+  --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+  --image-map /tmp/knowledge-image-mapping.json
 ```
 
 `of1-check-dependencies` enables `contentIngestion` for `/of1/knowledge/**`
