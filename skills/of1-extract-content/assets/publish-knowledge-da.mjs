@@ -45,6 +45,10 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+export function hashSrc(src) {
+  return crypto.createHash('sha1').update(String(src || '')).digest('hex').slice(0, 12);
+}
+
 export function slugify(input) {
   const s = String(input || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return s || 'page';
@@ -60,7 +64,7 @@ export function resolveSlug(entry) {
 
 const HEADINGS = new Set(['h1', 'h2', 'h3']);
 
-export function renderKnowledgeDoc(entry) {
+export function renderContentDoc(entry, imageMap = {}) {
   const title = String(entry.title || '').trim();
   const parts = [`<h1>${escapeHtml(entry.title || '')}</h1>`];
   const blocks = Array.isArray(entry.blocks) ? entry.blocks : [];
@@ -69,6 +73,16 @@ export function renderKnowledgeDoc(entry) {
     if (liRun.length) { parts.push(`<ul>${liRun.map((t) => `<li>${escapeHtml(t)}</li>`).join('')}</ul>`); liRun = []; }
   };
   for (const b of blocks) {
+    if (b?.tag === 'img') {
+      const mapped = imageMap[hashSrc(String(b.src || ''))];
+      const url = Array.isArray(mapped) ? mapped[0] : mapped;
+      if (!url) continue; // rehost failed/absent → drop the image, keep the doc
+      flushLi();
+      // Wrap in <p> like EDS default-content so the worker chunker (which reads
+      // <img> from inside a matched block) picks it up.
+      parts.push(`<p><img src="${escapeHtml(url)}" alt="${escapeHtml(b.alt || '')}"></p>`);
+      continue;
+    }
     const text = String(b?.text || '').trim();
     if (!text) continue;
     if (text === title) continue; // drop captured block that repeats the title (no duplicate h1)
@@ -79,6 +93,11 @@ export function renderKnowledgeDoc(entry) {
   }
   flushLi();
   return `<body>\n<header></header>\n<main>\n<div>\n${parts.join('\n')}\n</div>\n</main>\n<footer></footer>\n</body>`;
+}
+
+// Backward-compatible text-only renderer (no image map).
+export function renderKnowledgeDoc(entry) {
+  return renderContentDoc(entry, {});
 }
 
 async function uploadDoc(html, token, owner, repo, docPath) {
@@ -125,12 +144,13 @@ function parseArgs(argv) {
     else if (a === '--knowledge-dir') args.knowledgeDir = argv[++i];
     else if (a === '--token-file') args.tokenFile = argv[++i];
     else if (a === '--concurrency') args.concurrency = parseInt(argv[++i], 10) || 8;
+    else if (a === '--image-map') args.imageMap = argv[++i];
   }
   if (!args.owner || !args.repo || !args.branch) throw new Error('Missing required --owner / --repo / --branch');
   return args;
 }
 
-async function publishEntry(entry, token, args, seen) {
+async function publishEntry(entry, token, args, seen, imageMap) {
   let slug = resolveSlug(entry);
   // Dedupe collisions by suffixing a short hash of the source url/title.
   if (seen.has(slug)) {
@@ -140,7 +160,7 @@ async function publishEntry(entry, token, args, seen) {
   seen.add(slug);
   const docPath = `${args.knowledgeDir}/${slug}.html`;
   const resourcePath = `${args.knowledgeDir}/${slug}`;
-  const html = renderKnowledgeDoc(entry);
+  const html = renderContentDoc(entry, imageMap || {});
   const upErr = await uploadDoc(html, token, args.owner, args.repo, docPath);
   if (upErr) return { slug, ok: false, err: upErr };
   const prevErr = await triggerPreview(token, args.owner, args.repo, args.branch, resourcePath);
@@ -157,12 +177,15 @@ async function main() {
   if (!fs.existsSync(manifestPath)) throw new Error(`${manifestPath} not found — capture step must run first`);
   const entries = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   if (!Array.isArray(entries) || entries.length === 0) throw new Error('knowledge-pages.json is empty or not an array');
+  const imageMap = args.imageMap && fs.existsSync(args.imageMap)
+    ? JSON.parse(fs.readFileSync(args.imageMap, 'utf8'))
+    : {};
 
   const results = [];
   const seen = new Set();
   for (let i = 0; i < entries.length; i += args.concurrency) {
     const batch = entries.slice(i, i + args.concurrency);
-    results.push(...await Promise.all(batch.map((e) => publishEntry(e, token, args, seen))));
+    results.push(...await Promise.all(batch.map((e) => publishEntry(e, token, args, seen, imageMap))));
   }
 
   const ok = results.filter((r) => r.ok);
