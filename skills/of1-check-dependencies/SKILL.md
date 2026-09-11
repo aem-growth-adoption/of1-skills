@@ -57,6 +57,12 @@ Read `setup.json` for `owner`, `repo`, `branch`, `of1Repo`, and resolve
 token source `verify.sh` already found (do not re-derive it — `verify.sh` already validated it exists):
 
 ```bash
+# Never let a git op block on an interactive credential prompt — in the
+# container git has no TTY/askpass, so a push whose token is rejected/expired
+# would hang install-dependencies indefinitely. Force git to fail fast instead.
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=true GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME=20
+
 SETUP=$(cat "$OF1_STATE_DIR/setup.json")
 OWNER=$(echo "$SETUP" | jq -r .owner)
 REPO=$(echo "$SETUP" | jq -r .repo)
@@ -140,12 +146,12 @@ fi
 Then clean DA content for the branch:
 
 ```bash
-DA_LIST=$(curl -s -H "Authorization: Bearer $DA_TOKEN" \
+DA_LIST=$(curl -s --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $DA_TOKEN" \
   "https://admin.da.live/list/${OWNER}/${REPO}" 2>/dev/null || echo "[]")
 
 echo "$DA_LIST" | jq -r '.[] | select(.ext == "html") | .name' 2>/dev/null | while read -r name; do
   [ -n "$name" ] || continue
-  curl -s -X DELETE -H "Authorization: Bearer $DA_TOKEN" \
+  curl -s --connect-timeout 10 --max-time 30 -X DELETE -H "Authorization: Bearer $DA_TOKEN" \
     "https://admin.da.live/source/${OWNER}/${REPO}/${name}.html" >/dev/null
 done
 echo "✓ DA content cleaned"
@@ -155,13 +161,17 @@ echo "✓ DA content cleaned"
 
 ```bash
 PREVIEW_URL="https://${BRANCH}--${REPO}--${OWNER}.aem.page/"
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$PREVIEW_URL")
+# Bound every probe: an unbounded curl here can hang install-dependencies. Cap
+# the wait to ~60s total — this check only WARNs on non-200 and proceeds
+# regardless (Code Sync may still be catching up), so a long block only risks
+# tripping the 3-minute install-dependencies watchdog for no benefit.
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 15 "$PREVIEW_URL")
 
 if [ "$STATUS" != "200" ]; then
   echo "WARN: Preview URL returned $STATUS — waiting for Code Sync..."
-  for i in $(seq 1 30); do
+  for i in $(seq 1 12); do
     sleep 5
-    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$PREVIEW_URL")
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 15 "$PREVIEW_URL")
     [ "$STATUS" = "200" ] && break
   done
 fi
@@ -173,7 +183,37 @@ else
 fi
 ```
 
-### 5. Ensure `.hlxignore` does NOT block `of1/config/`
+### 5. AEM preview authorization check (da-blocks-slots requirement)
+
+`of1-build-templates` authors templates as DA documents that MUST be EDS-previewed before the OF1
+worker can sync them (a DA write with no preview is invisible to `materializeDaTemplates()`). AEM
+preview/publish authorization is a **separate grant from DA write access** — the design doc recorded a
+project-wide `403 [admin] not authorized` on `of1-labs` with a valid DA token. Probe it up front so the
+pipeline fails here with a clear provisioning message rather than deep inside `assemble`:
+
+```bash
+AEM_TOKEN="${AEM_TOKEN:-$DA_TOKEN}"
+# MUST bound this probe: admin.hlx.page can stall, and an unbounded curl here
+# hangs the whole install-dependencies step (observed: 18min+ wedge). On
+# timeout curl exits non-zero and prints "000", which the non-200 branch below
+# treats as a failure.
+PV_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 20 \
+  "https://admin.hlx.page/status/${OWNER}/${REPO}/main/index" \
+  -H "Authorization: Bearer $AEM_TOKEN")
+# status returns the preview/live/code authorization triplet; a 403 here is the
+# org-level gap. Treat non-200 (incl. "000" timeout) as a hard prerequisite
+# failure for the da-blocks-slots template flow.
+if [ "$PV_STATUS" = "200" ]; then
+  echo "✓ AEM preview authorization present on ${OWNER}/${REPO}"
+else
+  echo "✗ FAIL: AEM preview authorization missing (status ${PV_STATUS}) on ${OWNER}/${REPO}." >&2
+  echo "  This account can write to DA but cannot preview/publish, so da-blocks-slots templates" >&2
+  echo "  would sync as zero. Provision AEM preview/publish rights on the org before proceeding." >&2
+  exit 1
+fi
+```
+
+### 6. Ensure `.hlxignore` does NOT block `of1/config/`
 
 The OF1 extension reads config files from the EDS CDN (`/of1/config/*.json`).
 The boilerplate `.hlxignore` must NOT include `of1/` or `of1/config/`:
@@ -189,7 +229,7 @@ fi
 **Do NOT add `of1/` to `.hlxignore`** — the config files must be served on
 the CDN.
 
-### 6. Write `of1-endpoint.json` + `config.json` + push (skip if continuing and files already committed)
+### 7. Write `of1-endpoint.json` + `config.json` + push (skip if continuing and files already committed)
 
 `config.json` is a small served meta + tenant-mode file. It carries the target `domain`
 (which can differ from the EDS host) plus owner/repo/branch, so same-origin client-side
@@ -230,7 +270,7 @@ if ! git diff --cached --quiet; then
 fi
 ```
 
-### 6b. Ensure a query-index covers `/of1/knowledge/**` (author `helix-query.yaml`)
+### 8. Ensure a query-index covers `/of1/knowledge/**` (author `helix-query.yaml`)
 
 The worker discovers knowledge pages from the **site-root `query-index.json`**,
 which EDS builds from `helix-query.yaml`. OF1 demo repos ship WITHOUT one — the
@@ -266,14 +306,14 @@ fi
 
 These are two different layers, not a duplicated scope: `helix-query.yaml`
 controls what EDS puts *into* `query-index.json` (index membership, a build
-concern), while `contentIngestion.includePaths` (Step 6) is the worker-side
+concern), while `contentIngestion.includePaths` (Step 7) is the worker-side
 *ingestion filter*. The worker needs both — the pages must be in the index to
 be found, and `includePaths` narrows what gets embedded. After the knowledge
 pages are published (`of1-extract-content` Step 11), EDS rebuilds
 `/query-index.json` to include them; `of1-publish`'s `content.indexed > 0` gate
 is the coverage proof.
 
-### 7. Write `repo-config.json`
+### 9. Write `repo-config.json`
 
 ```bash
 mkdir -p "$OF1_STATE_DIR"

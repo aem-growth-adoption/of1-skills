@@ -40,7 +40,10 @@ DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 cd "$OF1_DEMO_REPO"
 PREVIEW_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
 TENANT_ID="${BRANCH}--${REPO}--${OWNER}"
-WORKER_URL="https://of1-gen-web-service.franklin-prod.workers.dev"
+# gen-web worker the pipeline syncs + generates against. Defaults to prod;
+# override per run with OF1_GENWEB_URL (of1-labs "gen-web worker URL" advanced
+# field) to point a branch/dev deploy at a dev worker without touching prod.
+WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.dev}"
 ```
 
 `playwright-cli` calls follow `of1-demo-orchestrator/knowledge/common-pitfalls.md` § 9 "playwright-cli syntax" (`open`, `--full-page` bare, `--filename`, `eval` as a function form). Works on both SLICC-native and CC binaries.
@@ -104,11 +107,19 @@ curl -s -H "Authorization: Bearer $DA_TOKEN" \
 # Verify it's not empty
 [ -s /tmp/da-pages.txt ] || echo "WARN: no DA pages found — hub will be missing EDS page links"
 
+# Also list the DA template documents so the hub can render the authoring
+# showcase (one "edit in DA" link per template). Names only, no extension.
+curl -s -H "Authorization: Bearer $DA_TOKEN" \
+  -H "x-content-source-authorization: Bearer $DA_TOKEN" \
+  "https://admin.da.live/list/${OWNER}/${REPO}/templates" \
+  | jq -r '.[] | select(.ext == "html") | .name' > /tmp/da-templates.txt
+[ -s /tmp/da-templates.txt ] || echo "WARN: no DA templates found — hub authoring showcase will be empty"
+
 # Generate the demo hub from the template
 node "$SKILL_DIR/assets/fill-demo-hub.mjs" . "${DOMAIN}"
 ```
 
-This reads all config, finds prototypes, discovers EDS pages from `/tmp/da-pages.txt`, and writes `deliverables/index.html`. Do NOT hand-write the hub HTML.
+This reads all config, finds prototypes, discovers EDS pages from `/tmp/da-pages.txt`, lists DA templates from `/tmp/da-templates.txt` for the authoring showcase, and writes `deliverables/index.html`. Do NOT hand-write the hub HTML.
 
 ### 4. Commit and push
 
@@ -243,33 +254,39 @@ EOF
 
 All image URLs must be from the site's own domain (`https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...`) — never `content.da.live` (access-restricted, not public) and never external CDN URLs.
 
-### Check 4: Template catalog has 15 entries
+### Check 4: da-blocks-slots routing + DA templates present
+
+`of1-build-templates` no longer emits a git catalog or gallery — templates are DA documents. Assert the
+tenant is routed to the `da-blocks-slots` engine and that `/templates` in DA is non-empty (each doc
+previewed, so its `.plain.html` resolves — that is what the worker syncs).
 
 ```bash
+# 4a. Routing config points at the da-blocks-slots engine.
 python3 << 'EOF'
 import json, sys
 from pathlib import Path
-
-p = Path('templates/templates-catalog.json')
+p = Path('of1/config/templates.json')
 if not p.exists():
-    print("✗ templates-catalog.json missing — of1-build-templates did not run", file=sys.stderr)
-    sys.exit(1)
-
-catalog = json.loads(p.read_text())
-of1_entries = [t for t in catalog.get('templates', []) if t.get('name', '').startswith('of1-')]
-
-if len(of1_entries) < 15:
-    print(f"✗ Only {len(of1_entries)} of1-* templates (need 15)", file=sys.stderr)
-    sys.exit(1)
-
-intents = {t.get('intent') for t in of1_entries}
-missing = {'comparison', 'recommendation', 'deep-dive', 'budget', 'discovery'} - intents
-if missing:
-    print(f"✗ Missing intents: {missing}", file=sys.stderr)
-    sys.exit(1)
-
-print(f"✓ Catalog has {len(of1_entries)} of1-* templates across all 5 intents")
+    print("✗ of1/config/templates.json missing — of1-build-templates(assemble) did not run", file=sys.stderr); sys.exit(1)
+cfg = json.loads(p.read_text())
+if cfg.get('engine') != 'da-blocks-slots':
+    print(f"✗ templates.json engine is {cfg.get('engine')!r}, expected 'da-blocks-slots'", file=sys.stderr); sys.exit(1)
+print("✓ Routed to da-blocks-slots, daPath", cfg.get('daPath', '/templates'))
 EOF
+
+# 4b. DA /templates is non-empty and each doc's previewed .plain.html resolves.
+TPL_JSON=$(curl -s -H "Authorization: Bearer $DA_TOKEN" \
+  "https://admin.da.live/list/${OWNER}/${REPO}/templates" 2>/dev/null || echo "[]")
+TPL_NAMES=$(echo "$TPL_JSON" | jq -r '.[] | select(.ext == "html") | .name' 2>/dev/null)
+COUNT=$(echo "$TPL_NAMES" | grep -c . || true)
+[ "$COUNT" -ge 1 ] || { echo "✗ No DA documents under /templates — nothing for the worker to sync" >&2; exit 1; }
+INTENTS=""
+for name in $TPL_NAMES; do
+  PLAIN="${PREVIEW_BASE}/templates/${name}.plain.html"
+  ST=$(curl -s -o /dev/null -w "%{http_code}" "$PLAIN")
+  [ "$ST" = "200" ] || { echo "✗ ${PLAIN} returned ${ST} — template not previewed (worker will not see it)" >&2; exit 1; }
+done
+echo "✓ ${COUNT} DA template(s) present and previewed"
 ```
 
 ### Check 5: All deliverable URLs return 200
@@ -287,11 +304,12 @@ LINKS=(
   "${PREVIEW_BASE}/"
   "${PREVIEW_BASE}/nav.plain.html"
   "${PREVIEW_BASE}/footer.plain.html"
-  "${PREVIEW_BASE}/gallery/index.html"
   "${PREVIEW_BASE}/of1"
   "${PREVIEW_BASE}/deliverables/config-review.html"
   "${PREVIEW_BASE}/deliverables/index.html"
 )
+# Note: there is no gallery/index.html in the da-blocks-slots flow — templates
+# are DA documents (asserted previewed in Check 4b), not a git-served gallery.
 # Full e2e pipeline only (discovery ran): also assert the discovery deliverable.
 # When discovery never ran (e.g. of1-integration against an existing site), the
 # output file is absent and this URL is skipped automatically — no flow-specific edit needed.
