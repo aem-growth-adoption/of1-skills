@@ -6,7 +6,7 @@ user-invocable: true
 
 # Content Metadata Populator
 
-Crawl a website to extract the site's knowledge — products, features, FAQs and testimonials — into a single `knowledge` document of generic entities (plus user personas), producing JSON files for the OF1 worker tenant config and publishing `knowledge` to DA as `of1-config` blocks so authors can edit the tenant's knowledge in Document Authoring.
+Crawl a website to extract the site's knowledge — products, features, FAQs and testimonials — into a single `knowledge` document of generic entities (plus user personas), producing JSON files for the OF1 worker tenant config, and publishing the site's own page content to DA under `/of1/knowledge/**` for the content-RAG. (Content mode: `knowledge.json` is kept as a committed fallback but is NOT published to DA as an `of1-config` doc — the page documents are the content source.)
 
 ## Env — orchestrator exports these (see `of1-check-dependencies`)
 
@@ -335,41 +335,7 @@ EOF
 
 **Do NOT write the completion status until this passes.** Go back and download more images if any product has fewer than 4.
 
-### 10. Publish config to DA (`knowledge`)
-
-The worker reads the knowledge doc from **DA** as `of1-config` key/value blocks
-(`{file}.plain.html`), so authors can edit the tenant's knowledge in Document
-Authoring instead of hand-editing JSON in git. It only falls back to the
-committed `of1/config/{file}.json` when the DA doc is missing or parses to zero
-records. New demos are configured with `knowledgeMode: "da-document"` (set by
-`of1-check-dependencies` in `config.json`), so the DA doc is the source of truth
-— publishing it is required, not optional.
-
-Run this **after** Step 9, so product `images` already carry their final
-`.aem.page/media/...` URLs and get embedded in the DA doc:
-
-```bash
-cd "$OF1_DEMO_REPO"
-
-# Reads of1/config/knowledge.json, renders each record as an
-# of1-config block, uploads the doc to DA, and previews it so {file}.plain.html
-# is live. Resolves the DA token the same way as download-images.mjs.
-node "$SKILL_DIR/assets/publish-config-da.mjs" \
-  --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
-  --files knowledge
-```
-
-The committed JSON is **kept** as the fallback safety net — do NOT delete it.
-The DA doc and the JSON stay in sync because both are generated from the same
-extracted records here. (Format + migration contract:
-`of1-gen-web/docs/da-config-authoring.md`.)
-
-`personas.json` is **not** published to DA: under `knowledgeMode: "da-document"`
-the worker disables server-side persona matching (personalization is interests
-→ RAG retrieval only), so that file is inert. Keep writing it in Step 7 for
-backward-compat with non-knowledgeMode tenants, but it needs no DA doc.
-
-### 11. Publish knowledge pages to DA (`of1/knowledge/**`)
+### 10. Publish knowledge pages to DA (`of1/knowledge/**`)
 
 Turn the captured pages into bare DA content docs the worker's content-RAG
 ingests. Fast — content, not craft (no EDS blocks). Requires
@@ -422,16 +388,15 @@ and `of1-publish`'s sync indexes them. Do NOT convert these to EDS blocks.
 1. Run `download-images.mjs` with `--update-products` (Step 9 above)
 2. Verified ALL product image URLs return HTTP 200 (the verify script above)
 3. Confirmed all images are `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...` URLs (site domain, previewed), NOT `https://content.da.live/...` (access-restricted, not public)
-4. Run `publish-config-da.mjs` (Step 10) with `--files knowledge` and confirmed knowledge published (`✓ knowledge published to DA`)
-5. Run `publish-knowledge-da.mjs` (Step 11) and confirmed knowledge pages published (`✓ N knowledge page(s) published to DA under of1/knowledge/`)
+4. Run `publish-knowledge-da.mjs` (Step 10) and confirmed knowledge pages published (`✓ N knowledge page(s) published to DA under of1/knowledge/`)
 
-If ANY of these are false, GO BACK and complete Step 9 / Step 10. Do not proceed.
+If ANY of these are false, GO BACK and complete Step 9 (images) / Step 10 (knowledge pages). Do not proceed.
 
 This skill runs alongside `of1-extract-brand-voice`. Both must complete before the content track is treated as done.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-content-status.json" <<EOF
-{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] knowledge entities ([N1] products, [N2] features, [N3] FAQs, [N4] testimonials), [M] personas. All images on DA. knowledge published to DA as of1-config blocks."}
+{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] knowledge entities ([N1] products, [N2] features, [N3] FAQs, [N4] testimonials), [M] personas. All images on DA. Knowledge pages published to DA under of1/knowledge/."}
 EOF
 ```
 
