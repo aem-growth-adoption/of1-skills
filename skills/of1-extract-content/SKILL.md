@@ -6,7 +6,7 @@ user-invocable: true
 
 # Content Metadata Populator
 
-Crawl a website to extract the site's knowledge — products, features, FAQs and testimonials — into a single `knowledge` document of generic entities (plus user personas), producing JSON files for the OF1 worker tenant config and publishing `knowledge` to DA as `of1-config` blocks so authors can edit the tenant's knowledge in Document Authoring.
+Crawl a website to extract the site's knowledge — products, features, FAQs and testimonials — into a single `knowledge` document of generic entities (plus user personas), producing JSON files for the OF1 worker tenant config, and publishing the site's own page content to DA under `/of1/knowledge/**` for the content-RAG. (Content mode: `knowledge.json` is kept as a committed fallback but is NOT published to DA as an `of1-config` doc — the page documents are the content source.)
 
 ## Env — orchestrator exports these (see `of1-check-dependencies`)
 
@@ -110,6 +110,38 @@ for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
     playwright-cli eval "() => {
       // extract name, price, description, images, features, etc.
     }"
+
+    # Also capture each page's readable content for the knowledge RAG —
+    # same tab, no extra page load:
+    playwright-cli eval "() => {
+      const root = document.querySelector('main') || document.querySelector('article') || document.body;
+      const title = (document.querySelector('h1')?.innerText || document.title || '').trim();
+      const blocks = [];
+      root.querySelectorAll('h1,h2,h3,p,li,img').forEach((el) => {
+        if (el.closest('nav,header,footer,aside')) return;
+        if (el.tagName.toLowerCase() === 'img') {
+          const src = el.currentSrc || el.src || '';
+          if (src) blocks.push({ tag: 'img', src, alt: (el.alt || '').trim() });
+          return;
+        }
+        const text = el.innerText.replace(/\s+/g, ' ').trim();
+        if (text) blocks.push({ tag: el.tagName.toLowerCase(), text });
+      });
+      return { url: location.href, title, blocks };
+    }"
+    # Append each captured page to of1/config/knowledge-pages.json — use jq so
+    # the array stays valid JSON (never hand-concatenate); skip empty-blocks
+    # pages. Same tabs already open — do not open extra tabs.
+    CAP='<the { url, title, blocks } object the eval above returned, as JSON>'
+    if [ "$(jq '.blocks | length' <<<"$CAP")" -gt 0 ]; then
+      mkdir -p of1/config
+      if [ -f of1/config/knowledge-pages.json ]; then
+        jq --argjson p "$CAP" '. + [$p]' of1/config/knowledge-pages.json > of1/config/knowledge-pages.json.tmp \
+          && mv of1/config/knowledge-pages.json.tmp of1/config/knowledge-pages.json
+      else
+        jq -n --argjson p "$CAP" '[$p]' > of1/config/knowledge-pages.json
+      fi
+    fi
   done
 
   # Close batch tabs before opening the next batch
@@ -303,39 +335,44 @@ EOF
 
 **Do NOT write the completion status until this passes.** Go back and download more images if any product has fewer than 4.
 
-### 10. Publish config to DA (`knowledge`)
+### 10. Publish knowledge pages to DA (`of1/knowledge/**`)
 
-The worker reads the knowledge doc from **DA** as `of1-config` key/value blocks
-(`{file}.plain.html`), so authors can edit the tenant's knowledge in Document
-Authoring instead of hand-editing JSON in git. It only falls back to the
-committed `of1/config/{file}.json` when the DA doc is missing or parses to zero
-records. New demos are configured with `knowledgeMode: "da-document"` (set by
-`of1-check-dependencies` in `config.json`), so the DA doc is the source of truth
-— publishing it is required, not optional.
+Turn the captured pages into bare DA content docs the worker's content-RAG
+ingests. Fast — content, not craft (no EDS blocks). Requires
+`of1/config/knowledge-pages.json` from Step 3.
 
-Run this **after** Step 9, so product `images` already carry their final
-`.aem.page/media/...` URLs and get embedded in the DA doc:
+Rehost the captured page images to DA, then author the knowledge docs with
+inline `<img>` pointing at the rehosted URLs. `download-images.mjs` is reused
+unchanged — `build-image-manifest.mjs` feeds it a per-image manifest keyed by a
+hash of each source URL, and `publish-knowledge-da.mjs --image-map` maps each
+captured `<img>` back to its rehosted DA url by that same key. Images that fail
+to download/upload are dropped from the doc; the text still publishes.
 
 ```bash
 cd "$OF1_DEMO_REPO"
 
-# Reads of1/config/knowledge.json, renders each record as an
-# of1-config block, uploads the doc to DA, and previews it so {file}.plain.html
-# is live. Resolves the DA token the same way as download-images.mjs.
-node "$SKILL_DIR/assets/publish-config-da.mjs" \
+# 1. captured images -> download-images input manifest (unique srcs, hash-keyed)
+node "$SKILL_DIR/assets/build-image-manifest.mjs" \
+  --config-dir of1/config \
+  --output /tmp/knowledge-image-manifest.json
+
+# 2. download + upload each image to DA, preview into the Media Bus
+#    (skip if the manifest is empty — no images captured)
+if [ "$(jq 'length' /tmp/knowledge-image-manifest.json)" -gt 0 ]; then
+  node "$SKILL_DIR/assets/download-images.mjs" \
+    --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+    --input /tmp/knowledge-image-manifest.json \
+    --output /tmp/knowledge-image-mapping.json
+fi
+
+# 3. author the bare knowledge docs with inline <img> (text-only if no map)
+node "$SKILL_DIR/assets/publish-knowledge-da.mjs" \
   --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
-  --files knowledge
+  --image-map /tmp/knowledge-image-mapping.json
 ```
 
-The committed JSON is **kept** as the fallback safety net — do NOT delete it.
-The DA doc and the JSON stay in sync because both are generated from the same
-extracted records here. (Format + migration contract:
-`of1-gen-web/docs/da-config-authoring.md`.)
-
-`personas.json` is **not** published to DA: under `knowledgeMode: "da-document"`
-the worker disables server-side persona matching (personalization is interests
-→ RAG retrieval only), so that file is inert. Keep writing it in Step 7 for
-backward-compat with non-knowledgeMode tenants, but it needs no DA doc.
+`of1-check-dependencies` enables `contentIngestion` for `/of1/knowledge/**`
+and `of1-publish`'s sync indexes them. Do NOT convert these to EDS blocks.
 
 ## Tips
 
@@ -351,15 +388,15 @@ backward-compat with non-knowledgeMode tenants, but it needs no DA doc.
 1. Run `download-images.mjs` with `--update-products` (Step 9 above)
 2. Verified ALL product image URLs return HTTP 200 (the verify script above)
 3. Confirmed all images are `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...` URLs (site domain, previewed), NOT `https://content.da.live/...` (access-restricted, not public)
-4. Run `publish-config-da.mjs` (Step 10) with `--files knowledge` and confirmed knowledge published (`✓ knowledge published to DA`)
+4. Run `publish-knowledge-da.mjs` (Step 10) and confirmed knowledge pages published (`✓ N knowledge page(s) published to DA under of1/knowledge/`)
 
-If ANY of these are false, GO BACK and complete Step 9 / Step 10. Do not proceed.
+If ANY of these are false, GO BACK and complete Step 9 (images) / Step 10 (knowledge pages). Do not proceed.
 
 This skill runs alongside `of1-extract-brand-voice`. Both must complete before the content track is treated as done.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-content-status.json" <<EOF
-{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] knowledge entities ([N1] products, [N2] features, [N3] FAQs, [N4] testimonials), [M] personas. All images on DA. knowledge published to DA as of1-config blocks."}
+{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] knowledge entities ([N1] products, [N2] features, [N3] FAQs, [N4] testimonials), [M] personas. All images on DA. Knowledge pages published to DA under of1/knowledge/."}
 EOF
 ```
 
