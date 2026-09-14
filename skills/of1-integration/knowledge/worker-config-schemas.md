@@ -270,7 +270,21 @@ Mustache-style template with placeholders `{{title}}`, `{{description}}`, `{{but
 
 ## templates.json
 
-### EDS-published shape (what you commit to the repo)
+**Current pipeline default: the `da-blocks-slots` engine.** `of1-build-templates` authors templates
+as real EDS documents in a tenant's `/templates` DA folder (composed from the site's own blocks,
+reused first, new general blocks where useful) and writes:
+
+```json
+{ "engine": "da-blocks-slots", "daPath": "/templates" }
+```
+
+The worker enumerates `/templates` (via `/query-index.json`, prefix-filtered), fetches each doc's
+`.plain.html`, and derives content-only slots structurally — no catalog, no `.metadata.json`, no
+`data-slot` attributes. Per-template `intent`/`description`/`minItems`/`maxItems` travel in each doc's
+`section-metadata` block. See
+`docs/superpowers/specs/2026-08-31-of1-build-templates-da-blocks-slots-migration.md`.
+
+### Legacy `useRouting` (template-routing) shape — still supported for old tenants
 
 ```json
 {

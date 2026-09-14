@@ -47,7 +47,7 @@ DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 
 ## Why this skill exists
 
-The OF1 block renders its own interactive UI — a search landing (title, input, suggestion chips), a loading skeleton while generating, a container for the sections the worker streams in, and follow-up suggestion controls. This skill writes `blocks/of1/of1.css` so that UI feels native to the brand. The **per-section visual design** of generated content is owned by each template's own stylesheet (produced by `of1-build-templates` and injected by the OF1 client SDK at runtime) — this skill does NOT style section internals (hero/cards/tables/columns). Page chrome (header/footer/site styles) is inherited automatically since `/of1` is an ordinary content page.
+The OF1 block renders its own interactive UI — a search landing (title, input, suggestion chips), a loading skeleton while generating, a container for the sections the worker streams in, and follow-up suggestion controls. This skill writes `blocks/of1/of1.css` so that UI feels native to the brand. The **per-section visual design** of generated content comes from each block's own code-bus stylesheet (`blocks/<name>/<name>.css`), loaded when the OF1 client SDK runs the site's real `decorate()` pipeline on the streamed sections (the worker emits `stylesheet: null` — there is no runtime-injected per-template stylesheet in the `da-blocks-slots` engine). Reused blocks bring their existing Stage-2 CSS; any new general block ships its CSS with the block, both authored by `of1-build-templates`. This skill does NOT style section internals (hero/cards/tables/columns). Page chrome (header/footer/site styles) is inherited automatically since `/of1` is an ordinary content page.
 
 ## Always start from the canonical base files
 
