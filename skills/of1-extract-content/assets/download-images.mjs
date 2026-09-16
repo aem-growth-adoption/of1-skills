@@ -41,6 +41,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import dns from 'node:dns/promises';
 import { exec as execCb } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -49,6 +50,40 @@ const exec = promisify(execCb);
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 const MIN_BYTES = 10000;
 const DEFAULT_WORKERS = 8;
+
+function isPrivateAddress(address) {
+  const normalized = address.toLowerCase();
+  if (normalized === '::1' || normalized === 'localhost' || normalized.startsWith('fc') || normalized.startsWith('fd')) {
+    return true;
+  }
+  const octets = normalized.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((octet) => Number.isNaN(octet))) return false;
+  return (
+    octets[0] === 10 ||
+    octets[0] === 127 ||
+    (octets[0] === 169 && octets[1] === 254) ||
+    (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+    (octets[0] === 192 && octets[1] === 168)
+  );
+}
+
+async function validateDownloadUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('invalid URL');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error('only credential-free HTTP(S) URLs are allowed');
+  }
+  if (isPrivateAddress(parsed.hostname)) throw new Error('private or loopback addresses are not allowed');
+  const addresses = await dns.lookup(parsed.hostname, { all: true });
+  if (!addresses.length || addresses.some(({ address }) => isPrivateAddress(address))) {
+    throw new Error('URL resolves to a private or loopback address');
+  }
+  return parsed.href;
+}
 
 // (magic_prefix, mime, extension)
 const MAGIC = [
@@ -153,7 +188,11 @@ async function resolveToken(tokenFileArg) {
 async function downloadImage(url) {
   let resp;
   try {
-    resp = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+    const safeUrl = await validateDownloadUrl(url);
+    resp = await fetch(safeUrl, {
+      redirect: 'error',
+      headers: { 'User-Agent': USER_AGENT },
+    });
   } catch (e) {
     return { data: null, err: `download error: ${e.message}` };
   }
