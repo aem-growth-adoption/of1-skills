@@ -146,7 +146,17 @@ The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Descr
 # runtime. Defaults to prod; OF1_GENWEB_URL (of1-labs "gen-web worker URL"
 # advanced field) points a branch/dev run's live page at a dev worker.
 WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.dev}"
-OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>'${WORKER_URL}'</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr></table></div></div></main><footer></footer></body>'
+
+# The `engine` row is REQUIRED. The OF1 client SDK reads it from this block's
+# config to pick its rendering path; for `da-blocks`/`da-blocks-slots` it must
+# SKIP its legacy content stylesheet (`of1-client-legacy-content.css`). Omit the
+# row and `config.engine` is undefined, so the SDK loads that legacy stylesheet,
+# which clobbers the tenant's real EDS block CSS — black table headers, collapsed
+# hero images, unstyled templates. Author it from templates.json (the source of
+# truth), defaulting to da-blocks-slots.
+ENGINE=$(jq -r '.engine // "da-blocks-slots"' of1/config/templates.json)
+
+OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>'${WORKER_URL}'</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr><tr><td><p>engine</p></td><td><p>'${ENGINE}'</p></td></tr></table></div></div></main><footer></footer></body>'
 
 curl -s -X PUT \
   -H "Authorization: Bearer ${DA_TOKEN}" \
