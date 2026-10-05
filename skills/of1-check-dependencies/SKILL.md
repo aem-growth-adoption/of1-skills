@@ -68,6 +68,9 @@ OWNER=$(echo "$SETUP" | jq -r .owner)
 REPO=$(echo "$SETUP" | jq -r .repo)
 BRANCH=$(echo "$SETUP" | jq -r .branch)
 REPO_DIR=$(echo "$SETUP" | jq -r .of1Repo)
+# Every step below (3, 6, 7, 8) uses repo-relative paths and git — run them all
+# from the repo root, on fresh, Continue and Restart runs alike.
+cd "$REPO_DIR" || { echo "✗ cannot cd into $REPO_DIR" >&2; exit 1; }
 
 if [ "$(echo "$SETUP" | jq -r .tokenFromEnv)" = "true" ]; then
   DA_TOKEN="$ADOBE_IMS_TOKEN"
@@ -142,12 +145,13 @@ rm -f "$OF1_STATE_DIR/discovery.html"
 git — remove only the OF1-owned trees, commit, push:
 
 ```bash
-cd "$REPO_DIR"
+# (cwd is $REPO_DIR — set in the Part 2 preamble.)
 # `git rm` stages exactly these paths' deletions — never a bare `git add -A`/`.`
 # (see common-pitfalls.md § 6). --ignore-unmatch: a no-op if they were never committed.
 git rm -r -q --ignore-unmatch -- blocks/of1 of1/config
-if ! git diff --cached --quiet; then
-  git commit -m "chore: reset OF1 artefacts for ${BRANCH}"
+# Diff + commit scoped to these paths, so unrelated staged changes are never swept in.
+if ! git diff --cached --quiet -- blocks/of1 of1/config; then
+  git commit -m "chore: reset OF1 artefacts for ${BRANCH}" -- blocks/of1 of1/config
   git push origin "$BRANCH"
   echo "✓ OF1 artefacts (blocks/of1, of1/config) removed + pushed"
 else
@@ -260,7 +264,11 @@ left untouched:
 if [ -f .hlxignore ] && grep -Eq '^of1/?$|^of1/config' .hlxignore; then
   # -i.bak works on both GNU and BSD/macOS sed (bare `-i` fails on BSD); drop the backup after.
   sed -E -i.bak '/^of1\/?$/d; /^of1\/config/d' .hlxignore && rm -f .hlxignore.bak
-  echo "✓ Removed the of1/config exclusion from .hlxignore"
+  # An uncommitted edit never reaches EDS — commit (scoped to .hlxignore) + push.
+  git add -- .hlxignore
+  git commit -m "chore: allow of1/config on the code bus" -- .hlxignore
+  git push origin "$BRANCH"
+  echo "✓ Removed the of1/config exclusion from .hlxignore (committed + pushed)"
 else
   echo "✓ .hlxignore does not block of1/config"
 fi
