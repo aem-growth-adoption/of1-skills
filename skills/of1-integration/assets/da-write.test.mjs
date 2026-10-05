@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildSheetJson, buildMultipart, writeDa } from './da-write.mjs';
+import { buildSheetJson, buildMultipart, writeDa, resolveToken } from './da-write.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./da-write.mjs', import.meta.url));
 
@@ -135,6 +135,41 @@ test('CLI: doc success → stdout ✓ line, exit 0', () => {
   ], { encoding: 'utf8', env: { ...process.env, DA_TOKEN: 'T' } });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /✓ of1\/brand-voice previewed/);
+});
+
+test('CLI: runs when invoked through a symlink', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'da-write-'));
+  const link = path.join(dir, 'da-write-link.mjs');
+  fs.symlinkSync(SCRIPT, link);
+  const file = path.join(dir, 'bv.html');
+  fs.writeFileSync(file, '<body></body>');
+  const preload = path.join(dir, 'stub.mjs');
+  fs.writeFileSync(preload, `globalThis.fetch = async () => ({ ok: true, status: 200 });\n`);
+  const r = spawnSync(process.execPath, [
+    '--import', preload, link, 'doc',
+    '--owner', 'O', '--repo', 'R', '--branch', 'B',
+    '--path', 'of1/brand-voice', '--file', file,
+  ], { encoding: 'utf8', env: { ...process.env, DA_TOKEN: 'T' } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /✓ of1\/brand-voice previewed/);
+});
+
+test('resolveToken: token file JSON without access_token throws', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'da-write-'));
+  const f = path.join(dir, 'tok.json');
+  fs.writeFileSync(f, JSON.stringify({ refresh_token: 'r' }));
+  const saved = { DA_TOKEN: process.env.DA_TOKEN, ADOBE_IMS_TOKEN: process.env.ADOBE_IMS_TOKEN, OF1_TOKEN_FILE: process.env.OF1_TOKEN_FILE };
+  delete process.env.DA_TOKEN; delete process.env.ADOBE_IMS_TOKEN;
+  process.env.OF1_TOKEN_FILE = f;
+  try {
+    await assert.rejects(resolveToken(), /access_token/);
+    fs.writeFileSync(f, JSON.stringify({ access_token: 'abc' }));
+    assert.equal(await resolveToken(), 'abc');
+    fs.writeFileSync(f, 'raw-token\n');
+    assert.equal(await resolveToken(), 'raw-token');
+  } finally {
+    for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
 });
 
 test('CLI: rows containing a comma in an array item → exit 1, mentions comma', () => {

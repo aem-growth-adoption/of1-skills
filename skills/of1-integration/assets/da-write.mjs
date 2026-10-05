@@ -28,7 +28,13 @@ const exec = promisify(execCb);
 
 function readTokenFile(p) {
   const raw = fs.readFileSync(p, 'utf8').trim();
-  try { return JSON.parse(raw).access_token || raw; } catch { return raw; }
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { return raw; }
+  if (parsed && typeof parsed === 'object') {
+    if (parsed.access_token) return parsed.access_token;
+    throw new Error(`Token file ${p} is JSON but has no access_token`);
+  }
+  return raw;
 }
 
 export async function resolveToken() {
@@ -36,7 +42,7 @@ export async function resolveToken() {
   if (process.env.ADOBE_IMS_TOKEN) return process.env.ADOBE_IMS_TOKEN;
   if (process.env.OF1_TOKEN_FILE) return readTokenFile(process.env.OF1_TOKEN_FILE);
   try {
-    const { stdout } = await exec('oauth-token adobe');
+    const { stdout } = await exec('oauth-token adobe', { timeout: 15000 });
     if (stdout.trim()) return stdout.trim();
   } catch { /* SLICC shim absent */ }
   if (fs.existsSync('.hlx/.da-token.json')) return readTokenFile('.hlx/.da-token.json');
@@ -157,6 +163,17 @@ async function main() {
   console.log(res.message);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Compare against the realpath: Node resolves import.meta.url through
+// symlinks, but argv[1] keeps the symlinked path (symlinked installs are common).
+function isDirectRun() {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectRun()) {
   main().catch((e) => { console.error(`FATAL: ${e.message}`); process.exit(1); });
 }
