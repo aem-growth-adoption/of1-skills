@@ -107,7 +107,7 @@ absent from git.
 | `of1-integration` | New step graph: no `config-review`; CTA pipeline-only. `assets/config-review.html` deleted. `knowledge/worker-config-schemas.md` rewritten for the new shapes |
 | `of1-publish` | Commits `of1/config/config.json` (+ `cta-template.json` in pipeline mode) and `deliverables/index.html`. Checks listed below |
 | `fill-demo-hub.mjs` (kept, both flows) | Inputs: DA sheet `.json` URLs, DA listings (`/templates`, `/of1/knowledge`), `$OF1_STATE_DIR` status files, saved sync + status responses. Adds DA edit links for each authored item and a **"what worked" panel** (per-skill status, sync `synced`/`errors`/`content.indexed`, `ready` + failing checks) |
-| new `assets/da-sheet.mjs` (shared) | Writes a DA sheet from rows and triggers preview. Used for personas + suggestions |
+| new `of1-integration/assets/da-write.mjs` (shared) | Writes a DA document or sheet and triggers preview. Used for brand voice, personas, suggestions |
 | deleted | `publish-config-da.mjs`, `assets/config-review.html` |
 | docs | README skills table, removed "15 templates / gallery / catalog" remnants |
 
@@ -203,7 +203,7 @@ rows. Multi-sheet isn't needed.
   ready gate; endpoint derivation; strategy snapshot; personalize + generate-slots
   content grounding; legacy vector purge. Deleted modules take their tests with them;
   the full suite stays green.
-- **Skills:** `da-sheet.mjs` unit tests (rows → DA sheet payload); `fill-demo-hub.mjs`
+- **Skills:** `da-write.mjs` unit tests (rows → DA sheet payload); `fill-demo-hub.mjs`
   tests with the new inputs.
 - **E2E acceptance (dev worker, scratch EDS repo):**
   - Standalone: committed paths ⊆ the allowed set (Goals); no DA deletions outside
