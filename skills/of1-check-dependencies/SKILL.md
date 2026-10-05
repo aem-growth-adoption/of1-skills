@@ -147,13 +147,22 @@ git — remove only the OF1-owned trees, commit, push:
 ```bash
 # (cwd is $REPO_DIR — set in the Part 2 preamble.)
 # `git rm` stages exactly these paths' deletions — never a bare `git add -A`/`.`
-# (see common-pitfalls.md § 6). --ignore-unmatch: a no-op if they were never committed.
-git rm -r -q --ignore-unmatch -- blocks/of1 of1/config
-# Diff + commit scoped to these paths, so unrelated staged changes are never swept in.
-if ! git diff --cached --quiet -- blocks/of1 of1/config; then
-  git commit -m "chore: reset OF1 artefacts for ${BRANCH}" -- blocks/of1 of1/config
-  git push origin "$BRANCH"
-  echo "✓ OF1 artefacts (blocks/of1, of1/config) removed + pushed"
+# (see common-pitfalls.md § 6).
+# Only pass paths that exist in HEAD: a `git commit -- <path>` whose pathspec git
+# doesn't know fails the whole commit (e.g. an interrupted demo that committed
+# blocks/of1 but never of1/config).
+P=()
+for p in blocks/of1 of1/config; do
+  git ls-tree -d --name-only HEAD -- "$p" 2>/dev/null | grep -q . && P+=("$p")
+done
+if [ "${#P[@]}" -gt 0 ]; then
+  git rm -r -q -- "${P[@]}"
+  # Diff + commit scoped to these paths, so unrelated staged changes are never swept in.
+  if ! git diff --cached --quiet -- "${P[@]}"; then
+    git commit -m "chore: reset OF1 artefacts for ${BRANCH}" -- "${P[@]}"
+    git push origin "$BRANCH"
+    echo "✓ OF1 artefacts (${P[*]}) removed + pushed"
+  fi
 else
   echo "✓ No OF1 artefacts committed — nothing to remove"
 fi
