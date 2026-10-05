@@ -26,6 +26,7 @@ OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 PREVIEW="${BRANCH}--${REPO}--${OWNER}.aem.page"
+SKILL_DIR="${SKILL_DIR:-/workspace/skills/of1-extract-brand-voice}"
 DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
 cd "$OF1_DEMO_REPO"
 ```
@@ -114,7 +115,7 @@ The worker injects this doc into the LLM system prompt to shape how generated se
 **Existing doc check (standalone mode only).** An author may already have edited `/of1/brand-voice` in DA. Before writing, check whether it exists:
 
 ```bash
-if [ -z "$OF1_PIPELINE_MODE" ] && \
+if [ "${OF1_PIPELINE_MODE:-}" != "1" ] && \
    [ "$(curl -s -o /dev/null -w '%{http_code}' "https://${PREVIEW}/of1/brand-voice.plain.html")" = "200" ]; then
   echo "/of1/brand-voice already exists"
 fi

@@ -37,6 +37,7 @@ REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
+SKILL_DIR="${SKILL_DIR:-/workspace/skills/of1-extract-content}"
 DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
 PAGES="$OF1_STATE_DIR/knowledge-pages.json"
 
@@ -202,9 +203,9 @@ Write the persona rows as a JSON array to `$OF1_STATE_DIR/personas-rows.json` �
 
 Intent axes — `explore`, `research`, `compare`, `purchase`, `deals`, `support` (numbers 0–1): where this persona typically sits on the shopping-intent funnel — `explore` (browsing broadly, no target yet), `research` (digging into specs/details), `compare` (weighing alternatives), `purchase` (ready to buy), `deals` (price/promo-sensitive), `support` (needs help/service, post-sale). Infer them from the persona's `priorities`/`description` — give each persona a clearly dominant axis (≥0.7) and at least one clearly low axis (≤0.3) so personas render as visibly different shapes rather than a uniform hexagon.
 
-This isn't just cosmetic: it renders as the demo's Intent Map radar, but when a viewer clicks "Personalize" for that persona, these exact values are sent to the OF1 worker's personalize endpoint and directly drive real generation — which template gets selected (from the catalog's candidates for the resolved intent), the RAG retrieval mode, and the intent context put in the LLM prompt. Get them wrong and the persona won't just look wrong on the radar — it'll get shown content for the wrong intent.
+This isn't just cosmetic: it renders as the demo's Intent Map radar, and when a viewer clicks "Personalize" for that persona, the preview extension / edge proxy seeds the visitor's behaviour profile with these exact values and sends it to the OF1 worker's `/api/personalize` — where the intent and interests shape the content-chunk retrieval and the intent context put in the LLM prompt. Get them wrong and the persona won't just look wrong on the radar — it'll get content aimed at the wrong intent.
 
-`keywords` (10–12 strings) are matched against the user's query. Without them, persona matching fails silently and defaults to the first persona.
+`keywords` (10–12 strings) describe what this persona searches for and cares about; the preview extension uses them as focus areas in the persona's seeded profile (and, only when the intent columns are empty, to guess its intent). Keep them specific to the persona so personas stay distinguishable.
 
 Upload + preview the sheet:
 
@@ -256,8 +257,9 @@ node "$SKILL_DIR/assets/publish-knowledge-da.mjs" \
 rm -f /tmp/knowledge-image-manifest.json /tmp/knowledge-image-mapping.json
 ```
 
-`of1-check-dependencies` enables `contentIngestion` for `/of1/knowledge/**`
-and `of1-publish`'s sync indexes them. Do NOT convert these to EDS blocks.
+The worker indexes `/of1/knowledge/**` by default (no `contentIngestion` needed in
+`config.json`; `of1-check-dependencies` makes sure `helix-query.yaml` covers it) and
+`of1-publish`'s sync indexes them. Do NOT convert these to EDS blocks.
 
 ## Tips
 

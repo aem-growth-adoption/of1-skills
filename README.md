@@ -37,9 +37,11 @@ for the full dependency table), fanning out in parallel where possible.
 Author-tunable config lives in DA (edit, preview, then sync — see
 `skills/of1-integration/knowledge/da-sync-app.md`). A standalone run commits only
 `blocks/of1/`, new general-purpose `blocks/<name>/`, `helix-query.yaml` (only if
-absent), `of1/config/config.json`, `stardust/` + `PRODUCT.md` (only when extraction
-ran), and `deliverables/index.html` (+ `deliverables/brand-review.html` when
-extraction ran). Config shapes: `skills/of1-integration/knowledge/worker-config-schemas.md`.
+absent), `.hlxignore` (only if it blocked `of1/config`), `of1/config/config.json`,
+`stardust/` + `PRODUCT.md` (only when extraction ran), and `deliverables/index.html`
+(+ `deliverables/brand-review.html` when extraction ran). Legacy `of1/config/*.json`
+files from an earlier integration are removed (`of1-check-dependencies` step 3b).
+Config shapes: `skills/of1-integration/knowledge/worker-config-schemas.md`.
 
 ## Usage
 

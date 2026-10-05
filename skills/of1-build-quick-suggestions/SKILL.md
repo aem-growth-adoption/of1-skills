@@ -86,7 +86,7 @@ Also generate:
 
 ### 2. Write the chips to the DA sheet `/of1/config/suggestions`
 
-The OF1 block reads this sheet on page load to populate the search UI (randomly picks 5 to display). Write the rows to `$OF1_STATE_DIR/suggestions-rows.json` — one object per chip, keys exactly matching the sheet columns:
+The worker syncs this sheet (sync file `suggestions`) and serves the chips via `/api/suggest`; the OF1 block fetches them from there on page load (randomly picks 5 to display) — it does not read the sheet directly. So after an author edits the sheet in DA they must **preview it AND re-sync the tenant** (DA "Sync OF1" app or `of1-publish`) before the chips change. Write the rows to `$OF1_STATE_DIR/suggestions-rows.json` — one object per chip, keys exactly matching the sheet columns:
 
 ```json
 [

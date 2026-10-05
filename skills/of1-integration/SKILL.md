@@ -127,7 +127,7 @@ pipeline-only node `of1-build-cta-template` is added:
 
 ```bash
 # Site-integration gate (pipeline mode only)
-if [ -n "$OF1_PIPELINE_MODE" ]; then
+if [ "${OF1_PIPELINE_MODE:-}" = "1" ]; then
   echo "Waiting for Stage 2 (extract->prototype->snowflake) to finish: $OF1_STAGE2_DONE_FILE"
   # Event-driven on SLICC (scoop-notify) / sequential await on CC. Do NOT sleep-poll on SLICC.
   until [ -f "$OF1_STAGE2_DONE_FILE" ]; do :; done   # CC inline fallback only

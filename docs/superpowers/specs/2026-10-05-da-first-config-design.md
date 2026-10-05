@@ -26,8 +26,9 @@ and deletes **every top-level DA document**. That is destructive on a real custo
 
 - A standalone `of1-integration` run commits only:
   `blocks/of1/`, any new general-purpose `blocks/<name>/`, `helix-query.yaml` (only if
-  absent), `of1/config/config.json`, `stardust/` + `PRODUCT.md` (only when extraction
-  ran), `deliverables/index.html` (+ `deliverables/brand-review.html` when extraction ran).
+  absent), `.hlxignore` (only if it blocked `of1/config`), `of1/config/config.json`,
+  `stardust/` + `PRODUCT.md` (only when extraction ran), `deliverables/index.html`
+  (+ `deliverables/brand-review.html` when extraction ran).
   In pipeline mode (`OF1_PIPELINE_MODE=1`), also `of1/config/cta-template.json`.
 - Author-tunable config lives in DA: brand voice, chips, landing copy, personas,
   templates, knowledge pages.

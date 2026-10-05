@@ -190,7 +190,7 @@ fi
 
 **Do NOT include a `<title>` tag in the DA HTML** — EDS will render it as visible content.
 
-**Landing copy is author-editable.** The `title` (the `<h1>`), `subtitle`, and `placeholder` (search input) rows on the `of1` block are read by the OF1 client SDK (EDS `readBlockConfig` lowercases the keys); any row that is absent falls back to the SDK default. Authors change the landing copy by editing these rows in the `/of1` doc in DA and re-previewing — no code change or re-run needed. This skill seeds them from `$OF1_STATE_DIR/of1-landing.json` (written by `of1-build-quick-suggestions`); if that ran after this step, re-run Step 5 to add the rows.
+**Landing copy is author-editable.** The `title` (the `<h1>`), `subtitle`, and `placeholder` (search input) rows on the `of1` block are read by the OF1 client SDK (EDS `readBlockConfig` lowercases the keys); any row that is absent falls back to the SDK default. Authors change the landing copy by editing these rows in the `/of1` doc in DA and re-previewing — no code change or re-run needed. This skill seeds them from `$OF1_STATE_DIR/of1-landing.json` (written by `of1-build-quick-suggestions`); if that ran after this step, re-run Step 5 to add the rows. **Note:** Step 5 PUTs the whole `/of1` doc, so re-running it — including the re-run `of1-publish` step 2 always does — **resets** the landing rows to `$OF1_STATE_DIR/of1-landing.json`, overwriting any author edits in DA. Re-apply DA edits after re-running `of1-publish` (or update `of1-landing.json` first).
 
 ### Step 5b — Gate: verify DA content is live and renders correctly
 
@@ -267,7 +267,7 @@ playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/of1-generated-c
 playwright-cli eval "() => (document.querySelector('.generated-section') ? 'generated OK' : 'NO GENERATED CONTENT')"
 ```
 
-If nothing renders, check the worker sync / tenant status (see `of1-publish`) and that the template catalog deployed. Per-section visual problems are the templates' CSS (`of1-build-templates`), not this skill.
+If nothing renders, check the worker sync / tenant status (see `of1-publish`) and that the DA templates under `/templates` are previewed (`hasTemplates` true). Per-section visual problems are the templates' CSS (`of1-build-templates`), not this skill.
 
 Common failures:
 

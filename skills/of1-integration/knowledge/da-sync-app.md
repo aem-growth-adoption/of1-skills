@@ -40,7 +40,7 @@ Nothing installs this row automatically — lab sites need the same manual `libr
    |---|---|
    | `/of1/brand-voice` | `brand-voice` |
    | `/of1/strategy` | `strategy` |
-   | `/of1/config/<f>` (e.g. `personas`, `suggestions`) | `<f>` |
+   | `/of1/config/<f>` (e.g. `suggestions`) | `<f>` |
    | `/templates/*` | `templates` |
    | `/of1/knowledge/*` | `content` |
 
