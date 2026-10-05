@@ -5,6 +5,14 @@ The OF1 worker reads tenant config from R2. A **sync** (`POST /api/tenants/<id>/
 `https://<id>.aem.page` and stores it. Most author-tunable config is a **DA document or sheet**;
 only `config.json` (and, in pipeline mode, `cta-template.json`) is committed to git.
 
+> **DA config is shared per org/repo, not per branch.** DA keeps one content tree per
+> `<owner>/<repo>`; every branch's preview host reads the same `/of1/**` and
+> `/templates/**`. Only the git files (`config.json`, `cta-template.json`) are
+> branch-scoped. The supported model is therefore **one EDS repo per site/demo** — two
+> demos on different branches of the same repo would overwrite each other's DA config,
+> and `of1-check-dependencies` Restart's deletion of DA `/of1` and `/templates` affects
+> every branch of the repo.
+
 | Source | Where | Produced by | Sync file |
 |---|---|---|---|
 | `of1/config/config.json` | git | `of1-check-dependencies` | `config` |

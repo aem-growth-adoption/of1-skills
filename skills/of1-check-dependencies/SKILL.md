@@ -68,7 +68,7 @@ OWNER=$(echo "$SETUP" | jq -r .owner)
 REPO=$(echo "$SETUP" | jq -r .repo)
 BRANCH=$(echo "$SETUP" | jq -r .branch)
 REPO_DIR=$(echo "$SETUP" | jq -r .of1Repo)
-# Every step below (3, 6, 7, 8) uses repo-relative paths and git — run them all
+# Every step below (3, 3b, 6, 7, 8) uses repo-relative paths and git — run them all
 # from the repo root, on fresh, Continue and Restart runs alike.
 cd "$REPO_DIR" || { echo "✗ cannot cd into $REPO_DIR" >&2; exit 1; }
 
@@ -93,16 +93,19 @@ fi
 ```
 
 - **If `repo-config.json` does NOT exist:** no demo in progress — treat as
-  fresh. **No deletion of any kind**: skip step 3 and go straight to step 4
-  (Code Sync check), no prompt needed. Every later step overwrites only
-  OF1-owned paths, so a fresh run on a site with existing content is
-  idempotent and non-destructive.
+  fresh. **No Restart deletion**: skip step 3 and go to step 3b (legacy
+  config JSON check), then step 4 (Code Sync check). Every later step
+  overwrites only OF1-owned paths, so a fresh run on a site with existing
+  content is idempotent and non-destructive.
 - **If it DOES exist:** summarize the branch, domain, and last completed
   step to the user from the printed JSON, then ask via `AskUserQuestion`:
   - **Continue** this demo — skip cleanup entirely, keep all existing
-    artifacts and DA content, go straight to step 4 (Code Sync check).
+    artifacts and DA content, go to step 3b, then step 4 (Code Sync check).
   - **Restart** this demo — run step 3 (remove OF1-owned content only)
-    against the *same* branch, then continue to step 4.
+    against the *same* branch, then continue to step 3b and step 4. Restart's
+    DA deletions are **not branch-scoped** (see step 3).
+
+Step 3b runs on **every** run — fresh, Continue and Restart alike.
 
 ### 2. Warn if on `main` or detached HEAD
 
@@ -125,6 +128,14 @@ Restart removes **only OF1-owned paths**:
 - **DA:** `/of1/**` and `/templates/**`
 - **git:** `blocks/of1/` and `of1/config/`
 
+> ⚠️ **DA config is shared per org/repo, not per branch.** DA has one content
+> tree per `${OWNER}/${REPO}` — every branch's preview (`<branch>--repo--owner.aem.page`)
+> reads the same `/of1/**` and `/templates/**`. The supported model is **one EDS
+> repo per site/demo**. Restart's DA deletion of `/of1` and `/templates` therefore
+> affects **every branch** of this repo, not just `${BRANCH}` (the git removal
+> below is branch-scoped). If other branches of this repo carry their own OF1
+> demo, do not Restart — use a separate repo instead.
+
 **Never delete** — these belong to the customer site, even on a throwaway branch:
 
 - DA `/nav`, `/footer`, `/index` (the home page), or any other DA path outside `/of1` and `/templates`
@@ -140,6 +151,10 @@ Local state (not customer content) — reset it so the pipeline restarts cleanly
 ```bash
 rm -f "$OF1_STATE_DIR"/of1-*-status.json
 rm -f "$OF1_STATE_DIR/discovery.html"
+# Staged DA inputs + hub inputs from the previous run — otherwise a restarted
+# run could re-upload stale landing copy / personas / chips / knowledge pages.
+rm -f "$OF1_STATE_DIR"/{of1-landing.json,personas-rows.json,suggestions-rows.json,knowledge-pages.json,brand-voice.html}
+rm -rf "$OF1_STATE_DIR/hub"
 ```
 
 git — remove only the OF1-owned trees, commit, push:
@@ -204,6 +219,66 @@ da_delete_tree /of1
 da_delete_tree /templates
 echo "✓ DA /of1/** and /templates/** removed (nav, footer, index and all other content untouched)"
 ```
+
+### 3b. Remove legacy `of1/config/*.json` (every run)
+
+**Runs on every run** — fresh, Continue and Restart. Sites integrated by an
+older version of these skills still track `of1/config/*.json` files that are no
+longer produced or read (`knowledge.json`, `personas.json`, `suggestions.json`,
+`brand-voice.json`, `templates.json`, `of1-endpoint.json`, `products.json`,
+`features.json`, `faqs.json`, `use-cases.json`, …). A git file beats a DA sheet at
+the same URL on EDS, so e.g. a committed `personas.json` / `suggestions.json`
+**shadows** the DA sheet `/of1/config/personas` / `/of1/config/suggestions` the
+later steps write. Only `of1/config/config.json` (plus
+`of1/config/cta-template.json` in pipeline mode) may stay tracked.
+
+```bash
+# (cwd is $REPO_DIR — set in the Part 2 preamble.)
+ALLOWED="of1/config/config.json"
+[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED="$ALLOWED of1/config/cta-template.json"
+LEGACY=()
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  case " $ALLOWED " in *" $f "*) ;; *) LEGACY+=("$f") ;; esac
+done < <(git ls-files of1/config)
+if [ "${#LEGACY[@]}" -gt 0 ]; then
+  echo "Legacy OF1 config files tracked in git (would shadow DA config / no longer read):"
+  printf '    %s\n' "${LEGACY[@]}"
+else
+  echo "✓ No legacy of1/config files tracked"
+fi
+```
+
+If `LEGACY` is non-empty, explain to the user that these are legacy OF1 files
+from an earlier integration: they're no longer read by the worker, and any that
+share a URL with a DA sheet (`personas.json`, `suggestions.json`) would shadow the
+author-editable DA version. Then:
+
+- **Standalone mode** (`OF1_PIPELINE_MODE` unset): ask via `AskUserQuestion`
+  — **Remove them** (commit + push the deletion of exactly the listed files) /
+  **Keep them**. On Keep, skip the removal and warn that `of1-publish` check 1
+  will fail until they're gone.
+- **Pipeline mode** (`OF1_PIPELINE_MODE=1`): remove without asking.
+
+Removal — exactly the listed files, never the whole `of1/config/` tree (it holds
+`config.json`), never a bare `git add -A`/`.`:
+
+```bash
+if [ "${#LEGACY[@]}" -gt 0 ]; then
+  git rm -q -f -- "${LEGACY[@]}"
+  # Commit only files that exist in HEAD: a `git commit -- <path>` whose pathspec
+  # git no longer knows (staged-but-never-committed file) fails the whole commit.
+  C=()
+  for f in "${LEGACY[@]}"; do git cat-file -e "HEAD:$f" 2>/dev/null && C+=("$f"); done
+  if [ "${#C[@]}" -gt 0 ]; then
+    git commit -m "chore: remove legacy OF1 config JSON" -- "${C[@]}"
+    git push origin "$BRANCH"
+  fi
+  echo "✓ Removed legacy OF1 config JSON: ${LEGACY[*]}"
+fi
+```
+
+`of1-publish` check 1 re-asserts the same allowed set as the backstop.
 
 ### 4. Code Sync check
 

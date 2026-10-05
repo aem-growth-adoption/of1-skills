@@ -79,7 +79,7 @@ ALLOWED="of1/config/config.json"
 
 ### 1. Assert the git config set (check 1)
 
-Only `of1/config/config.json` (and `of1/config/cta-template.json` in pipeline mode) may be tracked under `of1/config/`. Any other tracked file — especially `personas.json` / `suggestions.json` — would shadow the DA sheet at the same URL (a git file beats a DA sheet on EDS). Fail and list the extras; do not delete them here (that's the user's call, or `of1-check-dependencies` "Restart").
+Only `of1/config/config.json` (and `of1/config/cta-template.json` in pipeline mode) may be tracked under `of1/config/`. Any other tracked file — especially `personas.json` / `suggestions.json` — would shadow the DA sheet at the same URL (a git file beats a DA sheet on EDS). Fail and list the extras; do not delete them here — `of1-check-dependencies` step 3b ("Remove legacy `of1/config/*.json`") removes them on every run, so this check is the backstop for when that was declined or skipped.
 
 ```bash
 EXTRA=$(git ls-files of1/config | while read -r f; do
@@ -88,7 +88,7 @@ done)
 if [ -n "$EXTRA" ]; then
   echo "✗ FAIL (check 1): unexpected files tracked under of1/config/ — they shadow DA config or are no longer read:" >&2
   echo "$EXTRA" | sed 's/^/    /' >&2
-  echo "  Remove them from git (git rm --cached …, commit, push), then re-run of1-publish." >&2
+  echo "  Re-run of1-check-dependencies (step 3b removes legacy of1/config JSON: scoped git rm + commit + push), then re-run of1-publish." >&2
   exit 1
 fi
 [ -f of1/config/config.json ] || { echo "✗ FAIL: of1/config/config.json missing — run of1-check-dependencies" >&2; exit 1; }
@@ -168,8 +168,12 @@ Reads `$OF1_STATE_DIR/repo-config.json`, `of1-discovery-output.md`, `pipeline-au
 
 ```bash
 git add -- deliverables/index.html
-git commit -m "feat: OF1 demo hub for ${DOMAIN}" -- deliverables/index.html
-git push origin "$BRANCH"
+# Same guard as step 3: an identical hub (same-day re-run) leaves nothing staged,
+# and an unguarded `git commit` would exit 1.
+if ! git diff --cached --quiet -- deliverables/index.html; then
+  git commit -m "feat: OF1 demo hub for ${DOMAIN}" -- deliverables/index.html
+  git push origin "$BRANCH"
+fi
 ```
 
 Never `git add of1/config/` or `git add -A` — only the explicit allowed paths (step 3) and the hub.
