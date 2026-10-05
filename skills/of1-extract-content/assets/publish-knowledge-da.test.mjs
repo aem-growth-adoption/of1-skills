@@ -1,7 +1,14 @@
 // skills/of1-extract-content/assets/publish-knowledge-da.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { slugify, resolveSlug, renderKnowledgeDoc, renderContentDoc, hashSrc } from './publish-knowledge-da.mjs';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { slugify, resolveSlug, renderKnowledgeDoc, renderContentDoc, hashSrc, parseArgs } from './publish-knowledge-da.mjs';
+
+const SCRIPT = fileURLToPath(new URL('./publish-knowledge-da.mjs', import.meta.url));
 
 test('slugify normalizes to url-safe slug', () => {
   assert.equal(slugify('Multi-Entity Accounting!'), 'multi-entity-accounting');
@@ -101,4 +108,33 @@ test('renderKnowledgeDoc still emits text-only (backward compat, image blocks dr
   });
   assert.ok(html.includes('Ship it back.'));
   assert.ok(!html.includes('<img'));
+});
+
+test('parseArgs: --pages sets the input file', () => {
+  assert.equal(parseArgs(['--pages', '/tmp/x.json']).pages, '/tmp/x.json');
+});
+
+test('parseArgs: default pages is $OF1_STATE_DIR/knowledge-pages.json', () => {
+  const saved = process.env.OF1_STATE_DIR;
+  process.env.OF1_STATE_DIR = '/state';
+  try {
+    assert.equal(parseArgs(['--owner', 'O', '--repo', 'R', '--branch', 'B']).pages, '/state/knowledge-pages.json');
+  } finally {
+    if (saved === undefined) delete process.env.OF1_STATE_DIR; else process.env.OF1_STATE_DIR = saved;
+  }
+});
+
+test('CLI: runs when invoked through a symlink, reading --pages', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pkd-'));
+  const link = path.join(dir, 'pkd-link.mjs');
+  fs.symlinkSync(SCRIPT, link);
+  const pages = path.join(dir, 'knowledge-pages.json');
+  fs.writeFileSync(pages, JSON.stringify([{ slug: 'faq', title: 'FAQ', blocks: [{ tag: 'p', text: 'x' }] }]));
+  const preload = path.join(dir, 'stub.mjs');
+  fs.writeFileSync(preload, 'globalThis.fetch = async () => ({ ok: true, status: 200 });\n');
+  const r = spawnSync(process.execPath, [
+    '--import', preload, link, '--owner', 'O', '--repo', 'R', '--branch', 'B', '--pages', pages,
+  ], { encoding: 'utf8', env: { ...process.env, DA_TOKEN: 'T' } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /✓ \/of1\/knowledge\/faq/);
 });

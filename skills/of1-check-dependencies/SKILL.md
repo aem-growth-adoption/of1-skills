@@ -349,7 +349,7 @@ controls what EDS puts *into* `query-index.json` (index membership, a build
 concern), while the worker's content-ingestion filter (default `/of1/knowledge/**`,
 overridable via `contentIngestion` in `config.json`, Step 7) decides what gets
 embedded. The worker needs both. After the knowledge
-pages are published (`of1-extract-content` Step 10), EDS rebuilds
+pages are published (`of1-extract-content` Step 8), EDS rebuilds
 `/query-index.json` to include them; `of1-publish`'s `content.indexed > 0` gate
 is the coverage proof.
 

@@ -4,7 +4,7 @@
 // all pages, keyed by hashSrc(src) so publish-knowledge-da.mjs can map each
 // captured <img> back to its rehosted DA url by the same key.
 //
-// Usage: node build-image-manifest.mjs [--config-dir of1/config]
+// Usage: node build-image-manifest.mjs [--pages $OF1_STATE_DIR/knowledge-pages.json]
 //        [--output /tmp/knowledge-image-manifest.json]
 
 import fs from 'node:fs';
@@ -29,10 +29,13 @@ export function buildManifest(entries) {
   return manifest;
 }
 
-function parseArgs(argv) {
-  const args = { configDir: 'of1/config', output: '/tmp/knowledge-image-manifest.json' };
+export function parseArgs(argv) {
+  const args = {
+    pages: path.join(process.env.OF1_STATE_DIR || '.', 'knowledge-pages.json'),
+    output: '/tmp/knowledge-image-manifest.json',
+  };
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--config-dir') args.configDir = argv[++i];
+    if (argv[i] === '--pages') args.pages = argv[++i];
     else if (argv[i] === '--output') args.output = argv[++i];
   }
   return args;
@@ -40,7 +43,7 @@ function parseArgs(argv) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const manifestPath = path.join(args.configDir, 'knowledge-pages.json');
+  const manifestPath = args.pages;
   if (!fs.existsSync(manifestPath)) throw new Error(`${manifestPath} not found — capture step must run first`);
   const entries = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
   const manifest = buildManifest(entries);
@@ -48,6 +51,13 @@ function main() {
   console.log(`✓ ${manifest.length} unique knowledge image(s) → ${args.output}`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Compare against the realpath: Node resolves import.meta.url through
+// symlinks, but argv[1] keeps the symlinked path.
+function isDirectRun() {
+  if (!process.argv[1]) return false;
+  try { return import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href; } catch { return false; }
+}
+
+if (isDirectRun()) {
   try { main(); } catch (e) { console.error(`FATAL: ${e.message}`); process.exit(1); }
 }
