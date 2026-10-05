@@ -60,7 +60,8 @@ Reason in this order. **Reuse first; invent general blocks only when genuinely u
 slot-specific, single-template block.**
 
 1. **Use cases first.** From `$OF1_STATE_DIR/of1-discovery-output.md` (discovery narrative) +
-   `of1/config/knowledge.json` (personas, products, features, FAQs, when present) determine what the
+   `$OF1_STATE_DIR/knowledge-pages.json` (the site's captured pages — titles, headings, copy — from
+   `of1-extract-content`, when present) and `$OF1_STATE_DIR/personas-rows.json` determine what the
    generative-search experience must actually answer.
 2. **Derive intents** — `comparison`, `recommendation`, `deep-dive`, `budget`, `discovery`. Each maps
    to one or more template shapes.
@@ -172,15 +173,19 @@ Selected by `OF1_TG_MODE`. The orchestrator runs them in order: `base` → `inte
 |---|---|---|
 | `base` | Use-cases → intents → **block plan**; run `inventory.sh` + harvest live `.plain.html`; author any planned **new general blocks** (`blocks/<name>/*`), commit + push, and wait for code sync so their decorators are live before any template uses them. | Orchestrator FIRST (1 agent) |
 | `intent` | Compose the DA template documents for ONE intent (`$OF1_TG_INTENT`) from the block plan, `da_put` each to `/templates/<name>`. Does NOT preview, does NOT commit. | Orchestrator fan-out (5 agents) after `base` |
-| `assemble` | Run ONCE after all intents. `aem_preview` every composed doc (MANDATORY), verify the round-trip, write `of1/config/templates.json` (`engine: da-blocks-slots`), single commit + push. | Orchestrator after all intents return |
+| `assemble` | Run ONCE after all intents. `aem_preview` every composed doc (MANDATORY), verify the round-trip, check richness, write the final status. Writes nothing to git. | Orchestrator after all intents return |
 | `all` (default) | Fallback — `base` → 5 intents serially → `assemble` inline in one agent. | Single agent when no fan-out |
 
-**Race-safety:** intent agents write disjoint DA paths (`/templates/<intent>-*`). New-block code and
-`templates.json` are owned by `base` and `assemble` respectively, never by intent agents.
+**Race-safety:** intent agents write disjoint DA paths (`/templates/<intent>-*`). New-block code is
+owned by `base` and previewing by `assemble`, never by intent agents.
+
+**No routing config.** The worker always uses the `da-blocks-slots` engine and materializes templates
+from the DA folder `/templates` by default (override only via `config.json` `templates.daPath`) — this
+skill writes no engine/template config file.
 
 ### Phase: `base`
 
-1. **Determine use cases → intents → block plan.** Read discovery + knowledge; decide, per intent, the
+1. **Determine use cases → intents → block plan.** Read discovery + `knowledge-pages.json`; decide, per intent, the
    template shapes and the block palette (reuse vs new) per Block Strategy. For **each** template, size it
    to its purpose (CRITICAL RULE 6): quick-answer templates 1–2 blocks, exploratory templates target 4–5 —
    list the ordered block sequence (lead → primary → supporting → CTA) in the plan so exploratory intents
@@ -260,7 +265,7 @@ For each template variation this intent's plan calls for:
    ```
    `da_put` returns the `editUrl` (`da.live/edit#/…`) — capture it; `of1-publish` surfaces it in the
    demo hub as the authoring showcase.
-4. Do **not** preview or commit here (assemble owns both).
+4. Do **not** preview or commit here (assemble owns previewing; only `base` commits — new block code).
 
 Status file (one per intent):
 ```bash
@@ -305,24 +310,13 @@ Run once after all 5 intent agents complete.
      fi
    done
    ```
-4. **Write the tenant config** (git-committed — this is the only committed template artifact besides new
-   block code):
-   ```bash
-   mkdir -p of1/config
-   cat > of1/config/templates.json <<'JSON'
-   { "engine": "da-blocks-slots", "daPath": "/templates" }
-   JSON
-   git add of1/config/templates.json
-   git commit -m "feat: route ${DOMAIN} to da-blocks-slots engine (/templates in DA)"
-   git push origin "$BRANCH"
-   ```
-5. **Final status file** (the deliverable status the orchestrator reports):
+4. **Final status file** (the deliverable status the orchestrator reports):
    ```bash
    EDIT_BASE="https://da.live/edit#/${OWNER}/${REPO}/templates"
    cat > "$OF1_STATE_DIR/of1-build-templates-status.json" <<EOF
    { "stage": 3, "skill": "of1-build-templates", "status": "review",
      "deliverables": [ { "url": "${EDIT_BASE}", "label": "Edit templates in DA" } ],
-     "summary": "Authored, previewed, and verified DA block templates; routed tenant to da-blocks-slots." }
+     "summary": "Authored, previewed, and verified DA block templates in /templates." }
    EOF
    ```
 
@@ -333,8 +327,8 @@ slower wall-clock.
 
 ## Deliverables
 
-- DA documents at `/templates/<intent>-<variation>` (source of truth; not git-committed).
-- `of1/config/templates.json` — `{ "engine": "da-blocks-slots", "daPath": "/templates" }` (committed).
+- DA documents at `/templates/<intent>-<variation>` (source of truth; not git-committed). No template
+  config file — the worker defaults to `da-blocks-slots` + `/templates`.
 - Any **new general-purpose** `blocks/<name>/{<name>.js,<name>.css}` (committed) — reused blocks are
   never modified.
 - Editable in DA at `da.live/edit#/{org}/{repo}/templates/*` (the authoring showcase `of1-publish`

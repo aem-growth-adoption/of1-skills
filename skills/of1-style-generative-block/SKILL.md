@@ -116,7 +116,7 @@ The file is organized into these sections (keep the structure; just retune the v
 /* ─── Responsive ─── */
 ```
 
-Do NOT add rules that target generated-section internals (`.generated-section .hero`, `.cards`, `.table`, `.columns`) — that content is template HTML styled by the template's own injected stylesheet.
+Do NOT add rules that target generated-section internals (`.generated-section .hero`, `.cards`, `.table`, `.columns`) — that content is the site's own EDS blocks, styled by each block's code-bus CSS (`blocks/<name>/<name>.css`).
 
 ### Step 4 — Guarantee the site's /nav and /footer chrome exist
 
@@ -147,16 +147,27 @@ The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Descr
 # advanced field) points a branch/dev run's live page at a dev worker.
 WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.dev}"
 
-# The `engine` row is REQUIRED. The OF1 client SDK reads it from this block's
-# config to pick its rendering path; for `da-blocks`/`da-blocks-slots` it must
-# SKIP its legacy content stylesheet (`of1-client-legacy-content.css`). Omit the
-# row and `config.engine` is undefined, so the SDK loads that legacy stylesheet,
-# which clobbers the tenant's real EDS block CSS — black table headers, collapsed
-# hero images, unstyled templates. Author it from templates.json (the source of
-# truth), defaulting to da-blocks-slots.
-ENGINE=$(jq -r '.engine // "da-blocks-slots"' of1/config/templates.json)
+# The `engine` row is always the literal `da-blocks-slots` — the only engine the
+# worker serves (templates are materialized from DA `/templates`). The client SDK
+# also defaults to da-blocks-slots when the row is absent and no longer ships a
+# legacy content stylesheet; we still write the row explicitly so the authored
+# page is self-describing.
+ENGINE="da-blocks-slots"
 
-OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>'${WORKER_URL}'</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr><tr><td><p>engine</p></td><td><p>'${ENGINE}'</p></td></tr></table></div></div></main><footer></footer></body>'
+# Landing copy rows (title/subtitle/placeholder) from of1-build-quick-suggestions.
+# Each non-empty value becomes its own row after `engine`; values are HTML-escaped
+# via jq @html. If of1-landing.json is absent (suggestions not generated yet),
+# the rows are omitted and the SDK's defaults apply.
+LANDING="$OF1_STATE_DIR/of1-landing.json"
+LANDING_ROWS=""
+if [ -f "$LANDING" ]; then
+  for key in title subtitle placeholder; do
+    VAL=$(jq -r --arg k "$key" '.[$k] // empty | @html' "$LANDING")
+    [ -n "$VAL" ] && LANDING_ROWS="${LANDING_ROWS}<tr><td><p>${key}</p></td><td><p>${VAL}</p></td></tr>"
+  done
+fi
+
+OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>'${WORKER_URL}'</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr><tr><td><p>engine</p></td><td><p>'${ENGINE}'</p></td></tr>'${LANDING_ROWS}'</table></div></div></main><footer></footer></body>'
 
 curl -s -X PUT \
   -H "Authorization: Bearer ${DA_TOKEN}" \
@@ -178,6 +189,8 @@ fi
 ```
 
 **Do NOT include a `<title>` tag in the DA HTML** — EDS will render it as visible content.
+
+**Landing copy is author-editable.** The `title` (the `<h1>`), `subtitle`, and `placeholder` (search input) rows on the `of1` block are read by the OF1 client SDK (EDS `readBlockConfig` lowercases the keys); any row that is absent falls back to the SDK default. Authors change the landing copy by editing these rows in the `/of1` doc in DA and re-previewing — no code change or re-run needed. This skill seeds them from `$OF1_STATE_DIR/of1-landing.json` (written by `of1-build-quick-suggestions`); if that ran after this step, re-run Step 5 to add the rows.
 
 ### Step 5b — Gate: verify DA content is live and renders correctly
 
@@ -236,7 +249,7 @@ Open the screenshot — the branded nav should be at the top, the branded footer
 
 ### Step 7b — Verify generated content styling
 
-The page chrome rendering (Step 7) is necessary but not sufficient. Also confirm a query returns styled content. Generated sections are template HTML styled by each template's own injected stylesheet, so this is an end-to-end smoke test that the block, the client SDK, and the templates work together — not a check of `of1.css` selectors.
+The page chrome rendering (Step 7) is necessary but not sufficient. Also confirm a query returns styled content. Generated sections are the site's own EDS blocks styled by each block's code-bus CSS (`blocks/<name>/<name>.css`), so this is an end-to-end smoke test that the block, the client SDK, and the templates work together — not a check of `of1.css` selectors.
 
 1. Trigger a test query by clicking a suggestion chip
 2. Wait for generated content to stream in
@@ -313,4 +326,4 @@ Cross-cutting rules (SLICC Node.js shim, EDS class collisions) live in `of1-demo
 | Using whatever `of1.css` is in the demo repo as base | 5+ min stale/wrong | Always copy fresh from `$SKILL_DIR/assets/of1.css` and customize in place |
 | Modifying `of1.js` to add brand logic | Breaks block | JS is shared infrastructure — NEVER touch it, only customize CSS |
 | Forgetting to commit `of1.js` alongside `of1.css` | Blank page | Always `git add blocks/of1/` to include both files |
-| Adding rules for generated-section internals (`.generated-section .hero`/`.cards`/`.table`) | Wasted effort — dead selectors | That content is template HTML styled by the template's own injected stylesheet; `of1.css` styles only the block UI + section container |
+| Adding rules for generated-section internals (`.generated-section .hero`/`.cards`/`.table`) | Wasted effort — dead selectors | That content is the site's own EDS blocks, styled by each block's code-bus CSS; `of1.css` styles only the block UI + section container |
