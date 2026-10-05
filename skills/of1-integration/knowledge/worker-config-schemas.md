@@ -1,251 +1,53 @@
-# OF1 Worker — Config File Schemas
+# OF1 Worker — Tenant Config Sources
 
-The OF1 worker reads tenant config from R2 (synced from EDS at `https://<id>.aem.page/of1/config/<file>.json`). Every config-producing skill MUST output JSON matching these exact schemas.
+The OF1 worker reads tenant config from R2. A **sync** (`POST /api/tenants/<id>/sync`, tenant id
+`<branch>--<repo>--<owner>`) pulls each source from the site's preview host
+`https://<id>.aem.page` and stores it. Most author-tunable config is a **DA document or sheet**;
+only `config.json` (and, in pipeline mode, `cta-template.json`) is committed to git.
+
+| Source | Where | Produced by | Sync file |
+|---|---|---|---|
+| `of1/config/config.json` | git | `of1-check-dependencies` | `config` |
+| `of1/config/cta-template.json` | git — **pipeline mode only** | `of1-build-cta-template` | `cta-template` |
+| `/of1/brand-voice` | DA document | `of1-extract-brand-voice` | `brand-voice` |
+| `/of1/config/personas` | DA sheet | `of1-extract-content` | — (not synced; read by the extension / edge proxy) |
+| `/of1/config/suggestions` | DA sheet | `of1-build-quick-suggestions` | `suggestions` |
+| `/of1` page, `of1` block rows | DA document | `of1-style-generative-block` Step 5 | — (read by the client SDK) |
+| `/of1/strategy` | DA document (optional) | authors | `strategy` |
+| `/templates/*` | DA documents | `of1-build-templates` | `templates` |
+| `/of1/knowledge/**` | DA documents | `of1-extract-content` | `content` |
+
+Every DA item must be **previewed** (`admin.hlx.page/preview/...`) — the worker reads the preview
+host, not DA source. `skills/of1-integration/assets/da-write.mjs` writes + previews DA docs and sheets.
+
+**Never commit `of1/config/personas.json` or `of1/config/suggestions.json`.** A git file beats a DA
+sheet at the same path on EDS, so a committed file would shadow the authored sheet. `of1-publish`
+check 1 fails if any `of1/config/*.json` other than `config.json` (+ `cta-template.json` in pipeline
+mode) is tracked in git.
 
 ---
 
-## brand-voice.json
-
-Either a single string (used verbatim in the system prompt) or an object:
+## `config.json` (git)
 
 ```json
-{
-  "personality": "Warm, knowledgeable home-barista guide.",
-  "tone": "Friendly, slightly enthusiastic, never jargon-heavy.",
-  "vocabulary": ["crema", "extraction", "single-origin"],
-  "avoidWords": ["cheap", "synthetic"]
-}
-```
-
-Used by prompt building in both default and template-routing flows. **Not part of the `ready` gate** (see the Required-vs-Optional table), but always generate it — it drives prompt quality.
-
----
-
-## products.json
-
-Array of products. **Required for tenant readiness. Vectorized for RAG.**
-
-```json
-[
-  {
-    "id": "fresco-deluxe",
-    "name": "Fresco Deluxe",
-    "title": "Fresco Deluxe Espresso Machine",
-    "category": "Espresso machines",
-    "description": "Triple-nozzle espresso machine with adjustable grind...",
-    "price": "499.00",
-    "keywords": ["espresso", "home barista"],
-    "highlights": ["Triple nozzles", "Adjustable grind", "5-cup capacity"],
-    "images": [
-      "https://main--repo--owner.aem.page/media/product-fresco-deluxe.png"
-    ],
-    "url": "/products/fresco-deluxe"
-  }
-]
-```
-
-| Field | Required | Used for |
-|-------|----------|----------|
-| `id` | yes (falls back to `name` then `title`) | Vector id |
-| `name` / `title` | yes | Vector text + display |
-| `category` | no | Vector text + filtering |
-| `description` | no | Vector text + prompt context (truncated to 500 chars) |
-| `keywords[]` | no | Vector text |
-| `highlights[]` | no | Vector text |
-| `price` | no | Vector metadata + prompt |
-| `images[]` | **critical** | Allowlist for `validate-image-urls` — the LLM may ONLY emit URLs from this list |
-| `url` | no | Product page link |
-
----
-
-## personas.json
-
-Array of personas. Used by `persona-match` step.
-
-```json
-[
-  {
-    "id": "home-barista",
-    "name": "Home Barista",
-    "keywords": ["espresso", "crema", "barista", "grind"],
-    "description": "Enthusiast brewing cafe-quality at home.",
-    "priorities": ["machine quality", "brewing control"],
-    "recommendedProducts": ["fresco-deluxe"],
-    "intentProfile": {
-      "explore": 0.3,
-      "research": 0.8,
-      "compare": 0.6,
-      "purchase": 0.3,
-      "deals": 0.2,
-      "support": 0.2
-    }
-  }
-]
-```
-
-| Field | Read from `personas.json` directly? | Used for |
-|-------|--------------------------------------|----------|
-| `id` | yes | `persona-match` output identity; boosts `products.json` entries where `product.persona === persona.id` |
-| `name` | yes | Prompt/logging label (`ctx.rag.persona.name`) |
-| `keywords[]` | yes | `persona-match` matches these (case-insensitive substring) against the user's typed query — first hit wins, `personas[0]` is the default if nothing matches |
-| `description` | no | Not read by the worker. Human/LLM-readable context only. |
-| `priorities[]` | no | Not read by the worker. Consumed by of1-demo-skills' own content generation (e.g. deriving `intentProfile`). |
-| `recommendedProducts[]` / `intentProfile` | no (but see below) | Not read from `personas.json` itself, but their *shape* becomes load-bearing input to real generation once the of1-labs demo UI's "Personalize" action fires for that persona. |
-
-`id`/`name`/`keywords` are the only fields the worker reads straight out of tenant config for `persona-match` (typed-query mode). `priorities[]`/`description` never leave the config file.
-
-**`recommendedProducts[]` and `intentProfile` are different — they're not config the worker loads, but the of1-labs demo UI turns them into a live request payload that the worker's *personalize* pipeline directly consumes:**
-
-1. of1-labs' `buildProfileFromPersona` turns `recommendedProducts` → `profile.interests`, and reads/derives `profile.intentProfile` (see the field's own description below).
-2. Clicking "Personalize" POSTs `{ interests, intentProfile, pageVisits, ... }` to the worker's personalize endpoint.
-3. `analyze-behavior.js` explicitly normalizes this exact shape — its own comment: *"the of1-labs persona picker sends a flat score distribution (e.g. `{ explore: 0.2, research: 0.8, ... }`) with no `topIntent`"* — into `ctx.rag.behaviorAnalysis.topIntent` / `.interests` / `.intentSignals`.
-4. From there it drives real output: `intent-classify.js` sets `ctx.intent.type` from `topIntent`, which `template-select.js` uses to **pick which template to render** (from the catalog's `byIntent` candidates for that intent — the count is catalog-dependent, currently 15 = 5 intents × 3 variations), `rag-products.js` uses to flip deep-dive retrieval behavior, `rag-vectorize.js` uses `.interests`/`.intentSignals` to bias RAG product retrieval, and `build-prompt.js`/`build-template-prompt.js` put `intent` straight into the LLM's prompt context.
-
-So while these two fields never touch the worker's tenant-config loading path, they are the actual input that determines what gets generated when a demo persona is "played" — not cosmetic, and not safe to treat as inert metadata.
-
----
-
-## use-cases.json
-
-Same shape as personas. Matched against the query the same way.
-
-```json
-[
-  {
-    "id": "morning-routine",
-    "name": "Morning Routine",
-    "keywords": ["morning", "wake up", "before work"],
-    "description": "Quick, dependable brew before commute."
-  }
-]
-```
-
----
-
-## features.json
-
-Array. **Vectorized for RAG.**
-
-```json
-[
-  {
-    "id": "auto-brew",
-    "name": "Auto-Brew Schedule",
-    "description": "Wake up to fresh coffee — set the time the night before."
-  }
-]
-```
-
----
-
-## faqs.json
-
-Array. **Vectorized for RAG.**
-
-```json
-[
-  {
-    "id": "warranty",
-    "question": "Is there a warranty?",
-    "answer": "Two years on all electric components."
-  }
-]
-```
-
----
-
-## knowledge.json
-
-Array of generic entities — the single factual store for knowledge-only tenants.
-**Required for tenant readiness (in lieu of products/features/faqs). Vectorized for RAG.**
-Authored in DA as `of1-config` blocks (`knowledge.plain.html`), committed JSON kept as fallback.
-
-| Field | Required | Used for |
-|-------|----------|----------|
-| `id` | YES | vector id, image-mapping key |
-| `type` | no | origin discriminator: `product\|feature\|faq\|testimonial\|…`; personalize prefers `type:"product"` |
-| `title` | YES | entity id (`idFrom: title`), embedding + prompt |
-| `description` | no | embedding + prompt |
-| `keywords` | no | embedding |
-| `facts` | no | RAG grounding text injected verbatim into the prompt |
-| `images` | no | template image-slot filling (product/testimonial entities) |
-| `persona` | no | forward-compat; inert under knowledgeMode |
-
----
-
-## testimonials.json
-
-Array of real customer quotes. Consumed by the worker's template-fill path:
-`worker/src/tenant.js` loads it, `build-template-prompt.js` passes `tenant.testimonials || []`
-into the prompt, and `prompts/template-fill/template.njk` fills quote/author/role slots ONLY from
-this list (never invents them). Falls back to `[]` when absent.
-
-```json
-[
-  {
-    "id": "jane-doe",
-    "quote": "The actual quote text from the website.",
-    "author": "Jane Doe",
-    "role": "Head Barista",
-    "company": "Acme Coffee",
-    "source": "twitter"
-  }
-]
+{ "domain": "example.com" }
 ```
 
 | Field | Required | Notes |
-|-------|----------|-------|
-| `id` | yes | Slug identity |
-| `quote` | yes | Verbatim quote text — must be real, on the source site |
-| `author` | no | Real person name |
-| `role` | no | Their title/role |
-| `company` | no | Their company, if shown |
-| `source` | no | One of `twitter`, `website`, `review`, `event` |
+|---|---|---|
+| `domain` | yes | Edge-proxy 404 domain fallback. The only field the skills write |
+| `contentIngestion` | no | Override knowledge-page indexing. Worker defaults: `includePaths ["/of1/knowledge/**"]`, `maxChunkTokens 400`, `contentTopK 4`. `enabled: false` opts out (tenant then never becomes ready) |
+| `of1Endpoint` | no | Override the derived CTA/landing URL (default `https://<id>.aem.page/of1`) |
+| `templates.daPath` | no | Override the template folder (default `/templates`) |
 
-**Never invent testimonials.** If the site has none, write `[]` — hallucinated social proof is unacceptable. Produced by `of1-extract-content`.
+`of1/config/` must be served: if `.hlxignore` excludes it, `of1-check-dependencies` fixes that.
 
 ---
 
-## suggestions.json
+## `cta-template.json` (git, pipeline mode only)
 
-Pre-authored exploration prompts. Object with optional UI strings + an array.
-
-```json
-{
-  "title": "What can I help you find?",
-  "subtitle": "Pick a starting point or ask anything.",
-  "placeholder": "Search coffee, machines, gifts...",
-  "suggestions": [
-    { "type": "discovery", "label": "Dark roast options", "query": "Show me all dark roast coffee options" },
-    { "type": "recommendation", "label": "Gift ideas", "query": "Best gift ideas for someone who loves coffee" }
-  ]
-}
-```
-
-| Field | Required | Notes |
-|-------|----------|-------|
-| `title` | yes | `<h1>` heading on the /of1 page |
-| `subtitle` | yes | Supporting text below the heading |
-| `placeholder` | yes | Input field placeholder text |
-| `suggestions[].type` | yes | The chip's intent: `comparison`, `recommendation`, `deep-dive`, `discovery`, or `budget`. Set by `of1-build-quick-suggestions` per chip. Not read/validated by the worker today (chips render from `label`+`query`) — descriptive metadata, reserved for a future consumer. |
-| `suggestions[].label` | yes | Short chip text, under 40 chars |
-| `suggestions[].query` | yes | Full query string sent to `/api/generate` when clicked |
-
-The OF1 block randomly picks 5 suggestions to display on each page load, so generate 8-12 for variety.
-
----
-
-## of1-endpoint.json
-
-Used by `/api/personalize` to build CTA hrefs.
-
-```json
-{ "url": "https://example.com/of1" }
-```
-
----
-
-## cta-template.json
+Produced only when `OF1_PIPELINE_MODE=1`. The extension / edge proxy inject it into customer pages
+via `/api/personalize` (`inject_cta` event). Optional for the worker — not part of the ready gate.
 
 Mustache-style template with placeholders `{{title}}`, `{{description}}`, `{{buttonText}}`, `{{href}}`.
 
@@ -261,152 +63,134 @@ Mustache-style template with placeholders `{{title}}`, `{{description}}`, `{{but
 }
 ```
 
-- `{{href}}` is resolved at runtime — do NOT include in `slots`
+- `{{href}}` is resolved at runtime from the derived `of1Endpoint` — do NOT include it in `slots`
 - `slots` array must be exactly `["title", "description", "buttonText"]`
 - `fallback` is used when the LLM doesn't emit a CTA block
 - HTML must be self-contained with inline styles, on a single line
 
 ---
 
-## templates.json
+## `/of1/brand-voice` (DA document)
 
-**Current pipeline default: the `da-blocks-slots` engine.** `of1-build-templates` authors templates
-as real EDS documents in a tenant's `/templates` DA folder (composed from the site's own blocks,
-reused first, new general blocks where useful) and writes:
+Plain prose. Suggested headings: *Personality*, *Tone*, *Words we use*, *Words we avoid*. Authors may
+paste brand guidelines freely. Sync fetches `/of1/brand-voice.plain.html`, strips it to text, and
+stores it as the tenant's brand voice string — injected as the `## Brand Voice` section of every
+generation prompt. Not part of the ready gate (`/status` reports `hasBrandVoice`), but always write it.
 
-```json
-{ "engine": "da-blocks-slots", "daPath": "/templates" }
-```
+In standalone mode, `of1-extract-brand-voice` asks before overwriting an existing author-edited doc;
+pipeline mode overwrites.
 
-The worker enumerates `/templates` (via `/query-index.json`, prefix-filtered), fetches each doc's
-`.plain.html`, and derives content-only slots structurally — no catalog, no `.metadata.json`, no
-`data-slot` attributes. Per-template `intent`/`description`/`minItems`/`maxItems` travel in each doc's
-`section-metadata` block. See
-`docs/superpowers/specs/2026-08-31-of1-build-templates-da-blocks-slots-migration.md`.
+---
 
-### Legacy `useRouting` (template-routing) shape — still supported for old tenants
+## `/of1/config/personas` (DA sheet)
+
+One row per persona, served as `/of1/config/personas.json` (`{":type":"sheet","data":[…]}`):
+
+| id | name | description | keywords | priorities | explore | research | compare | purchase | deals | support |
+|---|---|---|---|---|---|---|---|---|---|---|
+
+- `keywords` / `priorities` are comma-separated in the cell — individual items must not contain commas
+  (`da-write.mjs` rejects them).
+- The six intent columns are numbers in 0–1 (the persona's intent profile).
+- Consumers: the preview extension / edge-proxy injected build ("apply persona" seeds a behaviour
+  profile) and the of1-labs experiments proxy. The worker does not sync personas.
+
+---
+
+## `/of1/config/suggestions` (DA sheet)
+
+Columns `label`, `query` — one row per chip, 8–12 rows (the block shows a random 5 per load).
+
+| label | query |
+|---|---|
+| Dark roast options | Show me all dark roast coffee options |
+
+- `label`: short chip text, under 40 chars. `query`: full query sent to `/api/generate`.
+- Sync unwraps `{data:[{label,query}]}` → `{suggestions:[…]}`; served by `/api/suggest` (landing
+  chips + follow-up picks). `/status` reports `hasSuggestions`; not part of the ready gate.
+
+---
+
+## `/of1` page — `of1` block rows (DA document)
+
+| Row | Value |
+|---|---|
+| `api-endpoint` | worker URL (`$OF1_GENWEB_URL` or prod) |
+| `domain` | tenant id `<branch>--<repo>--<owner>` |
+| `engine` | literal `da-blocks-slots` |
+| `title` | optional — landing `<h1>` |
+| `subtitle` | optional — supporting text |
+| `placeholder` | optional — input placeholder |
+
+`title`/`subtitle`/`placeholder` come from `$OF1_STATE_DIR/of1-landing.json` (written by
+`of1-build-quick-suggestions`); absent rows fall back to the SDK defaults. Written by
+`of1-style-generative-block` Step 5, re-run by `of1-publish` so the landing rows are present.
+
+---
+
+## `/of1/strategy` (DA document, optional)
+
+Not produced by the skills. If an author creates it, sync snapshots `/of1/strategy.plain.html` and
+strategy-aware personalization turns on (`/status` → `hasStrategy`). Delete it to turn strategy off.
+
+---
+
+## `/templates/*` (DA documents)
+
+`of1-build-templates` authors templates as real EDS documents in `/templates` (composed from the
+site's own blocks, reused first, new general blocks where useful). The worker always materializes
+them with the `da-blocks-slots` engine: it enumerates `/templates` (via `/query-index.json`,
+prefix-filtered), fetches each doc's `.plain.html`, and derives content-only slots structurally — no
+catalog, no `.metadata.json`, no `data-slot` attributes. Per-template
+`intent`/`description`/`minItems`/`maxItems` travel in each doc's `section-metadata` block.
+Recognised intents: `comparison`, `recommendation`, `deep-dive`, `budget`, `discovery` (`discovery`
+is the fallback). `config.templates.daPath` overrides the folder.
+
+---
+
+## `/of1/knowledge/**` (DA documents)
+
+`of1-extract-content` captures site pages into `$OF1_STATE_DIR/knowledge-pages.json` (state, not
+git), then publishes each as `/of1/knowledge/<slug>` (content only: `<h1>` + `<h2>`/`<p>`/`<li>`,
+no blocks), previewed **and published live** so they appear in `query-index.json`. Sync indexes
+them as content chunks (`content.indexed` in the sync response; `contentChunks` in `/status`).
+They ground `/api/generate`, `/api/personalize` and `/api/generate-slots`.
+
+The site's `helix-query.yaml` must index `/of1/knowledge/**`. `of1-check-dependencies` creates it
+only if absent; if an existing one lacks `/of1/knowledge`, it warns and leaves it alone — then
+`content.indexed` is 0 and `of1-publish` check 2 fails.
+
+---
+
+## Ready gate
+
+`GET /api/tenants/<id>/status`:
 
 ```json
 {
-  "useRouting": true,
-  "baseUrl": "https://<branch>--<repo>--<owner>.aem.page",
-  "catalogPath": "/templates/templates-catalog.json",
-  "fallbackImage": {
-    "src": "https://cdn.example.com/placeholder.svg",
-    "alt": "Image unavailable"
+  "ready": true,
+  "of1Endpoint": "https://main--repo--owner.aem.page/of1",
+  "config": {
+    "hasTemplates": true,
+    "hasContent": true,
+    "contentChunks": 42,
+    "hasBrandVoice": true,
+    "hasSuggestions": true,
+    "hasCtaTemplate": false,
+    "hasStrategy": false
   }
 }
 ```
 
-| Field | Required | Notes |
-|-------|----------|-------|
-| `useRouting` | yes | Master switch. `false` keeps the default block-assembly flow |
-| `baseUrl` | yes | EDS host where templates catalog and HTML live |
-| `catalogPath` | no | Default: `/templates/templates-catalog.json` |
-| `fallbackImage` | no | `{src, alt}` — used when no product image matches |
-
-### Templates catalog (at `<baseUrl><catalogPath>`)
-
-```json
-{
-  "byIntent": {
-    "discovery": ["of1-discovery-browse"],
-    "comparison": ["of1-comparison-table"],
-    "recommendation": ["of1-recommendation-hero"],
-    "deep-dive": ["of1-deep-dive-article"],
-    "budget": ["of1-budget-roi"]
-  },
-  "templates": [
-    {
-      "name": "of1-recommendation-hero",
-      "intent": "recommendation",
-      "description": "Single hero product recommendation with reasons and features.",
-      "minItems": 1,
-      "maxItems": 1,
-      "stylesheet": "/styles/of1-recommendation-hero.css",
-      "slots": [
-        { "key": "hero.title", "type": "text", "required": true, "maxChars": 80 },
-        { "key": "hero.image", "type": "image", "required": false, "instruction": "Product image URL" },
-        { "key": "hero.cta", "type": "link", "required": true, "labelMaxChars": 24 }
-      ],
-      "htmlContent": "<main>...</main>"
-    }
-  ]
-}
-```
-
-**Inline `slots` + `htmlContent` + `stylesheet` to keep sync under the 50-subrequest cap.**
-
-### Recognised intents
-
-```
-comparison, recommendation, deep-dive, budget, discovery
-```
-
-`discovery` is the fallback when no candidates exist for the resolved intent.
-
-### Slot types
-
-| Type | Behaviour |
-|------|-----------|
-| `text` | Replaces inner content of `data-slot="<key>"` element |
-| `image` | Sets `src` + `alt` on `<img data-slot="<key>">`. URL must be in products allowlist |
-| `link` | LLM emits `{label, href}`. Rewrites `<a data-slot="<key>">` |
-| `list` | LLM emits string array. Renders as `<li>` inside `data-slot-list="<key>"` |
-
-### Slot definition fields
-
-| Field | Notes |
-|-------|-------|
-| `key` | e.g. `"hero.title"`, `"item-3.image"`. Item slots use `item-N` prefix (1-9) |
-| `type` | `"text" \| "image" \| "link" \| "list"` |
-| `required` | Required slots must appear in LLM output |
-| `maxChars` | Hard cap for text slots |
-| `itemMaxChars` | Per-item cap for list slots |
-| `minItems` / `maxItems` | List bounds |
-| `labelMaxChars` | For link slots |
-| `instruction` | Free-text guidance shown to the LLM |
-| `default` | Used in the example block of the prompt |
+`ready` = renderable templates (`hasTemplates`) **and** indexed content chunks > 0 (`hasContent`).
+Everything else is reported but not gated.
 
 ---
 
-## block-guide.json
+## Removed in 2026-10 (DA-first config)
 
-Free-form object embedded into the default-flow prompt. **The `ready` gate needs EITHER `block-guide` OR `templates`** — the template-routing flow ships `templates` instead, so `block-guide` is not separately required when a catalog exists. No strict schema enforced — convention:
-
-```json
-{
-  "blocks": [
-    { "name": "hero", "description": "Single big image + headline + CTA", "rows": ["..."] },
-    { "name": "columns", "description": "Two-column block", "rows": ["..."] },
-    { "name": "cards", "description": "Repeated product cards (3-6 typical)", "rows": ["..."] }
-  ]
-}
-```
-
----
-
-## Summary: Required vs Optional
-
-The `ready` column reflects the worker's `isTenantReady` (`worker/src/tenant.js`) — the exact gate
-`/api/tenants/<id>/status` returns. It requires EITHER `knowledge` OR (`products` + `features` +
-`faqs`), plus `suggestions`, `of1-endpoint`, and `cta-template` (ALL), **plus either `block-guide`
-or `templates`** (the template-routing flow ships `templates`; the default flow ships
-`block-guide`; both is fine). `personas` and `use-cases` are NOT part of the ready gate.
-`brand-voice` is NOT part of the ready gate either — but always generate it, it drives prompt
-quality.
-
-| File | Required for `ready` | Vectorized |
-|------|---------------------|------------|
-| `knowledge.json` | YES (or products+features+faqs) | YES |
-| `products.json` (legacy) | YES | YES |
-| `personas.json` | no | no |
-| `features.json` (legacy) | YES | YES |
-| `faqs.json` (legacy) | YES | YES |
-| `suggestions.json` | YES | no |
-| `of1-endpoint.json` | YES | no |
-| `cta-template.json` | YES | no |
-| `block-guide.json` | either `block-guide` **or** `templates` | no |
-| `templates.json` | either `block-guide` **or** `templates` | no |
-| `brand-voice.json` | no (recommended — prompt quality) | no |
-| `testimonials.json` | no | no |
+No longer produced or read: `of1-endpoint.json` (endpoint derived), `templates.json` (engine is
+always `da-blocks-slots`), `knowledge.json` and the legacy `products`/`features`/`faqs`/`use-cases`/
+`testimonials`/`block-guide` JSON, and git `personas.json` / `suggestions.json` / `brand-voice.json`
+(moved to the DA items above). A tenant synced before this change reports `ready: false` until
+`of1-integration` is re-run.

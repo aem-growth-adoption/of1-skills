@@ -23,16 +23,23 @@ for the full dependency table), fanning out in parallel where possible.
 
 | Skill | Description |
 |-------|-------------|
-| `of1-check-dependencies` | Verify prerequisites — skills, tools, and repo state; prepare `repo-config.json` |
+| `of1-check-dependencies` | Verify prerequisites — skills, tools, and repo state; write `repo-config.json` and the git `of1/config/config.json` (`{domain}`) |
 | `of1-integration` | Introduce OF1 onto an existing EDS/Stardust site — the standalone entry point |
 | `of1-extract-design` | Extract design tokens (`DESIGN.json`) from the site's own preview URL, when not already present |
-| `of1-build-templates` | Generate 15 branded templates (5 intents × 3 variations) |
-| `of1-style-generative-block` | Generate CSS for dynamically-rendered generative sections |
-| `of1-extract-brand-voice` | Extract brand voice from a website and generate `brand-voice.json` |
-| `of1-extract-content` | Scrape product data, personas, use cases, features, and FAQs |
-| `of1-build-quick-suggestions` | Generate suggestion chips and search UI copy |
-| `of1-build-cta-template` | Extract site design system and generate a branded CTA template |
-| `of1-publish` | Commit config, sync to the OF1 worker, generate the demo hub, and verify |
+| `of1-build-templates` | Author branded generative-search templates as DA documents under `/templates`, composed from the site's own blocks |
+| `of1-style-generative-block` | Brand the `of1` block's CSS and author the `/of1` DA page (incl. landing title/subtitle/placeholder rows) |
+| `of1-extract-brand-voice` | Extract the brand voice into the DA document `/of1/brand-voice` |
+| `of1-extract-content` | Publish the site's page content to DA `/of1/knowledge/**` (RAG) and infer personas into the DA sheet `/of1/config/personas` |
+| `of1-build-quick-suggestions` | Generate suggestion chips (DA sheet `/of1/config/suggestions`) and the `/of1` landing copy |
+| `of1-build-cta-template` | Pipeline mode only (`OF1_PIPELINE_MODE=1`): generate a branded CTA template (git `of1/config/cta-template.json`) |
+| `of1-publish` | Assert the git config set, sync the OF1 worker, generate the demo hub (DA edit links + status panel), and run the pre-launch checks |
+
+Author-tunable config lives in DA (edit, preview, then sync — see
+`skills/of1-integration/knowledge/da-sync-app.md`). A standalone run commits only
+`blocks/of1/`, new general-purpose `blocks/<name>/`, `helix-query.yaml` (only if
+absent), `of1/config/config.json`, `stardust/` + `PRODUCT.md` (only when extraction
+ran), and `deliverables/index.html` (+ `deliverables/brand-review.html` when
+extraction ran). Config shapes: `skills/of1-integration/knowledge/worker-config-schemas.md`.
 
 ## Usage
 

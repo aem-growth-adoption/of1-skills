@@ -1,20 +1,22 @@
 ---
 name: of1-publish
-description: Commit config to git, sync to OF1 worker via EDS, generate demo hub, and verify generation works.
+description: Assert only config.json (+ cta-template.json in pipeline mode) is in git, refresh the /of1 page, sync the OF1 worker, generate the demo hub (DA edit links + "what worked" panel), and run the pre-launch checks.
 user-invocable: true
 ---
 
 # OF1 Deploy
 
-Commit config files, trigger sync to the OF1 worker, generate the demo hub, run the pre-launch checklist, and verify generation works.
+Assert the git config set, refresh the `/of1` page, sync the OF1 worker, generate the demo hub, commit, and run the pre-launch checklist. Author-tunable config (brand voice, personas, chips, landing copy, templates, knowledge pages) already lives in DA — the earlier skills wrote and previewed it; this skill commits only `of1/config/config.json` (+ `of1/config/cta-template.json` in pipeline mode) and `deliverables/index.html`.
 
 ## Env — orchestrator exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_STATE_DIR` | state + IPC dir; receives `of1-publish-status.json` |
+| `OF1_STATE_DIR` | state + IPC dir; receives `of1-publish-status.json` and the staged hub inputs under `hub/` |
+| `OF1_PIPELINE_MODE` | `1` in pipeline mode — `cta-template.json` is expected, committed and checked (check 7) |
+| `OF1_GENWEB_URL` | optional gen-web worker override (default prod) |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
-| `SKILL_DIR` | absolute path to this skill (used to find `assets/fill-demo-hub.*`) |
+| `SKILL_DIR` | absolute path to this skill (used to find `assets/fill-demo-hub.*` and the sibling `of1-style-generative-block` skill) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
 
@@ -50,320 +52,243 @@ WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.
 
 ## How config sync works
 
-The OF1 worker syncs config from the EDS repo directly:
+The worker pulls each tenant source from the preview host `${PREVIEW_BASE}` on `POST ${WORKER_URL}/api/tenants/${TENANT_ID}/sync`:
 
-1. Config JSON files are committed to git at `/of1/config/*.json`
-2. EDS serves them as static files at `${PREVIEW_BASE}/of1/config/{file}.json`
-3. `POST ${WORKER_URL}/api/tenants/${TENANT_ID}/sync` tells the worker to fetch each config from EDS and store in R2
-4. The worker auto-indexes vectors from the knowledge doc's entities
+| Source | Where | Sync file |
+|---|---|---|
+| `of1/config/config.json` | git (code bus) | `config` |
+| `of1/config/cta-template.json` | git, pipeline mode only | `cta-template` |
+| `/of1/brand-voice` | DA doc | `brand-voice` |
+| `/of1/config/suggestions` | DA sheet | `suggestions` |
+| `/of1/strategy` | DA doc (optional, author-created) | `strategy` |
+| `/templates/*` | DA docs | `templates` |
+| `/of1/knowledge/**` | DA docs, via `query-index.json` | `content` (indexed as RAG chunks) |
+
+`/of1/config/personas` (DA sheet) and the `/of1` page are read by the extension / client SDK, not synced. The sync response is `{ok, id, domain, synced, errors, content: {indexed} | null}`. Shapes: `of1-integration/knowledge/worker-config-schemas.md`.
 
 **Tenant ID format:** `{branch}--{repo}--{owner}` (e.g. `frescopa--labs-abc123--of1-labs`)
 
 ## Process
 
-### 1. Verify config files exist
+```bash
+HUB="$OF1_STATE_DIR/hub"
+mkdir -p "$HUB"
+ALLOWED="of1/config/config.json"
+[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED="$ALLOWED of1/config/cta-template.json"
+```
+
+### 1. Assert the git config set (check 1)
+
+Only `of1/config/config.json` (and `of1/config/cta-template.json` in pipeline mode) may be tracked under `of1/config/`. Any other tracked file — especially `personas.json` / `suggestions.json` — would shadow the DA sheet at the same URL (a git file beats a DA sheet on EDS). Fail and list the extras; do not delete them here (that's the user's call, or `of1-check-dependencies` "Restart").
 
 ```bash
-for f in brand-voice knowledge personas suggestions cta-template of1-endpoint; do
-  if [ -f "of1/config/${f}.json" ]; then
-    echo "  ✓ ${f}.json ($(wc -c < "of1/config/${f}.json") bytes)"
-  else
-    echo "  ✗ ${f}.json MISSING"
-  fi
+EXTRA=$(git ls-files of1/config | while read -r f; do
+  case " $ALLOWED " in *" $f "*) ;; *) echo "$f" ;; esac
+done)
+if [ -n "$EXTRA" ]; then
+  echo "✗ FAIL (check 1): unexpected files tracked under of1/config/ — they shadow DA config or are no longer read:" >&2
+  echo "$EXTRA" | sed 's/^/    /' >&2
+  echo "  Remove them from git (git rm --cached …, commit, push), then re-run of1-publish." >&2
+  exit 1
+fi
+[ -f of1/config/config.json ] || { echo "✗ FAIL: of1/config/config.json missing — run of1-check-dependencies" >&2; exit 1; }
+if [ "${OF1_PIPELINE_MODE:-}" = "1" ] && [ ! -f of1/config/cta-template.json ]; then
+  echo "✗ FAIL: pipeline mode but of1/config/cta-template.json missing — of1-build-cta-template did not run" >&2; exit 1
+fi
+echo "✓ git config set OK: $(git ls-files of1/config | tr '\n' ' ')"
+```
+
+### 2. Refresh the `/of1` page
+
+`of1-style-generative-block` may have written `/of1` before `of1-build-quick-suggestions` produced the landing copy (`$OF1_STATE_DIR/of1-landing.json`). Run **`of1-style-generative-block` Step 5 ("Upload OF1 DA content") again**, exactly as written there — read `$SKILL_DIR/../of1-style-generative-block/SKILL.md` § Step 5 and run its bash block in this shell, then its Step 5b gate (it needs `DA_TOKEN`, `OWNER`, `REPO`, `BRANCH`, `DOMAIN`, `OF1_STATE_DIR`, `OF1_GENWEB_URL`, all set above). It is idempotent: it PUTs the whole `/of1` doc (with the `title`/`subtitle`/`placeholder` rows now present) and previews it, failing loud on a non-2xx preview. Do not copy the HTML here — Step 5 is the single source of truth for the `/of1` document.
+
+### 3. Push the git config
+
+`of1-check-dependencies` already committed `config.json`; in pipeline mode `of1-build-cta-template` leaves `cta-template.json` uncommitted. Push it before syncing so the worker can read it:
+
+```bash
+git add -- $ALLOWED
+if ! git diff --cached --quiet -- $ALLOWED; then
+  git commit -m "feat: OF1 config for ${DOMAIN}" -- $ALLOWED
+  git push origin "$BRANCH"
+fi
+```
+
+### 4. Sync → `hub/sync.json` (check 2)
+
+```bash
+curl -s -X POST "${WORKER_URL}/api/tenants/${TENANT_ID}/sync" > "$HUB/sync.json"
+jq . "$HUB/sync.json"
+OK=$(jq -r '.ok' "$HUB/sync.json")
+INDEXED=$(jq -r '.content.indexed // 0' "$HUB/sync.json")
+echo "Sync: ok=$OK synced=$(jq -c '.synced' "$HUB/sync.json") errors=$(jq '.errors | length' "$HUB/sync.json") content.indexed=$INDEXED"
+```
+
+Pass: `ok: true` **and** `content.indexed > 0`. Per-file failures are in `.errors[]` (`{file, error}`) — e.g. `brand-voice: empty document` means `/of1/brand-voice` wasn't previewed. If `content.indexed` is 0 while `$OF1_STATE_DIR/knowledge-pages.json` is non-empty, the knowledge pages aren't in the `query-index.json` the worker reads: check the site's `helix-query.yaml` indexes `/of1/knowledge/**` (an existing file is never edited by the skills — `of1-check-dependencies` warns when it doesn't), that `.hlxignore` doesn't exclude them, and that the pages are **published** (live), not just previewed. Don't stop on failure yet — finish steps 5–8 so the hub shows what failed, then fail in the checklist.
+
+### 5. Tenant status → `hub/status.json` (check 3)
+
+```bash
+curl -s "${WORKER_URL}/api/tenants/${TENANT_ID}/status" > "$HUB/status.json"
+jq . "$HUB/status.json"
+echo "ready=$(jq -r .ready "$HUB/status.json")"
+jq -r '.config | to_entries[] | select(.value == false or .value == 0) | "  ✗ \(.key)"' "$HUB/status.json"
+```
+
+`ready` = `hasTemplates` (renderable DA templates) **and** `hasContent` (indexed knowledge chunks > 0). `hasBrandVoice`, `hasSuggestions`, `hasCtaTemplate`, `hasStrategy` are reported, not gated (still expect `hasBrandVoice`/`hasSuggestions` true — missing means the DA doc/sheet wasn't previewed).
+
+### 6. DA listings → `hub/da-{pages,templates,knowledge}.txt`
+
+```bash
+da_list() {
+  curl -s -H "Authorization: Bearer $DA_TOKEN" \
+    -H "x-content-source-authorization: Bearer $DA_TOKEN" \
+    "https://admin.da.live/list/${OWNER}/${REPO}$1"
+}
+# Site pages (one "<name>.html" per line) — the hub's EDS pages section.
+da_list ""               | jq -r '.[] | select(.ext == "html") | .name + ".html"' > "$HUB/da-pages.txt"
+# Template docs (names, no extension) — the authoring showcase.
+da_list "/templates"     | jq -r '.[] | select(.ext == "html") | .name' > "$HUB/da-templates.txt"
+# Knowledge pages (slugs, no extension).
+da_list "/of1/knowledge" | jq -r '.[] | select(.ext == "html") | .name' > "$HUB/da-knowledge.txt"
+for f in da-pages da-templates da-knowledge; do
+  [ -s "$HUB/$f.txt" ] || echo "WARN: $HUB/$f.txt is empty — that hub section will be empty"
 done
 ```
 
-`of1-endpoint.json` must exist (created by `of1-check-dependencies`). If missing, fail — don't recreate it here.
-
-### 2. Confirm the prototype deliverables are present
-
-Stage 2b (`of1-prototype`, wrapping `stardust:prototype`) already copies the redesigned page
-prototypes into `deliverables/prototype-*.html` and commits them (EDS serves that dir statically,
-exactly like `discovery.html`). There is nothing to copy here — just confirm they're present so the
-hub can link them (a content-only demo, or a skipped Stage 2b, legitimately has none):
+### 7. Generate the demo hub
 
 ```bash
-if ls deliverables/prototype-*.html >/dev/null 2>&1; then
-  echo "  ✓ prototypes present: $(ls deliverables/prototype-*.html | wc -l | tr -d ' ') page(s)"
-else
-  echo "  (no deliverables/prototype-*.html — content-only demo or Stage 2b skipped)"
-fi
-```
-
-The hub's prototype renderer (`fill-demo-hub.mjs` → `renderPrototypes`) links exactly these
-`deliverables/prototype-<slug>.html` files, and Check 5 does not assert them individually (they're
-best-effort deliverables), so a content-only demo with no prototypes is not a hard failure.
-
-### 3. Generate demo hub page
-
-**You MUST create `/tmp/da-pages.txt` before calling the fill script** — it reads this file to list the EDS overlay pages in the hub. Without it, the hub shows prototypes but no live EDS pages.
-
-```bash
-curl -s -H "Authorization: Bearer $DA_TOKEN" \
-  -H "x-content-source-authorization: Bearer $DA_TOKEN" \
-  "https://admin.da.live/list/${OWNER}/${REPO}" \
-  | jq -r '.[] | select(.ext == "html") | .name + ".html"' > /tmp/da-pages.txt
-
-# Verify it's not empty
-[ -s /tmp/da-pages.txt ] || echo "WARN: no DA pages found — hub will be missing EDS page links"
-
-# Also list the DA template documents so the hub can render the authoring
-# showcase (one "edit in DA" link per template). Names only, no extension.
-curl -s -H "Authorization: Bearer $DA_TOKEN" \
-  -H "x-content-source-authorization: Bearer $DA_TOKEN" \
-  "https://admin.da.live/list/${OWNER}/${REPO}/templates" \
-  | jq -r '.[] | select(.ext == "html") | .name' > /tmp/da-templates.txt
-[ -s /tmp/da-templates.txt ] || echo "WARN: no DA templates found — hub authoring showcase will be empty"
-
-# Generate the demo hub from the template
 node "$SKILL_DIR/assets/fill-demo-hub.mjs" . "${DOMAIN}"
 ```
 
-This reads all config, finds prototypes, discovers EDS pages from `/tmp/da-pages.txt`, lists DA templates from `/tmp/da-templates.txt` for the authoring showcase, and writes `deliverables/index.html`. Do NOT hand-write the hub HTML.
+Reads `$OF1_STATE_DIR/repo-config.json`, `of1-discovery-output.md`, `pipeline-audit.json`, every `$OF1_STATE_DIR/of1-*-status.json`, and the `hub/` files staged above; links prototypes (`deliverables/prototype-*.html`, committed by Stage 2b — a content-only demo has none) and `deliverables/discovery.html` when present. Writes `deliverables/index.html` with DA edit links for each authored item (brand voice, personas, suggestions, `/of1`, `/templates`, `/of1/knowledge`) and a **"What worked"** panel (per-skill status, sync `synced`/`errors`/`content.indexed`, `ready` + failing `/status` flags). Do NOT hand-write the hub HTML.
 
-### 4. Commit and push
+### 8. Commit and push the hub
 
 ```bash
-git add of1/config/ deliverables/
-git commit -m "feat: deploy config and demo hub for ${DOMAIN}"
+git add -- deliverables/index.html
+git commit -m "feat: OF1 demo hub for ${DOMAIN}" -- deliverables/index.html
 git push origin "$BRANCH"
 ```
 
-After push, config files are immediately available at `${PREVIEW_BASE}/of1/config/{file}.json`.
-
-### 5. Sync config to the OF1 worker
-
-```bash
-RESPONSE=$(curl -s -X POST "${WORKER_URL}/api/tenants/${TENANT_ID}/sync")
-echo "$RESPONSE" | jq '.'
-
-OK=$(echo "$RESPONSE" | jq -r '.ok')
-SYNCED=$(echo "$RESPONSE" | jq -r '.synced | length')
-ERRORS=$(echo "$RESPONSE" | jq -r '.errors | length')
-VECTORS=$(echo "$RESPONSE" | jq -r '.vectors.indexed')
-
-echo "Sync result: ok=$OK, synced=$SYNCED files, errors=$ERRORS, vectors=$VECTORS"
-
-if [ "$OK" != "true" ]; then
-  echo "ERROR: Sync failed!" >&2
-  echo "$RESPONSE" | jq '.errors'
-fi
-```
-
-**Verify knowledge ingestion.** The sync response includes `content.indexed`
-(page chunks embedded into the RAG). If knowledge pages were captured
-(`of1/config/knowledge-pages.json` non-empty), confirm ingestion ran:
-
-```bash
-INDEXED=$(jq -r '.content.indexed // 0' <<<"$RESPONSE")
-PAGES=$( [ -f of1/config/knowledge-pages.json ] && jq 'length' of1/config/knowledge-pages.json || echo 0 )
-if [ "$PAGES" -gt 0 ] && [ "$INDEXED" -eq 0 ]; then
-  echo "✗ ${PAGES} knowledge page(s) published but content.indexed=0 — the pages aren't in the query-index the worker reads. Fix: confirm /of1/knowledge/** isn't excluded from the site index (of1-check-dependencies Step 6b), and that previews propagated." >&2
-else
-  echo "✓ content RAG: ${INDEXED} chunk(s) indexed from ${PAGES} knowledge page(s)"
-fi
-```
-
-(`$RESPONSE` is the raw JSON body from the `/sync` POST above.)
-
-### 6. Verify tenant is ready
-
-```bash
-STATUS=$(curl -s "${WORKER_URL}/api/tenants/${TENANT_ID}/status")
-READY=$(echo "$STATUS" | jq -r '.ready')
-echo "Tenant ready: $READY"
-
-if [ "$READY" != "true" ]; then
-  echo "ERROR: Tenant is NOT ready!" >&2
-  echo "$STATUS" | jq '.config | to_entries[] | select(.value == false) | .key'
-fi
-```
-
-Required for `ready: true` (from the worker's `isTenantReady`, `worker/src/tenant.js`): `hasKnowledge` (or, for legacy tenants, `hasProducts` + `hasFeatures` + `hasFaqs`), plus `hasSuggestions`, `hasOf1Endpoint`, `hasCtaTemplate` — and **either** `hasBlockGuide` **or** `hasTemplates` (this pipeline ships templates). `hasPersonas`/`hasUseCases` are NOT part of the gate. `hasBrandVoice` is surfaced but not gated (still generate it — it drives prompt quality). To see which failed: `echo "$STATUS" | jq -r '.config | to_entries[] | select(.value == false) | .key'`.
-
-### 7. Test generation
-
-```bash
-curl -s -X POST "${WORKER_URL}/api/generate" \
-  -H "Content-Type: application/json" \
-  -d "{\"domain\":\"${TENANT_ID}\",\"query\":\"show me your best products\",\"followUp\":false,\"context\":{\"browsing\":[],\"conversationHistory\":[]}}" > /tmp/gen-test.txt
-
-echo "Generation test:"
-head -50 /tmp/gen-test.txt
-```
-
-Verify: sections are generated (not empty), image URLs return 200, suggestions appear at the end.
+Never `git add of1/config/` or `git add -A` — only the explicit allowed paths (step 3) and the hub.
 
 ## Pre-Launch Checklist (MANDATORY)
 
-ALL checks must pass before marking the demo done. If any fail, fix the issue and re-check.
+ALL applicable checks must pass before marking the demo done. If any fail, fix the issue (usually: preview the DA item, re-run the producing skill) and re-run from step 4.
 
-### Check 1: OF1 page loads with styled search UI
+### Check 1: Git config set
+
+Step 1 passed: `git ls-files of1/config` ⊆ {`of1/config/config.json`} (+ `of1/config/cta-template.json` in pipeline mode).
+
+### Check 2: Sync ok and knowledge indexed
+
+```bash
+[ "$(jq -r .ok "$HUB/sync.json")" = "true" ] || { echo "✗ FAIL (check 2): sync ok != true — see $HUB/sync.json .errors" >&2; exit 1; }
+[ "$(jq -r '.content.indexed // 0' "$HUB/sync.json")" -gt 0 ] || { echo "✗ FAIL (check 2): content.indexed = 0 — /of1/knowledge/** not in query-index.json (helix-query.yaml must index /of1/knowledge/**; pages must be published live)" >&2; exit 1; }
+echo "✓ sync ok, $(jq -r .content.indexed "$HUB/sync.json") chunk(s) indexed"
+```
+
+### Check 3: Tenant ready
+
+```bash
+[ "$(jq -r .ready "$HUB/status.json")" = "true" ] || {
+  echo "✗ FAIL (check 3): tenant not ready; failing flags:" >&2
+  jq -r '.config | to_entries[] | select(.value == false or .value == 0) | "  \(.key)"' "$HUB/status.json" >&2
+  exit 1
+}
+echo "✓ tenant ready"
+```
+
+### Check 4: `/of1` renders header, footer and the `of1` block with the authored title and ≥1 chip
 
 ```bash
 playwright-cli open "${PREVIEW_BASE}/of1"
 sleep 6
 playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/check-of1.png"
+playwright-cli eval "() => (document.querySelector('header .header a') ? 'header OK' : 'HEADER MISSING')"
+playwright-cli eval "() => (document.querySelector('footer .footer') && document.querySelector('footer .footer').textContent.trim() ? 'footer OK' : 'FOOTER MISSING')"
+playwright-cli eval "() => (document.querySelector('main .of1') ? 'of1 block OK' : 'OF1 BLOCK MISSING')"
+playwright-cli eval "() => (document.querySelector('.of1 .of1-title')?.textContent.trim() || 'TITLE MISSING')"
+playwright-cli eval "() => ('chips: ' + document.querySelectorAll('.of1 .of1-chip').length)"
+jq -r '.title // "(no of1-landing.json title — SDK default expected)"' "$OF1_STATE_DIR/of1-landing.json" 2>/dev/null
 ```
 
-**Pass:** branded search UI visible (title, subtitle, input, chips), styled header nav (dark translucent bar, white links), styled footer. No raw unstyled content.
+**Pass:** header block with ≥1 nav link, non-empty footer block, the `of1` block, its title equals the `title` in `$OF1_STATE_DIR/of1-landing.json` (the authored landing copy; when that file is absent the SDK default is acceptable), and `chips: N` with N ≥ 1. Selectors follow vanilla `aem-boilerplate` (`blockWrapperClass` in `stardust/runtime-contract.json` if it drifts) and `blocks/of1/of1.css` (`.of1-title`, `.of1-chip`).
 
-**If fails:** check `blocks/of1/of1.js`/`blocks/of1/of1.css` were pushed and the `of1` block's table cell reads exactly `of1`, or the site's own `styles/styles.css` foundation isn't loading (check the preview build succeeded).
+**If fails:** title missing/default → step 2 didn't run after `of1-build-quick-suggestions` (re-run it). No chips → `/of1/config/suggestions` not previewed or `hasSuggestions` false. No header/footer → `/nav` / `/footer` missing (`of1-style-generative-block` Step 4) or the preview hasn't picked up the deploy. No block → `blocks/of1/` not pushed or the table header cell isn't exactly `of1`.
 
-### Check 2: OF1 nav/footer renders via the standard header/footer blocks
+### Check 5: Deliverable URLs return 200
 
-```bash
-playwright-cli open "${PREVIEW_BASE}/of1"
-sleep 6
-# Verify concrete elements exist — not just a visual comparison
-playwright-cli eval "() => (document.querySelector('header .header') ? 'header OK' : 'HEADER MISSING')"
-playwright-cli eval "() => (document.querySelector('header .header a') ? 'nav links OK' : 'NAV LINKS MISSING')"
-playwright-cli eval "() => (document.querySelector('footer .footer') ? 'footer OK' : 'FOOTER MISSING')"
-```
-
-**Pass criteria (concrete, not just visual):**
-- `header .header` block renders (vanilla `aem-boilerplate`'s `decorateBlock` output — confirm the target's `blockWrapperClass` in `stardust/runtime-contract.json` if it drifts)
-- At least one nav link is present inside the header block
-- `footer .footer` block renders with styled content (not empty)
-
-**If fails:** the site's `content/nav.html`/`content/footer.html` didn't push correctly, or the preview hasn't picked up the latest deploy yet — re-check Stage 2c (`of1-snowflake`, for the full e2e pipeline, which produces the converted site's nav/footer chrome) or the existing site's own chrome (for `of1-integration`, where nav/footer already existed before this pipeline ran).
-
-### Check 3: All product entities have ≥4 images
-
-```bash
-python3 << 'EOF'
-import json, sys
-
-with open('of1/config/knowledge.json') as f:
-    entities = json.load(f)
-
-products = [e for e in entities if e.get('type') == 'product']
-all_good = True
-for p in products:
-    images = p.get('images', [])
-    if len(images) < 4:
-        print(f"  ✗ {p.get('title', 'Unknown')}: only {len(images)} image(s)")
-        all_good = False
-
-if not all_good:
-    print("\n✗ FAIL: Some product entities have fewer than 4 images")
-    sys.exit(1)
-print(f"\n✓ All {len(products)} product entities have ≥4 images")
-EOF
-```
-
-All image URLs must be from the site's own domain (`https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...`) — never `content.da.live` (access-restricted, not public) and never external CDN URLs.
-
-### Check 4: da-blocks-slots routing + DA templates present
-
-`of1-build-templates` no longer emits a git catalog or gallery — templates are DA documents. Assert the
-tenant is routed to the `da-blocks-slots` engine and that `/templates` in DA is non-empty (each doc
-previewed, so its `.plain.html` resolves — that is what the worker syncs).
-
-```bash
-# 4a. Routing config points at the da-blocks-slots engine.
-python3 << 'EOF'
-import json, sys
-from pathlib import Path
-p = Path('of1/config/templates.json')
-if not p.exists():
-    print("✗ of1/config/templates.json missing — of1-build-templates(assemble) did not run", file=sys.stderr); sys.exit(1)
-cfg = json.loads(p.read_text())
-if cfg.get('engine') != 'da-blocks-slots':
-    print(f"✗ templates.json engine is {cfg.get('engine')!r}, expected 'da-blocks-slots'", file=sys.stderr); sys.exit(1)
-print("✓ Routed to da-blocks-slots, daPath", cfg.get('daPath', '/templates'))
-EOF
-
-# 4b. DA /templates is non-empty and each doc's previewed .plain.html resolves.
-TPL_JSON=$(curl -s -H "Authorization: Bearer $DA_TOKEN" \
-  "https://admin.da.live/list/${OWNER}/${REPO}/templates" 2>/dev/null || echo "[]")
-TPL_NAMES=$(echo "$TPL_JSON" | jq -r '.[] | select(.ext == "html") | .name' 2>/dev/null)
-COUNT=$(echo "$TPL_NAMES" | grep -c . || true)
-[ "$COUNT" -ge 1 ] || { echo "✗ No DA documents under /templates — nothing for the worker to sync" >&2; exit 1; }
-INTENTS=""
-for name in $TPL_NAMES; do
-  PLAIN="${PREVIEW_BASE}/templates/${name}.plain.html"
-  ST=$(curl -s -o /dev/null -w "%{http_code}" "$PLAIN")
-  [ "$ST" = "200" ] || { echo "✗ ${PLAIN} returned ${ST} — template not previewed (worker will not see it)" >&2; exit 1; }
-done
-echo "✓ ${COUNT} DA template(s) present and previewed"
-```
-
-### Check 5: All deliverable URLs return 200
-
-Only assert URLs this pipeline path actually produces. `brand-review.html` is **not** produced by
-any current path (there is no brand-review step) — do not assert it. The home page is served at `/`,
-**not** `/home` — assert `/`. `/nav` and `/footer` are the chrome fragments every page's
-header/footer blocks fetch (via `loadFragment` → `${path}.plain.html`); if either 404s, every page
-renders chromeless (Check 2 only inspects the `/of1` DOM — it does not prove the fragments exist), so
-assert `nav.plain.html` and `footer.plain.html` here too. `of1-style-generative-block` Step 4
-guarantees these exist before deploy.
+`/nav` and `/footer` are the chrome fragments every page's header/footer blocks fetch (`loadFragment` → `${path}.plain.html`); a 404 makes every page chromeless.
 
 ```bash
 LINKS=(
-  "${PREVIEW_BASE}/"
   "${PREVIEW_BASE}/nav.plain.html"
   "${PREVIEW_BASE}/footer.plain.html"
   "${PREVIEW_BASE}/of1"
-  "${PREVIEW_BASE}/deliverables/config-review.html"
   "${PREVIEW_BASE}/deliverables/index.html"
 )
-# Note: there is no gallery/index.html in the da-blocks-slots flow — templates
-# are DA documents (asserted previewed in Check 4b), not a git-served gallery.
-# Full e2e pipeline only (discovery ran): also assert the discovery deliverable.
-# When discovery never ran (e.g. of1-integration against an existing site), the
-# output file is absent and this URL is skipped automatically — no flow-specific edit needed.
+# Full e2e pipeline only (discovery ran) — skipped automatically otherwise.
 [ -f "${OF1_STATE_DIR}/of1-discovery-output.md" ] && LINKS+=("${PREVIEW_BASE}/deliverables/discovery.html")
 
 ALL_OK=true
 for URL in "${LINKS[@]}"; do
   STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
-  if [ "$STATUS" = "200" ]; then
-    echo "  ✓ $STATUS $URL"
-  else
-    echo "  ✗ $STATUS $URL"
-    ALL_OK=false
-  fi
+  if [ "$STATUS" = "200" ]; then echo "  ✓ $STATUS $URL"; else echo "  ✗ $STATUS $URL"; ALL_OK=false; fi
 done
-
-# HARD gate: a non-200 deliverable means the demo is broken. Fail loud — do NOT
-# let the pipeline report "ready" over a 404. (Previously this only printed a
-# warning and the run continued, which is how chromeless/404 demos shipped.)
-[ "$ALL_OK" = "true" ] || { echo "✗ FAIL: Some deliverable URLs return non-200 — demo is not ready" >&2; exit 1; }
+[ "$ALL_OK" = "true" ] || { echo "✗ FAIL (check 5): some deliverable URLs return non-200" >&2; exit 1; }
 ```
 
-### Check 6: Generation test (end-to-end worker verification)
+### Check 6: `/api/generate` returns ≥2 sections
 
 ```bash
 RESPONSE=$(curl -s -X POST "${WORKER_URL}/api/generate" \
   -H "Content-Type: application/json" \
   -d "{\"domain\":\"${TENANT_ID}\",\"query\":\"show me your best products\",\"followUp\":false,\"context\":{\"browsing\":[],\"conversationHistory\":[]}}")
-
-# Verify non-empty response with actual content
 SECTIONS=$(echo "$RESPONSE" | grep -c '"type"' || echo "0")
 if [ "$SECTIONS" -ge 2 ]; then
   echo "✓ Generation returned ${SECTIONS} sections"
 else
-  echo "✗ FAIL: generation returned ${SECTIONS} sections (expected ≥2)" >&2
+  echo "✗ FAIL (check 6): generation returned ${SECTIONS} sections (expected ≥2)" >&2
   echo "$RESPONSE" | head -20
   exit 1
 fi
 ```
 
-**Pass:** response contains ≥2 sections with content. **If fails:** check worker sync status, verify `hasTemplates` is true in tenant status.
+**If fails:** check `hasTemplates`/`hasContent` in `hub/status.json`.
+
+### Check 7: CTA injection (pipeline mode only)
+
+Skip in standalone mode. In pipeline mode `of1/config/cta-template.json` must be present (step 1) and `/api/personalize` must stream an `inject_cta` event:
+
+```bash
+if [ "${OF1_PIPELINE_MODE:-}" = "1" ]; then
+  [ -f of1/config/cta-template.json ] || { echo "✗ FAIL (check 7): of1/config/cta-template.json missing" >&2; exit 1; }
+  curl -s -X POST "${WORKER_URL}/api/personalize" \
+    -H "Content-Type: application/json" \
+    -d "{\"id\":\"${TENANT_ID}\",\"elements\":{\"T0\":{\"tag\":\"h1\",\"text\":\"Welcome\"}},\"behaviorProfile\":{\"interests\":[],\"intent\":\"research\"}}" \
+    > "$OF1_STATE_DIR/check-personalize.ndjson"
+  grep -q '"type":"inject_cta"' "$OF1_STATE_DIR/check-personalize.ndjson" \
+    && echo "✓ /api/personalize streamed inject_cta" \
+    || { echo "✗ FAIL (check 7): no inject_cta event — is hasCtaTemplate true in hub/status.json?" >&2; exit 1; }
+fi
+```
 
 ### Checklist summary
 
-Only mark this deploy step (`of1-publish`) done if ALL 6 pass:
+Mark `of1-publish` done only if ALL applicable checks pass (7 in pipeline mode, 6 in standalone):
 
 | # | Check |
 |---|-------|
-| 1 | OF1 page loads with styled search UI |
-| 2 | OF1 nav/footer renders via the standard header/footer blocks (concrete element checks) |
-| 3 | All product entities have ≥4 images |
-| 4 | Template catalog has 15 of1-* entries across all 5 intents |
-| 5 | All deliverable URLs return 200 |
-| 6 | `/api/generate` returns ≥2 sections (end-to-end worker test) |
+| 1 | No `of1/config/*.json` in git other than `config.json` (and `cta-template.json` in pipeline mode) |
+| 2 | Sync `ok: true`; `content.indexed > 0` |
+| 3 | `/api/tenants/<id>/status` → `ready: true` |
+| 4 | `/of1` renders header, footer and the `of1` block, with the authored title and ≥1 chip |
+| 5 | `nav.plain.html`, `footer.plain.html`, `/of1`, `deliverables/index.html` return 200 |
+| 6 | `/api/generate` returns ≥2 sections |
+| 7 | Pipeline mode only: `cta-template.json` present and `/api/personalize` streams an `inject_cta` |
 
 ## Completion
 
@@ -374,15 +299,16 @@ Present final report:
 
 **Demo Hub:** ${PREVIEW_BASE}/deliverables/index.html
 **OF1 page:** ${PREVIEW_BASE}/of1
-**Gallery:** ${PREVIEW_BASE}/gallery/index.html
-**Worker tenant:** ${TENANT_ID} (synced + verified)
+**Edit config in DA:** https://da.live/#/${OWNER}/${REPO}/of1
+**Worker tenant:** ${TENANT_ID} (synced + ready)
 
-Pre-launch checklist: 6/6 passed ✓
+Pre-launch checklist: N/N passed ✓
 ```
 
 ```bash
 HUB_URL="${PREVIEW_BASE}/deliverables/index.html"
 OF1_URL="${PREVIEW_BASE}/of1"
+N_CHECKS=6; [ "${OF1_PIPELINE_MODE:-}" = "1" ] && N_CHECKS=7
 cat > "$OF1_STATE_DIR/of1-publish-status.json" <<EOF
 {
   "stage": 3,
@@ -392,7 +318,9 @@ cat > "$OF1_STATE_DIR/of1-publish-status.json" <<EOF
     { "url": "${HUB_URL}", "label": "Demo hub" },
     { "url": "${OF1_URL}", "label": "OF1 page" }
   ],
-  "summary": "Deployed + all 6 pre-launch checks passed."
+  "summary": "Synced (${INDEXED} knowledge chunks) + all ${N_CHECKS} pre-launch checks passed."
 }
 EOF
 ```
+
+On a failed check, write the same file with `"status": "failed"` and the failing check(s) in `summary`, then re-run steps 7–8 so the committed hub's "What worked" panel reflects it.
