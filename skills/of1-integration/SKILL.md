@@ -20,17 +20,20 @@ Two modes, decided by `OF1_PIPELINE_MODE`:
   documented today. Content is extracted from the existing EDS site's own preview URL.
 - **Pipeline (`OF1_PIPELINE_MODE=1`):** invoked by the full demo orchestrator alongside its
   running Stage 2 (the sequential `of1-extract-design` → `of1-prototype` → `of1-snowflake` chain).
-  Two differences only:
+  Three differences only:
   1. The content track (`of1-extract-brand-voice`/`of1-extract-content`/`of1-build-quick-suggestions`)
      extracts from the real external domain — the orchestrator passes `OF1_CONTENT_SOURCE=<domain>`,
      which the content-track skills honor (see each skill's "Source resolution" section). OF1
      integration just forwards the env var to those dispatches.
   2. The site-integration track (`of1-build-templates`, `of1-style-generative-block`,
-     `of1-build-cta-template`, `config-review`, `of1-publish`) does not start until
+     `of1-build-cta-template`, `of1-publish`) does not start until
      Stage 2 has finished. The orchestrator passes `OF1_STAGE2_DONE_FILE=<path>`; of1-integration waits
      for that file to exist before dispatching the site-integration track. The content track
      (`of1-extract-brand-voice`/`of1-extract-content` → `of1-build-quick-suggestions`) runs
      immediately, in parallel with the still-running Stage 2 chain.
+  3. `of1-build-cta-template` runs (**pipeline mode only** — it writes the git
+     `of1/config/cta-template.json` that the extension / edge proxy inject). Standalone runs
+     never dispatch it.
 
 ## Verify dependencies + repo state (inline)
 
@@ -58,9 +61,9 @@ way.
 
 ## Step graph
 
-This is the single ordering authority for the whole skill. Four steps run **inline** in the
-orchestrator's own context — `of1-check-dependencies`, artifact detection, `config-review`,
-and `of1-publish` (each documented in its own section below); every other step is **dispatched** as an
+This is the single ordering authority for the whole skill. Three steps run **inline** in the
+orchestrator's own context — `of1-check-dependencies`, artifact detection, and `of1-publish`
+(each documented in its own section below); every other step is **dispatched** as an
 Agent/scoop (see "## Dispatch"). The graph nodes and the Trigger table are authoritative — the prose
 sections describe *what each step does*, not a competing order.
 
@@ -75,69 +78,71 @@ of1-check-dependencies (setup) → artifact detection (inline)
    ↓          ↓               ↓                   ↓                  ↓
 of1-build-      of1-style-    of1-extract-      of1-extract-    of1-build-
 templates(base) generative-   brand-voice       content         cta-template
-              block                              │
-   ↓          (styling)        └────────┬────────┘
-of1-build-templates(intent-             ↓
-  comparison ∥ …-recommendation  of1-build-quick-suggestions
-  ∥ …-deep-dive ∥ …-budget       (needs of1-extract-brand-voice
-  ∥ …-discovery)                  + of1-extract-content)
-   ↓                                    │
-of1-build-templates(assemble)           │
-   │                                    │
-   └──────────────┬─────────────────────┴────────────────┬────┘
-                   ↓                                      │
-   config-review (inline — needs of1-extract-brand-voice
-     + of1-extract-content + of1-build-quick-suggestions + of1-build-cta-template)
-                   ↓
-   of1-publish (deploy — needs of1-build-templates(assemble)
-     + of1-style-generative-block + config-review)
+              block           (DA /of1/         (knowledge       [PIPELINE MODE
+   ↓          (styling)        brand-voice)      pages → state    ONLY —
+of1-build-templates(intent-       │              + DA /of1/       OF1_PIPELINE_MODE=1]
+  comparison ∥ …-recommendation   │              knowledge/**,         │
+  ∥ …-deep-dive ∥ …-budget        │              DA personas sheet)    │
+  ∥ …-discovery)                  └────────┬────────┘                  │
+   ↓                                       ↓                           │
+of1-build-templates(assemble)    of1-build-quick-suggestions           │
+   │                             (needs knowledge pages + personas     │
+   │                              + brand voice; writes DA             │
+   │                              suggestions sheet + landing copy)    │
+   │                                       │                           │
+   └──────────────┬────────────────────────┴───────────────────────────┘
+                  ↓
+   of1-publish (inline — needs of1-build-templates(assemble)
+     + of1-style-generative-block + of1-build-quick-suggestions
+     [+ of1-build-cta-template in pipeline mode])
 ```
 
-`of1-build-templates`(base), `of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`, and `of1-build-cta-template` all dispatch in the SAME message, in parallel, as soon as the extraction step returns `done` (whether it ran or was skipped) — five siblings, not two sequential tracks. `of1-style-generative-block` has no dependency on `of1-build-templates` at all; it only appears in the same fan-out because both become eligible at the same trigger. `of1-build-quick-suggestions` waits for `of1-extract-brand-voice` + `of1-extract-content`. `config-review` waits for `of1-extract-brand-voice` + `of1-extract-content` + `of1-build-quick-suggestions` + `of1-build-cta-template`. `of1-publish` waits for `of1-build-templates`(assemble) + `of1-style-generative-block` + `config-review`.
+`of1-build-templates`(base), `of1-style-generative-block`, `of1-extract-brand-voice` and `of1-extract-content` (plus `of1-build-cta-template` **in pipeline mode only**) all dispatch in the SAME message, in parallel, as soon as the extraction step returns `done` (whether it ran or was skipped) — siblings, not sequential tracks. `of1-style-generative-block` has no dependency on `of1-build-templates` at all; it only appears in the same fan-out because both become eligible at the same trigger. `of1-build-quick-suggestions` waits for `of1-extract-brand-voice` + `of1-extract-content`. `of1-publish` waits for `of1-build-templates`(assemble) + `of1-style-generative-block` + `of1-build-quick-suggestions` (+ `of1-build-cta-template` in pipeline mode). There is no separate config review step: authored config (brand voice, personas, chips, landing copy, templates, knowledge pages) lives in DA and is reviewed/edited there — the demo hub links each item.
 
 | Trigger (ALL must be done) | Dispatch in one message |
 |---|---|
 | `of1-check-dependencies` done | Artifact detection (inline, immediate) |
 | Artifact detection done | extraction step |
-| Extraction done (ran or skipped) | `of1-build-templates`(base) AND `of1-style-generative-block` AND `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-cta-template` (5 dispatches in one message) |
+| Extraction done (ran or skipped) | `of1-build-templates`(base) AND `of1-style-generative-block` AND `of1-extract-brand-voice` AND `of1-extract-content` (4 dispatches in one message) — **plus `of1-build-cta-template` in pipeline mode only** (`OF1_PIPELINE_MODE=1`, 5 dispatches) |
 | `of1-build-templates`(base) done | `of1-build-templates`(intent-comparison…intent-discovery) (5 intent dispatches in one message) |
 | `of1-build-templates`(intent-*) all done | `of1-build-templates`(assemble) (1 dispatch, sequential) |
-| `of1-extract-brand-voice` + `of1-extract-content` done | `of1-build-quick-suggestions` (needs knowledge.json + brand-voice.json) |
-| `of1-extract-brand-voice` + `of1-extract-content` + `of1-build-quick-suggestions` + `of1-build-cta-template` ALL done | `config-review` (inline — do NOT run until all four are confirmed done) |
-| `of1-build-templates`(assemble) + `of1-style-generative-block` + `config-review` ALL done | `of1-publish` |
+| `of1-extract-brand-voice` + `of1-extract-content` done | `of1-build-quick-suggestions` (needs the knowledge pages in `$OF1_STATE_DIR/knowledge-pages.json` + the personas from `of1-extract-content` + the brand voice from `of1-extract-brand-voice`) |
+| `of1-build-templates`(assemble) + `of1-style-generative-block` + `of1-build-quick-suggestions` ALL done (+ `of1-build-cta-template` in pipeline mode) | `of1-publish` (inline) |
 
-**`of1-style-generative-block` (OF1 styling) does NOT wait for `of1-build-templates`** — per `of1-style-generative-block`'s own dependency table (fixed in Task 2), it only needs `of1-check-dependencies`' block install context and the repo's existing chrome (`content/nav.html`/`content/footer.html`, already present since this is an existing EDS site) — dispatch it alongside `of1-build-templates`(base).
+**`of1-style-generative-block` (OF1 styling) does NOT wait for `of1-build-templates`** — per `of1-style-generative-block`'s own dependency table (fixed in Task 2), it only needs `of1-check-dependencies`' block install context and the repo's existing chrome (`content/nav.html`/`content/footer.html`, already present since this is an existing EDS site) — dispatch it alongside `of1-build-templates`(base). It may finish before `of1-build-quick-suggestions` has written the landing copy; `of1-publish` re-runs its Step 5 (the idempotent `/of1` DA write) so the `/of1` block always carries the `title`/`subtitle`/`placeholder` rows.
 
 ### Pipeline-mode timing (OF1_PIPELINE_MODE=1)
 
-The step graph's DEPENDENCIES are unchanged; only the START GATE differs:
+The step graph's DEPENDENCIES are unchanged; only the START GATE differs, and the
+pipeline-only node `of1-build-cta-template` is added:
 
 - **Content track — dispatch immediately on entry** (parallel with Stage 2's extract→prototype→snowflake
   chain): `of1-extract-brand-voice`, `of1-extract-content` → `of1-build-quick-suggestions`.
   These need only the live external site (`OF1_CONTENT_SOURCE`) + the narrative focus.
 - **Site-integration track — dispatch only after `OF1_STAGE2_DONE_FILE` exists**:
   `of1-build-templates`(base) → `of1-build-templates`(intent-*) → `of1-build-templates`(assemble) ∥
-  `of1-style-generative-block` ∥ `of1-build-cta-template`, then `config-review` (needs
-  `of1-extract-brand-voice`+`of1-extract-content`+`of1-build-quick-suggestions`+`of1-build-cta-template`),
-  then `of1-publish`.
+  `of1-style-generative-block` ∥ `of1-build-cta-template` (**pipeline mode only**), then `of1-publish`
+  (needs `of1-build-templates`(assemble) + `of1-style-generative-block` +
+  `of1-build-quick-suggestions` + `of1-build-cta-template`).
 
 ```bash
 # Site-integration gate (pipeline mode only)
-if [ -n "$OF1_PIPELINE_MODE" ]; then
+if [ "${OF1_PIPELINE_MODE:-}" = "1" ]; then
   echo "Waiting for Stage 2 (extract->prototype->snowflake) to finish: $OF1_STAGE2_DONE_FILE"
   # Event-driven on SLICC (scoop-notify) / sequential await on CC. Do NOT sleep-poll on SLICC.
   until [ -f "$OF1_STAGE2_DONE_FILE" ]; do :; done   # CC inline fallback only
 fi
 ```
 
-In standalone mode there is no Stage 2 chain and no gate — all five siblings (`of1-build-templates`(base),
-`of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`,
-`of1-build-cta-template`) dispatch together exactly as the Trigger table above already says.
+In standalone mode there is no Stage 2 chain, no gate and no `of1-build-cta-template` — the four
+siblings (`of1-build-templates`(base), `of1-style-generative-block`, `of1-extract-brand-voice`,
+`of1-extract-content`) dispatch together exactly as the Trigger table above already says.
 
 **Common mistakes to avoid** (same class of mistake `of1-demo-orchestrator` already warns about):
-- Do NOT run `config-review` before ALL of `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template` return `done`.
-- Do NOT run `of1-build-quick-suggestions` before BOTH `of1-extract-brand-voice` and `of1-extract-content` return — it needs knowledge.json + brand-voice.json.
+- Do NOT run `of1-publish` before ALL of `of1-build-templates`(assemble), `of1-style-generative-block`, `of1-build-quick-suggestions` (and, in pipeline mode, `of1-build-cta-template`) return `done`.
+- Do NOT run `of1-build-quick-suggestions` before BOTH `of1-extract-brand-voice` and `of1-extract-content` return — it needs the knowledge pages (`$OF1_STATE_DIR/knowledge-pages.json`) + personas from `of1-extract-content` and the brand voice from `of1-extract-brand-voice`.
 - Do NOT dispatch `of1-build-templates`(intent-*) agents before `of1-build-templates`(base) returns — they read its output.
+- Do NOT dispatch `of1-build-cta-template` in standalone mode.
 
 ## Dispatch
 
@@ -147,8 +152,8 @@ Same step-graph, same dependency rules on both runtimes. Only the invocation mec
 
 **Who dispatches (both runtimes).** On **neither** runtime is this skill run as a single Stage-3 sub-dispatch that then fans out the Integrate skills — because on **both**, the nesting is capped: a Claude Code subagent has no Agent tool, and a SLICC scoop cannot spawn sub-scoops. So the **top-level `of1-demo-orchestrator`** (which detects its runtime and follows `knowledge/dispatch-cc.md` or `knowledge/dispatch-slicc.md`) dispatches the Integrate skills itself, reading this section as the **skill-definition + dependency reference**. Everything below describes *what each skill needs and how they're ordered* — the orchestrator is the dispatcher in both cases.
 
-- The orchestrator uses **TaskCreate** with one task per skill/phase (`of1-check-dependencies`, extraction, `of1-build-templates`(base), `of1-build-templates`(intent-*), `of1-build-templates`(assemble), `of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `config-review`, `of1-publish`). Mark the `of1-check-dependencies` task completed immediately; mark each task `in_progress`/`completed`/`failed` around its dispatch.
-- Each skill (except artifact detection and `config-review`, which are inline) is a single `Agent` dispatch. Sub-agents see none of this conversation — the prompt must be self-contained: read the target skill's `SKILL.md`, export the same env vars the orchestrator exports (`OF1_STATE_DIR`, `OF1_DEMO_REPO`, `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`, `SKILL_DIR`), state the branch/owner/repo, list which prior-skill output files it needs, and require the same JSON status block: `{"stage":3,"skill":"<skill>","status":"done"|"review"|"failed","summary":"...","deliverables":[...]}`.
+- The orchestrator uses **TaskCreate** with one task per skill/phase (`of1-check-dependencies`, extraction, `of1-build-templates`(base), `of1-build-templates`(intent-*), `of1-build-templates`(assemble), `of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template` (pipeline mode only), `of1-publish`). Mark the `of1-check-dependencies` task completed immediately; mark each task `in_progress`/`completed`/`failed` around its dispatch.
+- Each skill (except artifact detection and `of1-publish`, which are inline) is a single `Agent` dispatch. Sub-agents see none of this conversation — the prompt must be self-contained: read the target skill's `SKILL.md`, export the same env vars the orchestrator exports (`OF1_STATE_DIR`, `OF1_DEMO_REPO`, `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`, `SKILL_DIR`), state the branch/owner/repo, list which prior-skill output files it needs, and require the same JSON status block: `{"stage":3,"skill":"<skill>","status":"done"|"review"|"failed","summary":"...","deliverables":[...]}`.
 - **The extraction step's dispatch runs the `of1-extract-design` skill** (via the `Skill` tool) targeting the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`) — do not point it at any external domain, and do not run it at all if `HAS_DESIGN_JSON=true` from the artifact-detection step.
 - In pipeline mode also export `OF1_CONTENT_SOURCE` (to `of1-extract-brand-voice`/`of1-extract-content`/`of1-build-quick-suggestions` dispatches) and pass
   `OF1_STAGE2_DONE_FILE` to the orchestrator's own site-track gate (not to the skill agents).
@@ -167,34 +172,12 @@ Same step-graph, same dependency rules on both runtimes. Only the invocation mec
 - Handle completions event-driven, not via polling: end your turn after dispatching, and react when a scoop-completion notification arrives — read its status file, check if it unblocks the next dispatch per the table above, and dispatch the next batch.
 - Model assignment: same as the Claude Code column above, using `claude-opus-4-8`/`claude-sonnet-5` model strings per `of1-demo-orchestrator`'s own convention.
 
-## Config review (inline, no dispatch on either runtime)
-
-Once `of1-extract-brand-voice` + `of1-extract-content` + `of1-build-quick-suggestions` + `of1-build-cta-template` are all done, publish the config-review page. It is a **static, self-contained asset** — `assets/config-review.html` (in THIS skill's directory) fetches the live `/of1/config/*.json` files and renders them in the browser on load. There is no build script and no per-run generation; the page always reflects whatever config is currently served.
-
-Copy it into the repo and push it **together with the config JSONs** — the page fetches them at review time, but otherwise only `of1-publish` pushes `of1/config/`, and that runs later, so the page would be blank at the approval gate:
-
-```bash
-cd "$OF1_DEMO_REPO"
-cp "<of1-integration skill dir>/assets/config-review.html" deliverables/config-review.html
-git add of1/config/ deliverables/config-review.html
-git commit -m "docs: config review page for ${DOMAIN}"
-git push origin "$BRANCH"
-```
-
-Then emit the review deliverable + `review` status for the approval gate (step id `config-review`; on SLICC this maps to the sprinkle subStep `config`):
-
-```json
-{"stage":3,"skill":"config-review","status":"review","deliverables":[{"url":"https://${BRANCH}--${REPO}--${OWNER}.aem.page/deliverables/config-review.html","label":"Config review"}],"summary":"Review all config before deploy: products, brand voice, personas, use cases, features, FAQs, testimonials, suggestions, CTA."}
-```
-
-**Adding a new human-reviewable config?** The page's fetch list is hardcoded in `assets/config-review.html` — add a section there too. The canonical config inventory is `CONFIG_FILES` in the of1-gen-web worker (`worker/src/tenant.js`).
-
 ## Deploy — `of1-publish` (inline)
 
-After `config-review` is approved AND `of1-build-templates`(assemble) + `of1-style-generative-block` are both done, run the `of1-publish` skill inline (read it and follow it directly — same as `of1-demo-orchestrator`'s deploy step). Export `SKILL_DIR` to that skill's directory first, exactly as the orchestrator does for a dispatched skill.
+Once `of1-build-templates`(assemble) + `of1-style-generative-block` + `of1-build-quick-suggestions` (+ `of1-build-cta-template` in pipeline mode) are all done, run the `of1-publish` skill inline (read it and follow it directly — same as `of1-demo-orchestrator`'s deploy step). Export `SKILL_DIR` to that skill's directory first, exactly as the orchestrator does for a dispatched skill.
 
 `of1-publish`'s pre-launch checklist is self-contained and already flow-aware — its Check 5 only asserts the discovery deliverable when `of1-discovery-output.md` exists (so it self-skips in this flow, where discovery never runs). Follow the skill's checklist as written; there is nothing to adapt here.
 
 ## Author-facing re-sync (Sync OF1 DA app)
 
-After deploy, later edits to `/of1/config/*` only reach the worker on a **sync**. The **Sync OF1** DA app gives authors a one-click sync from inside the DA editor. It is **not** part of this pipeline (no dispatch, no gate) — it's a one-time site setup: add one row to the site's DA `library` sheet pointing at the worker's `/da-app`. of1-labs lab sites get it installed automatically during provisioning. Full install + usage: `knowledge/da-sync-app.md`.
+After deploy, author edits in DA (`/of1/brand-voice`, `/of1/config/personas`, `/of1/config/suggestions`, `/of1/strategy`, `/templates/*`, `/of1/knowledge/*`) only reach the worker on a **preview + sync**. The **Sync OF1** DA app gives authors a one-click sync from inside the DA editor. It is **not** part of this pipeline (no dispatch, no gate) — it's a one-time manual site setup: add one row to the site's DA `library` sheet pointing at the worker's `/da-app`. Full install + usage: `knowledge/da-sync-app.md`.

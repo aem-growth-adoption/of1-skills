@@ -94,12 +94,13 @@ function titleCase(s) {
 }
 
 // Discover the pages deployed on this branch to build a functional demo nav.
-// Prefer /tmp/da-pages.txt (written by of1-publish), fall back to the repo's
-// migrated/content slugs. Excludes chrome and utility docs.
+// Prefer $OF1_STATE_DIR/hub/da-pages.txt (written by a previous of1-publish
+// run), fall back to the repo's migrated/content slugs. Excludes chrome and
+// utility docs.
 function discoverPages(repoDir) {
   const skip = new Set(['nav', 'footer', 'of1', '404', 'index']);
   const slugs = [];
-  const pagesFile = '/tmp/da-pages.txt';
+  const pagesFile = path.join(process.env.OF1_STATE_DIR || '', 'hub', 'da-pages.txt');
   if (fs.existsSync(pagesFile)) {
     for (const line of fs.readFileSync(pagesFile, 'utf8').split('\n')) {
       const name = path.basename(line.trim(), path.extname(line.trim()));

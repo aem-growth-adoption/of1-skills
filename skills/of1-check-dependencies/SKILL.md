@@ -34,7 +34,7 @@ existing** — it is not written by `verify.sh`; Part 2 writes it.
 
 ### What verify.sh checks
 
-1. The pipeline's OF1 skills are installed — the orchestrator (`of1-demo-orchestrator`) plus every step skill it dispatches (`of1-discovery`, `of1-extract-design`, `of1-prototype`, `of1-snowflake`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`, `of1-style-generative-block`, `of1-integration`). Config review is not a skill — it is an inline step in `of1-integration` (a static `config-review.html` asset). The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
+1. The pipeline's OF1 skills are installed — the orchestrator (`of1-demo-orchestrator`) plus every step skill it dispatches (`of1-discovery`, `of1-extract-design`, `of1-prototype`, `of1-snowflake`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`, `of1-style-generative-block`, `of1-integration`). `of1-build-cta-template` ships here too, though `of1-integration` dispatches it in pipeline mode only. The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
 2. The Adobe EDS skills `stardust` (incl. `stardust:extract` and `stardust:prototype`), `impeccable`, and the `snowflake` skill (`aem-edge-delivery-services` plugin) are installed — the three Stage-2 skills `of1-extract-design`/`of1-prototype`/`of1-snowflake` depend on these directly
 3. Shell tools: `node`, `python3`, `jq`, `git`, `curl`
 4. `playwright-cli` — probed for the modern `open` subcommand (warns if the binary is present but missing it)
@@ -68,6 +68,9 @@ OWNER=$(echo "$SETUP" | jq -r .owner)
 REPO=$(echo "$SETUP" | jq -r .repo)
 BRANCH=$(echo "$SETUP" | jq -r .branch)
 REPO_DIR=$(echo "$SETUP" | jq -r .of1Repo)
+# Every step below (3, 3b, 6, 7, 8) uses repo-relative paths and git — run them all
+# from the repo root, on fresh, Continue and Restart runs alike.
+cd "$REPO_DIR" || { echo "✗ cannot cd into $REPO_DIR" >&2; exit 1; }
 
 if [ "$(echo "$SETUP" | jq -r .tokenFromEnv)" = "true" ]; then
   DA_TOKEN="$ADOBE_IMS_TOKEN"
@@ -89,15 +92,20 @@ if [ -f "$OF1_STATE_DIR/repo-config.json" ]; then
 fi
 ```
 
-- **If `repo-config.json` does NOT exist:** no demo in progress. Skip
-  straight to step 3 (Clean slate) below — treat as fresh, run cleanup
-  unconditionally (there is nothing to preserve), no prompt needed.
+- **If `repo-config.json` does NOT exist:** no demo in progress — treat as
+  fresh. **No Restart deletion**: skip step 3 and go to step 3b (legacy
+  config JSON check), then step 4 (Code Sync check). Every later step
+  overwrites only OF1-owned paths, so a fresh run on a site with existing
+  content is idempotent and non-destructive.
 - **If it DOES exist:** summarize the branch, domain, and last completed
   step to the user from the printed JSON, then ask via `AskUserQuestion`:
   - **Continue** this demo — skip cleanup entirely, keep all existing
-    artifacts and DA content, go straight to step 4 (Code Sync check).
-  - **Restart** this demo — run cleanup (step 3) against the *same*
-    branch, then continue to step 4.
+    artifacts and DA content, go to step 3b, then step 4 (Code Sync check).
+  - **Restart** this demo — run step 3 (remove OF1-owned content only)
+    against the *same* branch, then continue to step 3b and step 4. Restart's
+    DA deletions are **not branch-scoped** (see step 3).
+
+Step 3b runs on **every** run — fresh, Continue and Restart alike.
 
 ### 2. Warn if on `main` or detached HEAD
 
@@ -110,52 +118,167 @@ If `setup.json`'s `branch` field is empty or `"main"`, tell the user:
 
 Then proceed regardless — never block on this.
 
-### 3. Clean slate (restart, or fresh setup with nothing to preserve)
+### 3. Restart: remove OF1-owned content only
 
-Remove previous demo artifacts but preserve EDS boilerplate
-(`styles/styles.css`, `scripts/`, `blocks/{header,footer,fragment}/`,
-`head.html`):
+**Runs only when the user chose Restart in step 1.** A fresh run (no
+`repo-config.json`) deletes nothing — skip this step entirely.
+
+Restart removes **only OF1-owned paths**:
+
+- **DA:** `/of1/**` and `/templates/**`
+- **git:** `blocks/of1/` and `of1/config/`
+
+> ⚠️ **DA config is shared per org/repo, not per branch.** DA has one content
+> tree per `${OWNER}/${REPO}` — every branch's preview (`<branch>--repo--owner.aem.page`)
+> reads the same `/of1/**` and `/templates/**`. The supported model is **one EDS
+> repo per site/demo**. Restart's DA deletion of `/of1` and `/templates` therefore
+> affects **every branch** of this repo, not just `${BRANCH}` (the git removal
+> below is branch-scoped). If other branches of this repo carry their own OF1
+> demo, do not Restart — use a separate repo instead.
+
+**Never delete** — these belong to the customer site, even on a throwaway branch:
+
+- DA `/nav`, `/footer`, `/index` (the home page), or any other DA path outside `/of1` and `/templates`
+- `content/`, `drafts/`, `tools/`
+- any `blocks/<name>/` other than `blocks/of1/` (including general blocks a prior run created)
+- EDS boilerplate (`styles/`, `scripts/`, `head.html`, `fstab.yaml`, `helix-query.yaml`, `.hlxignore`)
+
+(A full wipe for throwaway demo repos is not this skill's job — it belongs to an
+`of1-demo-skills` orchestrator step.)
+
+Local state (not customer content) — reset it so the pipeline restarts cleanly:
 
 ```bash
-cd "$REPO_DIR"
-rm -rf stardust/ deliverables/ templates/ fragments/ content/ drafts/ \
-       gallery/ of1/config/ tools/ output/ screenshots/ tmp/ da/
-rm -rf styles/of1-*.css styles/prototype-*.css
-rm -f PRODUCT.md
-
-# Clean prior state
-rm -rf "$OF1_STATE_DIR"/of1-*-status.json
+rm -f "$OF1_STATE_DIR"/of1-*-status.json
 rm -f "$OF1_STATE_DIR/discovery.html"
+# Staged DA inputs + hub inputs from the previous run — otherwise a restarted
+# run could re-upload stale landing copy / personas / chips / knowledge pages.
+rm -f "$OF1_STATE_DIR"/{of1-landing.json,personas-rows.json,suggestions-rows.json,knowledge-pages.json,brand-voice.html}
+rm -rf "$OF1_STATE_DIR/hub"
+```
 
-# Stage ONLY the cleaned paths (scoped `-A -- <pathspec>`, never a bare `git add -A`/`.`
-# — see common-pitfalls.md § 6; a bare add can wipe the repo on a partial SLICC tree).
-# Quoted globs are expanded by git against tracked files, so they stage the deletions.
-git add -A -- \
-  stardust deliverables templates fragments content drafts gallery of1/config \
-  tools output screenshots tmp da PRODUCT.md \
-  'styles/of1-*.css' 'styles/prototype-*.css' 2>/dev/null || true
-if ! git diff --cached --quiet; then
-  git commit -m "chore: clean slate for ${BRANCH}"
-  git push origin "$BRANCH"
-  echo "✓ Clean slate committed + pushed"
+git — remove only the OF1-owned trees, commit, push:
+
+```bash
+# (cwd is $REPO_DIR — set in the Part 2 preamble.)
+# `git rm` stages exactly these paths' deletions — never a bare `git add -A`/`.`
+# (see common-pitfalls.md § 6).
+# Only pass paths that exist in HEAD: a `git commit -- <path>` whose pathspec git
+# doesn't know fails the whole commit (e.g. an interrupted demo that committed
+# blocks/of1 but never of1/config).
+P=()
+for p in blocks/of1 of1/config; do
+  git ls-tree -d --name-only HEAD -- "$p" 2>/dev/null | grep -q . && P+=("$p")
+done
+if [ "${#P[@]}" -gt 0 ]; then
+  git rm -r -q -- "${P[@]}"
+  # Diff + commit scoped to these paths, so unrelated staged changes are never swept in.
+  if ! git diff --cached --quiet -- "${P[@]}"; then
+    git commit -m "chore: reset OF1 artefacts for ${BRANCH}" -- "${P[@]}"
+    git push origin "$BRANCH"
+    echo "✓ OF1 artefacts (${P[*]}) removed + pushed"
+  fi
 else
-  echo "✓ Branch already clean"
+  echo "✓ No OF1 artefacts committed — nothing to remove"
 fi
 ```
 
-Then clean DA content for the branch:
+DA — list and delete recursively, **only under `/of1` and `/templates`**.
+`GET admin.da.live/list/${OWNER}/${REPO}/<path>` returns entries with `name` and
+`ext` (folders have no `ext`); the walk recurses into folders and never leaves
+the root it started from:
 
 ```bash
-DA_LIST=$(curl -s --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $DA_TOKEN" \
-  "https://admin.da.live/list/${OWNER}/${REPO}" 2>/dev/null || echo "[]")
+da_delete_tree() {
+  local dir="$1"   # repo-relative, e.g. "/of1/config"
+  case "$dir" in
+    /of1|/of1/*|/templates|/templates/*) ;;
+    *) echo "✗ refusing to delete outside /of1, /templates: $dir" >&2; return 1 ;;
+  esac
+  local list
+  list=$(curl -s --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $DA_TOKEN" \
+    "https://admin.da.live/list/${OWNER}/${REPO}${dir}" 2>/dev/null || echo "[]")
+  echo "$list" | jq -r '.[]? | [.name, (.ext // "")] | @tsv' 2>/dev/null |
+  while IFS=$'\t' read -r name ext; do
+    [ -n "$name" ] || continue
+    if [ -z "$ext" ]; then
+      da_delete_tree "${dir}/${name}"            # folder → recurse
+    else
+      curl -s -o /dev/null --connect-timeout 10 --max-time 30 -X DELETE \
+        -H "Authorization: Bearer $DA_TOKEN" \
+        "https://admin.da.live/source/${OWNER}/${REPO}${dir}/${name}.${ext}"
+    fi
+  done
+  # Remove the (now empty) folder itself; best-effort.
+  curl -s -o /dev/null --connect-timeout 10 --max-time 30 -X DELETE \
+    -H "Authorization: Bearer $DA_TOKEN" \
+    "https://admin.da.live/source/${OWNER}/${REPO}${dir}" || true
+}
 
-echo "$DA_LIST" | jq -r '.[] | select(.ext == "html") | .name' 2>/dev/null | while read -r name; do
-  [ -n "$name" ] || continue
-  curl -s --connect-timeout 10 --max-time 30 -X DELETE -H "Authorization: Bearer $DA_TOKEN" \
-    "https://admin.da.live/source/${OWNER}/${REPO}/${name}.html" >/dev/null
-done
-echo "✓ DA content cleaned"
+da_delete_tree /of1
+da_delete_tree /templates
+echo "✓ DA /of1/** and /templates/** removed (nav, footer, index and all other content untouched)"
 ```
+
+### 3b. Remove legacy `of1/config/*.json` (every run)
+
+**Runs on every run** — fresh, Continue and Restart. Sites integrated by an
+older version of these skills still track `of1/config/*.json` files that are no
+longer produced or read (`knowledge.json`, `personas.json`, `suggestions.json`,
+`brand-voice.json`, `templates.json`, `of1-endpoint.json`, `products.json`,
+`features.json`, `faqs.json`, `use-cases.json`, …). A git file beats a DA sheet at
+the same URL on EDS, so e.g. a committed `personas.json` / `suggestions.json`
+**shadows** the DA sheet `/of1/config/personas` / `/of1/config/suggestions` the
+later steps write. Only `of1/config/config.json` (plus
+`of1/config/cta-template.json` in pipeline mode) may stay tracked.
+
+```bash
+# (cwd is $REPO_DIR — set in the Part 2 preamble.)
+ALLOWED="of1/config/config.json"
+[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED="$ALLOWED of1/config/cta-template.json"
+LEGACY=()
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  case " $ALLOWED " in *" $f "*) ;; *) LEGACY+=("$f") ;; esac
+done < <(git ls-files of1/config)
+if [ "${#LEGACY[@]}" -gt 0 ]; then
+  echo "Legacy OF1 config files tracked in git (would shadow DA config / no longer read):"
+  printf '    %s\n' "${LEGACY[@]}"
+else
+  echo "✓ No legacy of1/config files tracked"
+fi
+```
+
+If `LEGACY` is non-empty, explain to the user that these are legacy OF1 files
+from an earlier integration: they're no longer read by the worker, and any that
+share a URL with a DA sheet (`personas.json`, `suggestions.json`) would shadow the
+author-editable DA version. Then:
+
+- **Standalone mode** (`OF1_PIPELINE_MODE` unset): ask via `AskUserQuestion`
+  — **Remove them** (commit + push the deletion of exactly the listed files) /
+  **Keep them**. On Keep, skip the removal and warn that `of1-publish` check 1
+  will fail until they're gone.
+- **Pipeline mode** (`OF1_PIPELINE_MODE=1`): remove without asking.
+
+Removal — exactly the listed files, never the whole `of1/config/` tree (it holds
+`config.json`), never a bare `git add -A`/`.`:
+
+```bash
+if [ "${#LEGACY[@]}" -gt 0 ]; then
+  git rm -q -f -- "${LEGACY[@]}"
+  # Commit only files that exist in HEAD: a `git commit -- <path>` whose pathspec
+  # git no longer knows (staged-but-never-committed file) fails the whole commit.
+  C=()
+  for f in "${LEGACY[@]}"; do git cat-file -e "HEAD:$f" 2>/dev/null && C+=("$f"); done
+  if [ "${#C[@]}" -gt 0 ]; then
+    git commit -m "chore: remove legacy OF1 config JSON" -- "${C[@]}"
+    git push origin "$BRANCH"
+  fi
+  echo "✓ Removed legacy OF1 config JSON: ${LEGACY[*]}"
+fi
+```
+
+`of1-publish` check 1 re-asserts the same allowed set as the backstop.
 
 ### 4. Code Sync check
 
@@ -215,58 +338,47 @@ fi
 
 ### 6. Ensure `.hlxignore` does NOT block `of1/config/`
 
-The OF1 extension reads config files from the EDS CDN (`/of1/config/*.json`).
-The boilerplate `.hlxignore` must NOT include `of1/` or `of1/config/`:
+The OF1 extension and worker read `of1/config/config.json` from the EDS CDN, so
+`.hlxignore` must not exclude it. Edit the file **only** when a line actually
+blocks it — `of1` / `of1/` (the whole tree) or anything starting `of1/config`.
+Every other line — including `of1/knowledge/` or other customer exclusions — is
+left untouched:
 
 ```bash
-if [ -f .hlxignore ] && grep -q '^of1' .hlxignore; then
+if [ -f .hlxignore ] && grep -Eq '^of1/?$|^of1/config' .hlxignore; then
   # -i.bak works on both GNU and BSD/macOS sed (bare `-i` fails on BSD); drop the backup after.
-  sed -i.bak '/^of1/d' .hlxignore && rm -f .hlxignore.bak
-  echo "✓ Removed of1 exclusion from .hlxignore"
+  sed -E -i.bak '/^of1\/?$/d; /^of1\/config/d' .hlxignore && rm -f .hlxignore.bak
+  # An uncommitted edit never reaches EDS — commit (scoped to .hlxignore) + push.
+  git add -- .hlxignore
+  git commit -m "chore: allow of1/config on the code bus" -- .hlxignore
+  git push origin "$BRANCH"
+  echo "✓ Removed the of1/config exclusion from .hlxignore (committed + pushed)"
+else
+  echo "✓ .hlxignore does not block of1/config"
 fi
 ```
 
-**Do NOT add `of1/` to `.hlxignore`** — the config files must be served on
+**Do NOT add `of1/` to `.hlxignore`** — `of1/config/config.json` must be served on
 the CDN.
 
-### 7. Write `of1-endpoint.json` + `config.json` + push (skip if continuing and files already committed)
+### 7. Write `config.json` + push (skip if continuing and the file is already committed)
 
-`config.json` is a small served meta + tenant-mode file. It carries the target `domain`
-(which can differ from the EDS host) plus owner/repo/branch, so same-origin client-side
-deliverables (e.g. `deliverables/config-review.html`) can label themselves without reading
-the un-served `repo-config.json`. It also carries **`knowledgeMode`**, which the worker
-reads (`config` is in the worker's `CONFIG_FILES` → `tenant.config`): `"da-document"` tells
-the worker to personalize purely via interests → RAG retrieval and **skip the static
-persona/use-case archetype matching** (the v5 direction). Omit it or use another value to
-keep legacy persona/use-case behavior.
+`config.json` is the only committed OF1 config file this skill writes. It carries just
+the target `domain` (which can differ from the EDS host). Nothing else goes in it —
+content ingestion uses the worker default `/of1/knowledge/**`; add `contentIngestion`
+here only to override.
 
 ```bash
 mkdir -p of1/config
-cat > of1/config/of1-endpoint.json <<EOF
-{
-  "url": "https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1"
-}
-EOF
 cat > of1/config/config.json <<EOF
-{
-  "domain": "${DOMAIN}",
-  "owner": "${OWNER}",
-  "repo": "${REPO}",
-  "branch": "${BRANCH}",
-  "knowledgeMode": "da-document",
-  "contentIngestion": {
-    "enabled": true,
-    "includePaths": ["/of1/knowledge/**"],
-    "maxChunkTokens": 400,
-    "contentTopK": 4
-  }
-}
+{ "domain": "${DOMAIN}" }
 EOF
-git add of1/config/of1-endpoint.json of1/config/config.json
-if ! git diff --cached --quiet; then
-  git commit -m "feat: of1-endpoint + config meta for ${DOMAIN}"
+git add -- of1/config/config.json
+# Commit ONLY config.json, even if something else happens to be staged.
+if ! git diff --cached --quiet -- of1/config/config.json; then
+  git commit -m "feat: OF1 config.json for ${DOMAIN}" -- of1/config/config.json
   git push origin "$BRANCH"
-  echo "✓ of1-endpoint.json + config.json committed + pushed"
+  echo "✓ of1/config/config.json committed + pushed"
 fi
 ```
 
@@ -276,7 +388,9 @@ The worker discovers knowledge pages from the **site-root `query-index.json`**,
 which EDS builds from `helix-query.yaml`. OF1 demo repos ship WITHOUT one — the
 root `query-index.json` 404s — so the published `/of1/knowledge/**` pages are
 undiscoverable and ingestion indexes nothing. Author an index that targets the
-root `/query-index.json` and includes `/of1/knowledge/**` — create it if absent:
+root `/query-index.json` and includes `/of1/knowledge/**` — **create it only if
+absent**. If the site already has a `helix-query.yaml`, it is the customer's:
+warn only — never edit a customer's helix-query.yaml.
 
 ```bash
 if [ ! -f helix-query.yaml ]; then
@@ -292,13 +406,14 @@ indices:
         select: head > meta[property="og:title"]
         value: attribute(el, "content")
 YAML
-  git add helix-query.yaml
-  git commit -m "chore: index /of1/knowledge into query-index for content-RAG" && git push origin "$BRANCH"
+  git add -- helix-query.yaml
+  git commit -m "chore: index /of1/knowledge into query-index for content-RAG" -- helix-query.yaml && git push origin "$BRANCH"
   echo "✓ created helix-query.yaml (indexes /of1/knowledge/** → /query-index.json)"
 elif ! grep -q "of1/knowledge" helix-query.yaml; then
-  echo "⚠ helix-query.yaml exists but doesn't mention /of1/knowledge — confirm the site's" >&2
-  echo "  query-index includes /of1/knowledge/** (or add an index targeting /query-index.json)." >&2
-  echo "  content.indexed=0 after of1-publish's sync means it's still missing." >&2
+  # Warn only — never edit a customer's helix-query.yaml.
+  echo "⚠ helix-query.yaml exists but doesn't mention /of1/knowledge — left untouched." >&2
+  echo "  Ask the site owner to include /of1/knowledge/** in an index targeting /query-index.json;" >&2
+  echo "  until then of1-publish's content.indexed > 0 check will fail." >&2
 else
   echo "✓ helix-query.yaml already covers /of1/knowledge"
 fi
@@ -306,10 +421,10 @@ fi
 
 These are two different layers, not a duplicated scope: `helix-query.yaml`
 controls what EDS puts *into* `query-index.json` (index membership, a build
-concern), while `contentIngestion.includePaths` (Step 7) is the worker-side
-*ingestion filter*. The worker needs both — the pages must be in the index to
-be found, and `includePaths` narrows what gets embedded. After the knowledge
-pages are published (`of1-extract-content` Step 10), EDS rebuilds
+concern), while the worker's content-ingestion filter (default `/of1/knowledge/**`,
+overridable via `contentIngestion` in `config.json`, Step 7) decides what gets
+embedded. The worker needs both. After the knowledge
+pages are published (`of1-extract-content` Step 8), EDS rebuilds
 `/query-index.json` to include them; `of1-publish`'s `content.indexed > 0` gate
 is the coverage proof.
 

@@ -1,12 +1,12 @@
 ---
 name: of1-extract-content
-description: Crawl a website to extract its knowledge (products, features, FAQs, testimonials) and personas for the tenant config
+description: Crawl a website to publish its page content to DA under /of1/knowledge/** and write the /of1/config/personas DA sheet
 user-invocable: true
 ---
 
 # Content Metadata Populator
 
-Crawl a website to extract the site's knowledge — products, features, FAQs and testimonials — into a single `knowledge` document of generic entities (plus user personas), producing JSON files for the OF1 worker tenant config, and publishing the site's own page content to DA under `/of1/knowledge/**` for the content-RAG. (Content mode: `knowledge.json` is kept as a committed fallback but is NOT published to DA as an `of1-config` doc — the page documents are the content source.)
+Crawl a website to capture the site's own page content (products, features, FAQs, testimonials) and publish it to DA under `/of1/knowledge/**` for the worker's content-RAG, then infer user personas and write them as the DA sheet `/of1/config/personas`. Nothing is written to git: captured pages are staged in `$OF1_STATE_DIR/knowledge-pages.json`, personas rows in `$OF1_STATE_DIR/personas-rows.json`.
 
 ## Env — orchestrator exports these (see `of1-check-dependencies`)
 
@@ -14,7 +14,7 @@ Crawl a website to extract the site's knowledge — products, features, FAQs and
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-content-status.json` |
 | `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
-| `SKILL_DIR` | absolute path to this skill (used to find `assets/download-images.*`) |
+| `SKILL_DIR` | absolute path to this skill (used to find `assets/*.mjs` and `../of1-integration/assets/da-write.mjs`) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
 
@@ -37,9 +37,11 @@ REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
+SKILL_DIR="${SKILL_DIR:-/workspace/skills/of1-extract-content}"
+DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
+PAGES="$OF1_STATE_DIR/knowledge-pages.json"
 
 cd "$OF1_DEMO_REPO"
-mkdir -p of1/config
 ```
 
 If discovery output exists, read it to focus on the right product category:
@@ -47,7 +49,7 @@ If discovery output exists, read it to focus on the right product category:
 cat "$OF1_STATE_DIR/of1-discovery-output.md" 2>/dev/null
 ```
 
-Schema reference: `of1-integration/knowledge/worker-config-schemas.md` — § `knowledge.json`, § `personas.json`.
+Personas sheet columns (DA `/of1/config/personas`): `id,name,description,keywords,priorities,explore,research,compare,purchase,deals,support`.
 
 ## Source resolution — live site vs replica
 
@@ -69,9 +71,9 @@ echo "Extracting from: $SOURCE_BASE"
 ```
 
 Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everything else
-(output files, image download, JSON shapes) is identical in both modes. Note: `$SOURCE_BASE`
-is only for extracting product/content data — Step 9's image re-hosting always targets the
-EDS replica (`https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...`) regardless of source.
+(output files, image rehosting, JSON shapes) is identical in both modes. Note: `$SOURCE_BASE`
+is only for extracting content — Step 8's image re-hosting always targets the EDS replica
+(`https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...`) regardless of source.
 
 ## Inputs
 
@@ -91,6 +93,8 @@ In standalone mode, ask:
 Fetch main product listing pages with WebFetch. Extract for each visible product: name, URL, category, price, short description.
 
 ### 3. Extract product data (parallel scraping)
+
+Start each run from a fresh `$PAGES` (`rm -f "$PAGES"` before the first batch) so re-runs do not duplicate pages.
 
 **Open product pages in parallel batches of 5, then extract from each batch.** Do NOT scrape pages one at a time in a serial loop — that takes 2 min per page × 16 pages = 32 min. Batches of 5 take ~5 min total.
 
@@ -129,17 +133,15 @@ for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
       });
       return { url: location.href, title, blocks };
     }"
-    # Append each captured page to of1/config/knowledge-pages.json — use jq so
-    # the array stays valid JSON (never hand-concatenate); skip empty-blocks
+    # Append each captured page to $OF1_STATE_DIR/knowledge-pages.json — use jq
+    # so the array stays valid JSON (never hand-concatenate); skip empty-blocks
     # pages. Same tabs already open — do not open extra tabs.
     CAP='<the { url, title, blocks } object the eval above returned, as JSON>'
     if [ "$(jq '.blocks | length' <<<"$CAP")" -gt 0 ]; then
-      mkdir -p of1/config
-      if [ -f of1/config/knowledge-pages.json ]; then
-        jq --argjson p "$CAP" '. + [$p]' of1/config/knowledge-pages.json > of1/config/knowledge-pages.json.tmp \
-          && mv of1/config/knowledge-pages.json.tmp of1/config/knowledge-pages.json
+      if [ -f "$PAGES" ]; then
+        jq --argjson p "$CAP" '. + [$p]' "$PAGES" > "$PAGES.tmp" && mv "$PAGES.tmp" "$PAGES"
       else
-        jq -n --argjson p "$CAP" '[$p]' > of1/config/knowledge-pages.json
+        jq -n --argjson p "$CAP" '[$p]' > "$PAGES"
       fi
     fi
   done
@@ -151,74 +153,34 @@ for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
 done
 ```
 
-For each product (cap at 20 in pipeline mode), extract: name, price, currency, category, features (bullets), description (2–3 sentences), specifications, use cases, target audience, image URLs, related products, tags.
+For each product (cap at 20 in pipeline mode), note: name, price, category, features, description, use cases, target audience. These notes are working context for persona inference (Step 4) only — the knowledge the worker uses is the captured page content in `$PAGES`.
 
 ### 4. Infer personas
 
-**Personas:** distinct buyer types with trigger keywords, priorities, product mappings, and an intent profile (see `personas.json` schema in Step 7 — at least one axis should be clearly dominant per persona so personas are visually distinct on the demo's Intent Map).
+**Personas:** distinct buyer types with trigger keywords, priorities, and an intent profile (see the personas sheet in Step 7 — at least one axis should be clearly dominant per persona so personas are visually distinct on the demo's Intent Map).
 
-### 5. Extract features and FAQs
+### 5. Capture features and FAQs
 
-**Features:** cross-product differentiators (technology names, capability categories). Fold each into its related product's `facts[]` in `knowledge.json`; a feature with no related product becomes its own `type:"feature"` knowledge entity.
+**Features / FAQs:** if the site has dedicated feature, FAQ, help, or comparison pages that Step 3 did not visit, open them (same batch-of-5 pattern) and run the same capture eval, appending each to `$PAGES`. Their headings, paragraphs and list items become the knowledge docs — do not rewrite or summarise them.
 
-**FAQs:** from FAQ sections or inferred from comparison points and feature explanations. Each becomes a `type:"faq"` knowledge entity.
+### 5b. Capture testimonials
 
-### 5b. Extract testimonials
-
-Scrape any customer quotes, reviews, or social proof from the site. Look for:
+Look for customer quotes, reviews, or social proof on the site:
 - Testimonial sections (quote cards, carousels)
 - Tweet embeds or social proof sections
 - Customer review excerpts
 - Speaker/attendee quotes (for event sites)
 
-Each real testimonial becomes a `type:"testimonial"` knowledge entity. If the site has NO real testimonials, produce none — never invent them.
+If they live on a page not yet captured, capture it into `$PAGES` the same way. If the site has NO real testimonials, capture none — never invent them.
 
 ### 6. Present summary (standalone mode only)
 
 **Skip in pipeline mode** — go directly to Step 7.
 
-### 7. Generate JSON files
+### 7. Write personas sheet (`/of1/config/personas`)
 
-Write all files to `of1/config/`. Schemas below.
+Write the persona rows as a JSON array to `$OF1_STATE_DIR/personas-rows.json` — one object per persona, keys exactly matching the sheet columns:
 
-**knowledge.json:** — the single factual store; one entity per product, orphan feature, FAQ, or testimonial. `facts[]` is the load-bearing field: each a self-contained, true, quotable claim (render prices, categories, highlights, feature bullets, and FAQ answers as facts). `type` records the origin.
-
-```json
-[
-  {
-    "id": "edge-inference-engine",
-    "type": "product",
-    "title": "Edge Inference Engine",
-    "description": "AI that runs in milliseconds at the CDN layer.",
-    "keywords": ["edge ai", "low latency personalization"],
-    "facts": [
-      "Runs inference at the CDN edge, not a central data center.",
-      "Delivers millisecond response times.",
-      "Category: Platform / Edge AI."
-    ],
-    "images": ["https://main--repo--owner.aem.page/media/product-edge-inference-engine-1.png"],
-    "persona": "platform-engineering-lead"
-  },
-  {
-    "id": "how-fast",
-    "type": "faq",
-    "title": "How fast does the page personalize?",
-    "description": "The full pipeline completes within a 2.5-second maximum LCP.",
-    "keywords": ["performance", "speed"],
-    "facts": ["The Understand→Reason→Compose pipeline completes within a 2.5s maximum LCP, not an average."],
-    "images": []
-  }
-]
-```
-
-Mapping rules:
-- **product →** one `type:"product"` entity (title=name; images; persona); `facts[]` = highlights + related feature bullets + price/category as claims.
-- **feature →** folded as `facts[]` into its related product (via the old `productIds`); an orphan feature becomes its own `type:"feature"` entity.
-- **faq →** `type:"faq"` (title=question; description/facts=answer; no images).
-- **testimonial →** `type:"testimonial"` (title=author/company; facts=quote + attribution).
-- **personas** stay in `personas.json`. **No separate use-case file is produced.**
-
-**personas.json:**
 ```json
 [
   {
@@ -227,119 +189,40 @@ Mapping rules:
     "description": "Who this represents and what they're looking for",
     "keywords": ["trigger", "words", "user", "would", "type", "in", "search"],
     "priorities": ["what", "they", "value"],
-    "recommendedProducts": ["product-id-1", "product-id-2"],
-    "intentProfile": {
-      "explore": 0.3,
-      "research": 0.8,
-      "compare": 0.6,
-      "purchase": 0.3,
-      "deals": 0.2,
-      "support": 0.2
-    }
+    "explore": 0.3,
+    "research": 0.8,
+    "compare": 0.6,
+    "purchase": 0.3,
+    "deals": 0.2,
+    "support": 0.2
   }
 ]
 ```
 
-`intentProfile` (object, 0–1 per axis): where this persona typically sits on the shopping-intent funnel — `explore` (browsing broadly, no target yet), `research` (digging into specs/details), `compare` (weighing alternatives), `purchase` (ready to buy), `deals` (price/promo-sensitive), `support` (needs help/service, post-sale). Infer it from the persona's `priorities`/`description` — give each persona a clearly dominant axis (≥0.7) and at least one clearly low axis (≤0.3) so personas render as visibly different shapes rather than a uniform hexagon.
+⛔ **No commas inside a keyword or priority.** `keywords` and `priorities` are written to the sheet as one comma-joined cell and consumers split on `,` — so `"sugar, free"` would silently become two keywords. Use `"sugar free"` instead. `da-write.mjs` rejects any `keywords`/`priorities` item containing a comma (non-zero exit); fix the item and re-run rather than working around it.
 
-This isn't just cosmetic: it renders as the demo's Intent Map radar, but when a viewer clicks "Personalize" for that persona, this exact value is sent to the OF1 worker's personalize endpoint and directly drives real generation — which template gets selected (from the catalog's candidates for the resolved intent), the RAG retrieval mode, and the intent context put in the LLM prompt (see `of1-integration/knowledge/worker-config-schemas.md` § `personas.json` for the full trace). Get it wrong and the persona won't just look wrong on the radar — it'll get shown content for the wrong intent.
+Intent axes — `explore`, `research`, `compare`, `purchase`, `deals`, `support` (numbers 0–1): where this persona typically sits on the shopping-intent funnel — `explore` (browsing broadly, no target yet), `research` (digging into specs/details), `compare` (weighing alternatives), `purchase` (ready to buy), `deals` (price/promo-sensitive), `support` (needs help/service, post-sale). Infer them from the persona's `priorities`/`description` — give each persona a clearly dominant axis (≥0.7) and at least one clearly low axis (≤0.3) so personas render as visibly different shapes rather than a uniform hexagon.
 
-`keywords` (10–12 strings) are matched against the user's query. Without them, persona matching fails silently and defaults to the first persona.
+This isn't just cosmetic: it renders as the demo's Intent Map radar, and when a viewer clicks "Personalize" for that persona, the preview extension / edge proxy seeds the visitor's behaviour profile with these exact values and sends it to the OF1 worker's `/api/personalize` — where the intent and interests shape the content-chunk retrieval and the intent context put in the LLM prompt. Get them wrong and the persona won't just look wrong on the radar — it'll get content aimed at the wrong intent.
 
-### 8. Cross-reference check
+`keywords` (10–12 strings) describe what this persona searches for and cares about; the preview extension uses them as focus areas in the persona's seeded profile (and, only when the intent columns are empty, to guess its intent). Keep them specific to the persona so personas stay distinguishable.
 
-Verify ID references are consistent: `persona` values on `knowledge.json` product entities must match real IDs in `personas.json`, and `personas.json`'s `recommendedProducts` must match real `knowledge.json` product IDs. Fix mismatches.
-
-### 9. Download + upload product images to DA
-
-⛔ **HARD GATE — DO NOT SKIP THIS STEP. DO NOT MARK THIS SKILL AS COMPLETE WITHOUT RUNNING `download-images.mjs`.** If you write the completion status file without first downloading and uploading images to DA, the demo WILL fail the pre-launch checklist and the entire pipeline run is wasted. This step is NOT optional. Placeholder URLs written by hand instead of running the script are NOT valid — they will 404.
-
-**ALL product images MUST be self-hosted on DA and previewed on EDS.** Never leave external CDN URLs in `knowledge.json` — external URLs break due to CORS, referrer policies, encoding issues, and EDS image optimization rewriting. `content.da.live` is DA's authoring/source store — it is access-restricted and NOT a public delivery endpoint. Images must be uploaded to DA AND previewed (so EDS's Media Bus ingests them), then referenced via the site's own domain: `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/{filename}`. `download-images.mjs` does both steps automatically.
-
-**Minimum 4 images per product, up to 8.** The pre-launch checklist FAILS if any product has fewer than 4. Templates often render 3–6 item cards with images — fewer than 4 images per product leaves visible gaps. If a product page has only 1–3 images, look on the category/listing page, manufacturer press galleries, related model pages, or lifestyle/editorial pages for additional angles.
-
-#### Extract source URLs
-
-Use playwright-cli to visit each product detail page and extract product images:
+Upload + preview the sheet:
 
 ```bash
-playwright-cli eval "() => (
-  Array.from(document.querySelectorAll('img'))
-    .filter(i => i.naturalWidth > 200 && !i.src.includes('icon') && !i.src.includes('logo'))
-    .map(i => ({ src: i.src, alt: i.alt, w: i.naturalWidth, h: i.naturalHeight }))
-)"
+node "$DA_WRITE" sheet --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+  --path of1/config/personas \
+  --columns id,name,description,keywords,priorities,explore,research,compare,purchase,deals,support \
+  --rows "$OF1_STATE_DIR/personas-rows.json"
 ```
 
-Stage the source URLs in `knowledge.json`'s `images` arrays.
+It prints a `✓ … previewed` line for the personas sheet on success. On `FAIL <step> <path> HTTP <status>` or a comma-validation error (non-zero exit) **stop** and fix — do not mark the skill done. Never write a personas file into the git repo (it would shadow the DA sheet).
 
-#### Parallel download + upload
-
-Use `download-images.mjs` — it downloads + uploads concurrently (8 workers), sniffs content type from magic bytes, triggers an EDS preview per image so it's reachable on the site's own domain, and resolves the DA token automatically.
-
-```bash
-cd "$OF1_DEMO_REPO"
-
-# download-images.mjs derives its work list from of1/config/knowledge.json
-# (one entry per entity that has an images[] array — i.e. type:"product" /
-# "testimonial"). It downloads + uploads every image, previews it, and rewrites
-# the entity images[] to the site's .aem.page/media/... paths.
-node "$SKILL_DIR/assets/download-images.mjs" \
-  --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
-  --output /tmp/image-mapping.json \
-  --products-json of1/config/knowledge.json \
-  --max-per-product 8 \
-  --update-products
-```
-
-The `--update-products` flag rewrites `knowledge.json[*].images` to the site's `.aem.page/media/...` URLs automatically.
-
-#### Clean up temp files before any commit
-
-```bash
-rm -rf /tmp/image-mapping.json
-rm -rf of1/config/img-tmp of1/config/da-token.json of1/config/image-manifest.json
-```
-
-These are working files from `download-images.mjs` — do NOT commit them to git.
-
-#### Verify
-
-```bash
-python3 << 'EOF'
-import json, subprocess, sys
-
-with open("of1/config/knowledge.json") as f:
-    entities = json.load(f)
-
-products = [e for e in entities if e.get("type") == "product"]
-
-all_good = True
-for p in products:
-    images = p.get("images", [])
-    if len(images) < 4:
-        print(f"  ✗ {p['title']}: only {len(images)} image(s) — MUST have ≥4")
-        all_good = False
-    else:
-        r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", images[0]], capture_output=True, text=True)
-        status = "✓" if r.stdout.strip() == "200" else "✗"
-        print(f"  {status} {p['title']}: {len(images)} images (HTTP {r.stdout.strip()})")
-        if r.stdout.strip() != "200":
-            all_good = False
-
-if not all_good:
-    print("\n✗ FAIL: Fix products with <4 images before completing!")
-    sys.exit(1)
-print("\n✓ All products have ≥4 accessible images")
-EOF
-```
-
-**Do NOT write the completion status until this passes.** Go back and download more images if any product has fewer than 4.
-
-### 10. Publish knowledge pages to DA (`of1/knowledge/**`)
+### 8. Publish knowledge pages to DA (`of1/knowledge/**`)
 
 Turn the captured pages into bare DA content docs the worker's content-RAG
 ingests. Fast — content, not craft (no EDS blocks). Requires
-`of1/config/knowledge-pages.json` from Step 3.
+`$OF1_STATE_DIR/knowledge-pages.json` from Steps 3–5b.
 
 Rehost the captured page images to DA, then author the knowledge docs with
 inline `<img>` pointing at the rehosted URLs. `download-images.mjs` is reused
@@ -353,7 +236,7 @@ cd "$OF1_DEMO_REPO"
 
 # 1. captured images -> download-images input manifest (unique srcs, hash-keyed)
 node "$SKILL_DIR/assets/build-image-manifest.mjs" \
-  --config-dir of1/config \
+  --pages "$OF1_STATE_DIR/knowledge-pages.json" \
   --output /tmp/knowledge-image-manifest.json
 
 # 2. download + upload each image to DA, preview into the Media Bus
@@ -368,35 +251,37 @@ fi
 # 3. author the bare knowledge docs with inline <img> (text-only if no map)
 node "$SKILL_DIR/assets/publish-knowledge-da.mjs" \
   --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+  --pages "$OF1_STATE_DIR/knowledge-pages.json" \
   --image-map /tmp/knowledge-image-mapping.json
+
+rm -f /tmp/knowledge-image-manifest.json /tmp/knowledge-image-mapping.json
 ```
 
-`of1-check-dependencies` enables `contentIngestion` for `/of1/knowledge/**`
-and `of1-publish`'s sync indexes them. Do NOT convert these to EDS blocks.
+The worker indexes `/of1/knowledge/**` by default (no `contentIngestion` needed in
+`config.json`; `of1-check-dependencies` makes sure `helix-query.yaml` covers it) and
+`of1-publish`'s sync indexes them. Do NOT convert these to EDS blocks.
 
 ## Tips
 
 - IDs must be URL-friendly slugs (lowercase, hyphens)
 - Don't fabricate data — if not on the page, omit it
-- Persona keywords should be words users would type, not marketing terms
-- 10–30 well-described `type:"product"` knowledge entities work better than 200 sparse entries
-- Never use invented/fabricated image URLs — only URLs extracted from the live site that actually downloaded successfully (> 10 KB)
+- Persona keywords should be words users would type, not marketing terms — and never contain a comma
+- 10–30 content-rich captured pages work better than 200 sparse ones
+- Never use invented/fabricated image URLs — only images captured from the live site
 
 ## Completion (pipeline mode)
 
 ⛔ **BEFORE writing the status file below, you MUST have:**
-1. Run `download-images.mjs` with `--update-products` (Step 9 above)
-2. Verified ALL product image URLs return HTTP 200 (the verify script above)
-3. Confirmed all images are `https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...` URLs (site domain, previewed), NOT `https://content.da.live/...` (access-restricted, not public)
-4. Run `publish-knowledge-da.mjs` (Step 10) and confirmed knowledge pages published (`✓ N knowledge page(s) published to DA under of1/knowledge/`)
+1. Run `publish-knowledge-da.mjs` (Step 8) and seen `✓ N knowledge page(s) published to DA under of1/knowledge/`
+2. Run `da-write.mjs sheet` (Step 7) and seen its `✓ … previewed` line for the personas sheet
 
-If ANY of these are false, GO BACK and complete Step 9 (images) / Step 10 (knowledge pages). Do not proceed.
+If either is false, GO BACK and complete Step 7 (personas sheet) / Step 8 (knowledge pages). Do not proceed.
 
 This skill runs alongside `of1-extract-brand-voice`. Both must complete before the content track is treated as done.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-content-status.json" <<EOF
-{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content metadata: [N] knowledge entities ([N1] products, [N2] features, [N3] FAQs, [N4] testimonials), [M] personas. All images on DA. Knowledge pages published to DA under of1/knowledge/."}
+{"stage":3,"skill":"of1-extract-content","status":"done","summary":"Content: [N] knowledge pages published to DA under of1/knowledge/ ([I] images rehosted). [M] personas written to DA sheet /of1/config/personas."}
 EOF
 ```
 

@@ -4,11 +4,11 @@
 // live for the gen-web content-RAG (contentIngestion includePaths
 // ["/of1/knowledge/**"]). Content, not craft: <h1> + <h2>/<p>/<li>, no blocks.
 //
-// Input:  of1/config/knowledge-pages.json  (array of {slug?,url?,title,blocks})
+// Input:  $OF1_STATE_DIR/knowledge-pages.json  (array of {slug?,url?,title,blocks})
 // Output: of1/knowledge/{slug}.html (DA) + EDS preview per page
 //
 // Usage: node publish-knowledge-da.mjs --owner O --repo R --branch B
-//        [--config-dir of1/config] [--knowledge-dir of1/knowledge]
+//        [--pages $OF1_STATE_DIR/knowledge-pages.json] [--knowledge-dir of1/knowledge]
 //        [--token-file path] [--concurrency 8]
 //
 // Token resolution order: --token-file, $DA_TOKEN, $ADOBE_IMS_TOKEN,
@@ -133,20 +133,23 @@ async function triggerLive(token, owner, repo, branch, resourcePath) {
   } catch (e) { return `live error: ${e.message}`; }
 }
 
-function parseArgs(argv) {
-  const args = { configDir: 'of1/config', knowledgeDir: 'of1/knowledge', concurrency: 8 };
+export function parseArgs(argv) {
+  const args = {
+    pages: path.join(process.env.OF1_STATE_DIR || '.', 'knowledge-pages.json'),
+    knowledgeDir: 'of1/knowledge',
+    concurrency: 8,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--owner') args.owner = argv[++i];
     else if (a === '--repo') args.repo = argv[++i];
     else if (a === '--branch') args.branch = argv[++i];
-    else if (a === '--config-dir') args.configDir = argv[++i];
+    else if (a === '--pages') args.pages = argv[++i];
     else if (a === '--knowledge-dir') args.knowledgeDir = argv[++i];
     else if (a === '--token-file') args.tokenFile = argv[++i];
     else if (a === '--concurrency') args.concurrency = parseInt(argv[++i], 10) || 8;
     else if (a === '--image-map') args.imageMap = argv[++i];
   }
-  if (!args.owner || !args.repo || !args.branch) throw new Error('Missing required --owner / --repo / --branch');
   return args;
 }
 
@@ -172,11 +175,12 @@ async function publishEntry(entry, token, args, seen, imageMap) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (!args.owner || !args.repo || !args.branch) throw new Error('Missing required --owner / --repo / --branch');
   const token = await resolveToken(args.tokenFile);
-  const manifestPath = path.join(args.configDir, 'knowledge-pages.json');
+  const manifestPath = args.pages;
   if (!fs.existsSync(manifestPath)) throw new Error(`${manifestPath} not found — capture step must run first`);
   const entries = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  if (!Array.isArray(entries) || entries.length === 0) throw new Error('knowledge-pages.json is empty or not an array');
+  if (!Array.isArray(entries) || entries.length === 0) throw new Error(`${manifestPath} is empty or not an array`);
   const imageMap = args.imageMap && fs.existsSync(args.imageMap)
     ? JSON.parse(fs.readFileSync(args.imageMap, 'utf8'))
     : {};
@@ -195,6 +199,13 @@ async function main() {
   console.log(`\n✓ ${ok.length} knowledge page(s) published to DA under of1/knowledge/`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Compare against the realpath: Node resolves import.meta.url through
+// symlinks, but argv[1] keeps the symlinked path.
+function isDirectRun() {
+  if (!process.argv[1]) return false;
+  try { return import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href; } catch { return false; }
+}
+
+if (isDirectRun()) {
   main().catch((e) => { console.error(`FATAL: ${e.message}`); process.exit(1); });
 }
