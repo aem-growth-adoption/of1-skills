@@ -19,6 +19,9 @@ test('buildSheetJson projects rows to columns', () => {
     limit: 1,
     offset: 0,
     data: [{ id: '', name: 'A', keywords: 'x, y', explore: '0.2' }],
+    // Same keys the da.live sheet editor saves (verified live 2026-10-06
+    // against a hand-authored DA sheet); EDS strips :sheetname on delivery.
+    ':sheetname': 'data',
     ':type': 'sheet',
   });
 });

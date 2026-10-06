@@ -72,7 +72,9 @@ export function buildSheetJson(rows, columns) {
     for (const c of columns) out[c] = cell(row?.[c], c);
     return out;
   });
-  return { total: data.length, limit: data.length, offset: 0, data, ':type': 'sheet' };
+  // Matches what the da.live sheet editor saves (single sheet named "data");
+  // EDS strips :sheetname when serving <path>.json.
+  return { total: data.length, limit: data.length, offset: 0, data, ':sheetname': 'data', ':type': 'sheet' };
 }
 
 export function buildMultipart(content, filename, contentType) {
