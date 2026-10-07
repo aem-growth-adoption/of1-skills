@@ -108,10 +108,15 @@ if [ "${#PRODUCT_URLS[@]}" -eq 0 ]; then
     curl -s --max-time 20 "${SOURCE_BASE}/nav.plain.html" \
       | grep -oE 'href="/[^"#?]*"' | sed -E 's/^href="//; s/"$//' | sort -u | head -20)
 fi
+# Always capture the home page: prepend it when the index/nav didn't list it.
+HOME_URL="${SOURCE_BASE}/"
+has_home=0
+for u in "${PRODUCT_URLS[@]}"; do [ "$u" = "$HOME_URL" ] && has_home=1; done
+[ "$has_home" = 1 ] || PRODUCT_URLS=("$HOME_URL" "${PRODUCT_URLS[@]}")
 printf '%s\n' "${PRODUCT_URLS[@]}"
 ```
 
-Always include the home page (`${SOURCE_BASE}/`). Hand-prune the list to the 10–20 pages with real content (about, services/solutions, programs, FAQ/help, pricing/plans if any) before Step 3.
+The snippet always includes the home page (`${SOURCE_BASE}/`). Hand-prune the list to the 10–20 pages with real content (about, services/solutions, programs, FAQ/help, pricing/plans if any) before Step 3.
 
 ### 3. Extract page data (parallel scraping)
 
@@ -121,14 +126,16 @@ Start each run from a fresh `$PAGES` (`rm -f "$PAGES"` before the first batch) s
 
 `playwright-cli` rules (verified on the current CLI):
 
-- **Run it from `$OF1_STATE_DIR`, never from the repo** — it writes a `.playwright-cli/` folder (snapshots, console logs) into the current directory, which would otherwise end up in the customer's git tree.
+- **Run it from `$OF1_STATE_DIR`, never from the repo** — it writes a `.playwright-cli/` folder (snapshots, console logs) into the current directory, which would otherwise end up in the customer's git tree. The `pw` helper below does that in a subshell, so your shell's cwd is left untouched.
 - First URL of a batch → `playwright-cli open URL` (starts the browser); every other URL → `playwright-cli tab-new URL`. Calling `open` repeatedly does not open new tabs.
 - Tab ids come from `playwright-cli tab-list` lines shaped `- <id>: …` → `grep -oE '^- [0-9]+:' | grep -oE '[0-9]+'` (a bare `grep -oE '[0-9]+'` also picks up digits in titles/URLs).
 - `playwright-cli eval` prints a Markdown report; the returned value is under `### Result`. Extract it with `awk '/^### Result/{f=1;next} /^### /{f=0} f'`.
-- Close the batch with `playwright-cli close` (closes the browser and all its tabs). If you close tabs individually, go from the **highest id down** — ids are positional and renumber after each close.
+- Close the batch with `playwright-cli close` — it closes the **default session's** browser and all its tabs (any other `-s=<name>` session is untouched; don't run another default-session task in parallel). If you close tabs individually, go from the **highest id down** — ids are positional and renumber after each close.
 
 ```bash
-cd "$OF1_STATE_DIR"   # playwright-cli writes .playwright-cli/ into cwd — keep it out of the repo
+# playwright-cli writes .playwright-cli/ into cwd — run it from the state dir in a
+# subshell so it never lands in the repo and this shell's cwd doesn't change.
+pw() { ( cd "$OF1_STATE_DIR" && playwright-cli "$@" ); }
 pw_result() { awk '/^### Result/{f=1;next} /^### /{f=0} f'; }
 CAPTURE_JS="() => {
   const root = document.querySelector('main') || document.querySelector('article') || document.body;
@@ -152,20 +159,20 @@ for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
   # Open this batch: first URL starts the browser, the rest are new tabs.
   first=1
   for URL in "${PRODUCT_URLS[@]:$i:$BATCH_SIZE}"; do
-    if [ "$first" = 1 ]; then playwright-cli open "$URL"; first=0
-    else playwright-cli tab-new "$URL"; fi
+    if [ "$first" = 1 ]; then pw open "$URL"; first=0
+    else pw tab-new "$URL"; fi
   done
   sleep 5  # wait for batch to render
 
   # Extract data from each tab in this batch.
-  TAB_IDS=($(playwright-cli tab-list | grep -oE '^- [0-9]+:' | grep -oE '[0-9]+'))
+  TAB_IDS=($(pw tab-list | grep -oE '^- [0-9]+:' | grep -oE '[0-9]+'))
   for TAB_ID in "${TAB_IDS[@]}"; do
-    playwright-cli tab-select "$TAB_ID" >/dev/null
+    pw tab-select "$TAB_ID" >/dev/null
     # (Commerce sites) product facts for persona inference — working notes only:
-    # playwright-cli eval "() => ({ name: …, price: …, description: … })" | pw_result
+    # pw eval "() => ({ name: …, price: …, description: … })" | pw_result
 
     # Readable page content for the knowledge RAG — same tab, no extra page load.
-    CAP=$(playwright-cli eval "$CAPTURE_JS" | pw_result \
+    CAP=$(pw eval "$CAPTURE_JS" | pw_result \
       | jq -c 'if type == "string" then fromjson else . end' 2>/dev/null)
     # Append to $PAGES with jq (never hand-concatenate); skip empty/failed captures.
     if [ -n "$CAP" ] && [ "$(jq '.blocks | length' <<<"$CAP" 2>/dev/null || echo 0)" -gt 0 ]; then
@@ -180,7 +187,7 @@ for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
   done
 
   # Close the whole batch (browser + tabs) before opening the next one.
-  playwright-cli close >/dev/null 2>&1 || true
+  pw close >/dev/null 2>&1 || true
 done
 echo "captured $(jq length "$PAGES" 2>/dev/null || echo 0) page(s) → $PAGES"
 ```
