@@ -169,11 +169,18 @@ fi
 
 OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>'${WORKER_URL}'</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr><tr><td><p>engine</p></td><td><p>'${ENGINE}'</p></td></tr>'${LANDING_ROWS}'</table></div></div></main><footer></footer></body>'
 
-curl -s -X PUT \
+PUT_RESP=$(curl -s -w "\n%{http_code}" -X PUT \
   -H "Authorization: Bearer ${DA_TOKEN}" \
   -H "Content-Type: text/html" \
   -d "$OF1_HTML" \
-  "https://admin.da.live/source/${OWNER}/${REPO}/of1.html"
+  "https://admin.da.live/source/${OWNER}/${REPO}/of1.html")
+PUT_STATUS=$(printf '%s\n' "$PUT_RESP" | tail -1)
+case "$PUT_STATUS" in
+  2??) echo "✓ DA PUT /of1.html (HTTP ${PUT_STATUS})" ;;
+  *) echo "FAIL: DA PUT /of1.html returned HTTP ${PUT_STATUS}" >&2
+     echo "Response: $(printf '%s\n' "$PUT_RESP" | sed '$d')" >&2
+     exit 1 ;;
+esac
 
 # Trigger preview so the URL is live
 PREVIEW_RESP=$(curl -s -w "\n%{http_code}" -X POST \
@@ -194,19 +201,24 @@ fi
 
 ### Step 5b — Gate: verify DA content is live and renders correctly
 
-**Do NOT proceed to Step 6 until this gate passes.** The preview trigger above can silently fail (401, stale cache, missing auth headers). Verify the page actually exists and returns valid HTML.
+**Do NOT proceed to Step 6 until this gate passes.** The preview trigger above can silently fail (401, stale cache, missing auth headers), and a 200 alone is not proof — an older or foreign `/of1` page would also return 200. Verify the previewed document actually carries the `of1` block config written above (its `engine` row).
 
 ```bash
-OF1_PREVIEW="https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1"
+OF1_PLAIN="https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1.plain.html"
 
-OF1_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$OF1_PREVIEW")
+OF1_BODY=$(curl -s -w "\n%{http_code}" "$OF1_PLAIN")
+OF1_STATUS=$(printf '%s\n' "$OF1_BODY" | tail -1)
 if [ "$OF1_STATUS" != "200" ]; then
-  echo "FAIL: /of1 page returned HTTP ${OF1_STATUS} — preview trigger likely failed (auth issue?)" >&2
+  echo "FAIL: /of1.plain.html returned HTTP ${OF1_STATUS} — preview trigger likely failed (auth issue?)" >&2
   echo "Re-run the preview trigger with both Authorization and x-content-source-authorization headers." >&2
   exit 1
 fi
+if ! printf '%s\n' "$OF1_BODY" | sed '$d' | grep -q 'engine'; then
+  echo "FAIL: /of1.plain.html is live but has no 'engine' row — the previewed doc is not the one Step 5 wrote (stale preview or PUT didn't land)" >&2
+  exit 1
+fi
 
-echo "✓ /of1 content is live"
+echo "✓ /of1 content is live (of1 block config present)"
 ```
 
 Common failures at this gate:
@@ -214,7 +226,8 @@ Common failures at this gate:
 | Symptom | Cause | Fix |
 |---|---|---|
 | 401 on preview trigger | Missing `x-content-source-authorization` header or expired token | Re-authenticate DA token and re-run |
-| 404 on /of1 | PUT to DA source failed silently | Check the PUT response; verify `admin.da.live/source/...` path matches repo config |
+| 404 on /of1 | PUT to DA source failed | Step 5 now fails on a non-2xx PUT — check its output; verify `admin.da.live/source/...` path matches repo config |
+| 200 but no `engine` | Stale preview of an older `/of1` doc, or the PUT targeted another org/repo | Re-run Step 5 and check both the PUT and preview statuses |
 
 ### Step 6 — Commit and push
 
@@ -231,16 +244,23 @@ After the push, EDS picks up the code change automatically. Open the live OF1 pa
 
 ```bash
 OF1_URL="https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1"
-playwright-cli open "$OF1_URL"
+# playwright-cli writes a .playwright-cli/ folder into cwd — run it from the
+# state dir (subshell), never from the repo. `pw_result` keeps eval's value only.
+pw() { ( cd "$OF1_STATE_DIR" && playwright-cli "$@" ); }
+pw_result() { awk '/^### Result/{f=1;next} /^### /{f=0} f'; }
+pw open "$OF1_URL"
 sleep 4  # EDS loads header/footer blocks + lazy CSS
 
-# Confirm the branded chrome and the block are all in the DOM
-playwright-cli eval "() => (document.querySelector('header .header') ? 'header OK' : 'HEADER MISSING')"
-playwright-cli eval "() => (document.querySelector('footer .footer') ? 'footer OK' : 'FOOTER MISSING')"
-playwright-cli eval "() => (document.querySelector('.of1')            ? 'of1 block OK' : 'OF1 BLOCK MISSING')"
+# Confirm the branded chrome, the block, and the SDK-rendered search UI are in the DOM.
+# `.of1-search-ui` is the container the OF1 client SDK (worker /sdk/of1-client.js)
+# renders inside the block — present only if the SDK loaded and initialised.
+pw eval "() => (document.querySelector('header .header') ? 'header OK' : 'HEADER MISSING')" | pw_result
+pw eval "() => (document.querySelector('footer .footer') ? 'footer OK' : 'FOOTER MISSING')" | pw_result
+pw eval "() => (document.querySelector('.of1')            ? 'of1 block OK' : 'OF1 BLOCK MISSING')" | pw_result
+pw eval "() => (document.querySelector('.of1 .of1-search-ui') ? 'search UI OK' : 'SEARCH UI MISSING')" | pw_result
 
 # Capture a screenshot for visual review
-playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/of1-render-check.png"
+pw screenshot --full-page --filename "$OF1_STATE_DIR/of1-render-check.png"
 ```
 
 (`header .header` / `footer .footer` match vanilla `aem-boilerplate`'s `decorateBlock` convention — confirm against the target's own `runtime-contract.json` `blockWrapperClass` field if it drifts.)
@@ -249,22 +269,25 @@ Open the screenshot — the branded nav should be at the top, the branded footer
 
 ### Step 7b — Verify generated content styling
 
-The page chrome rendering (Step 7) is necessary but not sufficient. Also confirm a query returns styled content. Generated sections are the site's own EDS blocks styled by each block's code-bus CSS (`blocks/<name>/<name>.css`), so this is an end-to-end smoke test that the block, the client SDK, and the templates work together — not a check of `of1.css` selectors.
+**Advisory, not a gate, when templates aren't synced yet.** In the pipeline this skill runs before `of1-publish` syncs the tenant, so the worker may have no templates (`hasTemplates` false) or no indexed content and a query renders nothing — that is expected here. `of1-publish` (check 6) runs the real generation check after sync. If chips are absent (suggestions not synced yet), skip 7b and note it in the summary.
+
+The page chrome rendering (Step 7) is necessary but not sufficient. When the tenant is already synced, also confirm a query returns styled content. Generated sections are the site's own EDS blocks styled by each block's code-bus CSS (`blocks/<name>/<name>.css`), so this is an end-to-end smoke test that the block, the client SDK, and the templates work together — not a check of `of1.css` selectors.
 
 1. Trigger a test query by clicking a suggestion chip
 2. Wait for generated content to stream in
 3. Screenshot and visually confirm the sections are styled (branded typography, spacing, imagery) — not raw unstyled text
 
 ```bash
-# Click first suggestion chip to trigger generation
-playwright-cli click ".of1-chip:first-child"
+# Click first suggestion chip to trigger generation (pw/pw_result from Step 7)
+pw click ".of1-chip:first-child"
 sleep 8  # wait for the worker to generate + render
 
 # Screenshot the generated result for visual review
-playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/of1-generated-check.png"
+pw screenshot --full-page --filename "$OF1_STATE_DIR/of1-generated-check.png"
 
-# Confirm at least one generated section rendered
-playwright-cli eval "() => (document.querySelector('.generated-section') ? 'generated OK' : 'NO GENERATED CONTENT')"
+# Confirm at least one generated section rendered (advisory before of1-publish syncs)
+pw eval "() => (document.querySelector('.generated-section') ? 'generated OK' : 'NO GENERATED CONTENT (advisory — of1-publish check 6 is the real gate)')" | pw_result
+pw close >/dev/null 2>&1 || true
 ```
 
 If nothing renders, check the worker sync / tenant status (see `of1-publish`) and that the DA templates under `/templates` are previewed (`hasTemplates` true). Per-section visual problems are the templates' CSS (`of1-build-templates`), not this skill.
@@ -275,6 +298,7 @@ Common failures:
 |---|---|
 | `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 4 (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when Stage 2c/the existing site didn't provide one |
 | `OF1 BLOCK MISSING` | `blocks/of1/of1.js` wasn't pushed, or the `of1` block table's `th` cell doesn't read exactly `of1` |
+| `SEARCH UI MISSING` (block present) | The client SDK didn't load/init — check the `api-endpoint` row points at a reachable worker (`${WORKER_URL}/sdk/of1-client.js` returns 200) and the browser console for import errors |
 | Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by Stage 2c's (`of1-snowflake`) deploy phase, or the preview hasn't picked up the latest push yet |
 
 Fix any failures and re-push before Completion.
