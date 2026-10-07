@@ -138,7 +138,21 @@ index_paths() {
 CFG=of1/config/config.json
 CFG_NEW=$(cat "$CFG")
 # Template folder: honour a configured templates.daPath (default /templates).
-TPL_DIR=$(jq -r '.templates.daPath // "/templates"' "$CFG"); TPL_DIR="/${TPL_DIR#/}"; TPL_DIR="${TPL_DIR%/}"
+# The worker uses the raw value, so a daPath without a leading "/" is NOT silently
+# normalised here — warn and leave templates.names alone for this run.
+TPL_DIR=$(jq -r '.templates.daPath // "/templates"' "$CFG")
+TPL_SKIP=false
+case "$TPL_DIR" in
+  /*) TPL_DIR="${TPL_DIR%/}" ;;
+  *) echo "⚠ templates.daPath \"$TPL_DIR\" has no leading '/' — the worker uses the raw value; fix config.json. Not setting/deleting templates.names this run." >&2
+     TPL_SKIP=true ;;
+esac
+# Index candidates step 2b may write as contentIngestion.indexPath (its own fallbacks).
+# Append any index the user names, e.g. INDEX_CANDIDATES+=("/en/query-index.json").
+INDEX_CANDIDATES=(/sitemap.json)
+CUR_INDEX_PATH=$(jq -r '.contentIngestion.indexPath // empty' "$CFG")
+CUR_INDEX_IS_OURS=false
+for idx in "${INDEX_CANDIDATES[@]}"; do [ "$CUR_INDEX_PATH" = "$idx" ] && CUR_INDEX_IS_OURS=true; done
 
 QI_PATHS=$(index_paths /query-index.json)
 QI_HAS_TEMPLATES=false; QI_HAS_KNOWLEDGE=false
@@ -146,7 +160,9 @@ grep -q "^${TPL_DIR}/" <<<"$QI_PATHS" && QI_HAS_TEMPLATES=true
 grep -q '^/of1/knowledge/' <<<"$QI_PATHS" && QI_HAS_KNOWLEDGE=true
 echo "query-index.json: templates($TPL_DIR)=$QI_HAS_TEMPLATES knowledge=$QI_HAS_KNOWLEDGE"
 
-if [ "$QI_HAS_TEMPLATES" = "true" ]; then
+if [ "$TPL_SKIP" = "true" ]; then
+  : # daPath malformed — warned above; templates.names left as-is.
+elif [ "$QI_HAS_TEMPLATES" = "true" ]; then
   # Index covers templates — drop a stale override so the worker uses the index.
   CFG_NEW=$(jq 'del(.templates.names) | if .templates == {} then del(.templates) else . end' <<<"$CFG_NEW")
 else
@@ -167,12 +183,14 @@ else
   fi
 fi
 
-if [ "$QI_HAS_KNOWLEDGE" = "true" ]; then
+if [ -n "$CUR_INDEX_PATH" ] && [ "$CUR_INDEX_IS_OURS" != "true" ]; then
+  # User-set indexPath (e.g. "/query-index.json?limit=2000") — never delete or overwrite it.
+  echo "· contentIngestion.indexPath = $CUR_INDEX_PATH is user-set — left untouched"
+elif [ "$QI_HAS_KNOWLEDGE" = "true" ]; then
+  # Index covers knowledge — drop only a fallback this step wrote earlier.
   CFG_NEW=$(jq 'del(.contentIngestion.indexPath) | if .contentIngestion == {} then del(.contentIngestion) else . end' <<<"$CFG_NEW")
 else
   # (b) knowledge: first candidate index whose top-level .data lists /of1/knowledge/ paths.
-  # Append any index the user names, e.g. INDEX_CANDIDATES+=("/en/query-index.json").
-  INDEX_CANDIDATES=(/sitemap.json)
   KNOWLEDGE_INDEX=""
   for idx in "${INDEX_CANDIDATES[@]}"; do
     if index_paths "$idx" | grep -q '^/of1/knowledge/'; then KNOWLEDGE_INDEX="$idx"; break; fi
@@ -198,7 +216,7 @@ else
 fi
 ```
 
-If `/query-index.json` lists both `/templates/` (or the configured `templates.daPath`) and `/of1/knowledge/` paths, no override is set — and any stale `templates.names` / `contentIngestion.indexPath` is removed. Note template docs only appear in an index once **published**; `of1-build-templates` only previews them, so on most sites step 2b sets `templates.names`. If the knowledge pages were published moments ago and the repo's `helix-query.yaml` does include them, the index may just be lagging — wait a minute and re-run this step before concluding the site needs overrides. If no index lists `/of1/knowledge/`, ask the user whether the site has another index (append it to `INDEX_CANDIDATES` and re-run); otherwise continue — check 2 will report the gap. Field shapes: `of1-integration/knowledge/worker-config-schemas.md` § `config.json`.
+If `/query-index.json` lists both `/templates/` (or the configured `templates.daPath`) and `/of1/knowledge/` paths, no override is set — and a stale `templates.names` or a skill-written `contentIngestion.indexPath` (one of `INDEX_CANDIDATES`) is removed. A user-set `indexPath` (any other value, e.g. `/query-index.json?limit=2000`) is never deleted or overwritten. A `templates.daPath` without a leading `/` is reported, not normalised, and `templates.names` is left alone that run. Sync `errors` entries that are only `{file, warning}` (e.g. >30 templates, sync truncated) are warnings, not failures. Note template docs only appear in an index once **published**; `of1-build-templates` only previews them, so on most sites step 2b sets `templates.names`. If the knowledge pages were published moments ago and the repo's `helix-query.yaml` does include them, the index may just be lagging — wait a minute and re-run this step before concluding the site needs overrides. If no index lists `/of1/knowledge/`, ask the user whether the site has another index (append it to `INDEX_CANDIDATES` and re-run); otherwise continue — check 2 will report the gap. Field shapes: `of1-integration/knowledge/worker-config-schemas.md` § `config.json`.
 
 ### 3. Push the git config
 
@@ -222,14 +240,16 @@ curl -s -X POST "${WORKER_URL}/api/tenants/${TENANT_ID}/sync" > "$HUB/sync.json"
 jq . "$HUB/sync.json"
 OK=$(jq -r '.ok' "$HUB/sync.json")
 INDEXED=$(jq -r '.content.indexed // 0' "$HUB/sync.json")
-N_ERR=$(jq '.errors // [] | length' "$HUB/sync.json" 2>/dev/null)
+# `{file, warning}` entries are non-fatal warnings — not counted as errors.
+N_ERR=$(jq '[.errors // [] | .[] | select((.warning != null and .error == null) | not)] | length' "$HUB/sync.json" 2>/dev/null)
 echo "Sync: ok=$OK synced=$(jq -c '.synced' "$HUB/sync.json") errors=${N_ERR:-0} content.indexed=$INDEXED"
 # `if`, not `[ … ] && …`: a bare && as the block's last command would leave a
 # non-zero status when there are no errors.
 if [ "${N_ERR:-0}" -gt 0 ]; then
   echo "✗ sync reported $N_ERR error(s) (a failure even though ok=$OK):" >&2
-  jq -c '.errors[]' "$HUB/sync.json" >&2
+  jq -c '.errors[] | select((.warning != null and .error == null) | not)' "$HUB/sync.json" >&2
 fi
+jq -r '.errors // [] | .[] | select(.warning != null and .error == null) | "⚠ \(.file // "sync"): \(.warning)"' "$HUB/sync.json" 2>/dev/null
 ```
 
 Pass: `ok: true` **and** `errors` empty **and** `content.indexed > 0`. The worker returns `ok: true` even when individual files failed — a non-empty `errors` array is a failure. Entries come as `{file, error}`, `{file, status}`, `{content, status}` or `{content, error}` — e.g. `brand-voice: empty document` means `/of1/brand-voice` wasn't previewed. If `content.indexed` is 0 while `$OF1_STATE_DIR/knowledge-pages.json` is non-empty, the knowledge pages aren't in the index the worker reads (`/query-index.json`, or `contentIngestion.indexPath` set in step 2b): check the site's `helix-query.yaml` (or, for config-service sites, the AEM config-service index) covers `/of1/knowledge/**` (an existing file is never edited by the skills — `of1-check-dependencies` warns when it doesn't), that `.hlxignore` doesn't exclude them, and that the pages are **published** (live), not just previewed. Don't stop on failure yet — finish steps 5–8 so the hub shows what failed, then fail in the checklist.
@@ -302,7 +322,7 @@ Step 1 passed: `git ls-files of1/config` ⊆ {`of1/config/config.json`} (+ `of1/
 
 ```bash
 [ "$(jq -r .ok "$HUB/sync.json")" = "true" ] || { echo "✗ FAIL (check 2): sync ok != true — see $HUB/sync.json .errors" >&2; exit 1; }
-[ "$(jq '.errors // [] | length' "$HUB/sync.json" 2>/dev/null || echo 1)" -eq 0 ] || { echo "✗ FAIL (check 2): sync errors (ok=true is not enough):" >&2; jq -c '.errors[]' "$HUB/sync.json" >&2; exit 1; }
+[ "$(jq '[.errors // [] | .[] | select((.warning != null and .error == null) | not)] | length' "$HUB/sync.json" 2>/dev/null || echo 1)" -eq 0 ] || { echo "✗ FAIL (check 2): sync errors (ok=true is not enough):" >&2; jq -c '.errors[]' "$HUB/sync.json" >&2; exit 1; }
 [ "$(jq -r '.content.indexed // 0' "$HUB/sync.json")" -gt 0 ] || { echo "✗ FAIL (check 2): content.indexed = 0 — /of1/knowledge/** not in the worker's index (query-index.json or contentIngestion.indexPath — see step 2b; pages must be published live)" >&2; exit 1; }
 echo "✓ sync ok, $(jq -r .content.indexed "$HUB/sync.json") chunk(s) indexed"
 ```
