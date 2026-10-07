@@ -366,7 +366,9 @@ the CDN.
 `config.json` is the only committed OF1 config file this skill writes. It carries just
 the target `domain` (which can differ from the EDS host). Nothing else goes in it —
 content ingestion uses the worker default `/of1/knowledge/**`; add `contentIngestion`
-here only to override.
+here only to override. (`of1-publish` step 3a may later merge `templates.names` /
+`contentIngestion.indexPath` into it for sites whose index is managed by the AEM
+config service — see step 8.)
 
 ```bash
 mkdir -p of1/config
@@ -382,24 +384,42 @@ if ! git diff --cached --quiet -- of1/config/config.json; then
 fi
 ```
 
-### 8. Ensure a query-index covers `/of1/knowledge/**` (author `helix-query.yaml`)
+### 8. Ensure a query-index covers `/of1/knowledge/**` and `/templates/**` (author `helix-query.yaml`)
 
-The worker discovers knowledge pages from the **site-root `query-index.json`**,
-which EDS builds from `helix-query.yaml`. OF1 demo repos ship WITHOUT one — the
-root `query-index.json` 404s — so the published `/of1/knowledge/**` pages are
-undiscoverable and ingestion indexes nothing. Author an index that targets the
-root `/query-index.json` and includes `/of1/knowledge/**` — **create it only if
-absent**. If the site already has a `helix-query.yaml`, it is the customer's:
-warn only — never edit a customer's helix-query.yaml.
+The worker discovers knowledge pages **and** DA template docs from the
+**site-root `query-index.json`**, which EDS builds from `helix-query.yaml`. OF1
+demo repos ship WITHOUT one — the root `query-index.json` 404s — so the
+published `/of1/knowledge/**` pages and `/templates/**` docs are undiscoverable:
+ingestion indexes nothing and the tenant syncs zero templates. Author an index
+that targets the root `/query-index.json` and includes **both**
+`/of1/knowledge/**` and `/templates/**` — **create it only if absent**. If the
+site already has a `helix-query.yaml`, it is the customer's: warn only — never
+edit a customer's helix-query.yaml.
+
+**Sites whose index lives in the AEM configuration service** (not
+`helix-query.yaml`): some sites configure their query index in the AEM config
+service, where a repo `helix-query.yaml` is **not honoured** — this is often
+stated in the site's own `AGENTS.md`/README, and the root `/query-index.json`
+typically 404s or doesn't list `/of1/knowledge/` / `/templates/` paths even
+though the site has an index (e.g. `/sitemap.json`). **Do not create a
+`helix-query.yaml` for such a site** (it would be dead weight in the customer's
+repo). Skip this step; `of1-publish` step 3a detects the gap and points the
+worker at the right sources via `config.json` overrides
+(`templates.names`, `contentIngestion.indexPath`).
 
 ```bash
-if [ ! -f helix-query.yaml ]; then
+# Set SKIP_HELIX_QUERY=1 when the site's index is managed by the AEM config
+# service (see above) — of1-publish step 3a handles those sites.
+if [ "${SKIP_HELIX_QUERY:-0}" = "1" ]; then
+  echo "↷ index managed by the AEM config service — no helix-query.yaml; of1-publish step 3a sets config.json overrides"
+elif [ ! -f helix-query.yaml ]; then
   cat > helix-query.yaml <<'YAML'
 version: 1
 indices:
   of1-knowledge:
     include:
       - '/of1/knowledge/**'
+      - '/templates/**'
     target: /query-index.json
     properties:
       title:
@@ -407,15 +427,18 @@ indices:
         value: attribute(el, "content")
 YAML
   git add -- helix-query.yaml
-  git commit -m "chore: index /of1/knowledge into query-index for content-RAG" -- helix-query.yaml && git push origin "$BRANCH"
-  echo "✓ created helix-query.yaml (indexes /of1/knowledge/** → /query-index.json)"
-elif ! grep -q "of1/knowledge" helix-query.yaml; then
-  # Warn only — never edit a customer's helix-query.yaml.
-  echo "⚠ helix-query.yaml exists but doesn't mention /of1/knowledge — left untouched." >&2
-  echo "  Ask the site owner to include /of1/knowledge/** in an index targeting /query-index.json;" >&2
-  echo "  until then of1-publish's content.indexed > 0 check will fail." >&2
+  git commit -m "chore: index /of1/knowledge and /templates into query-index for OF1" -- helix-query.yaml && git push origin "$BRANCH"
+  echo "✓ created helix-query.yaml (indexes /of1/knowledge/** + /templates/** → /query-index.json)"
 else
-  echo "✓ helix-query.yaml already covers /of1/knowledge"
+  # Warn only — never edit a customer's helix-query.yaml.
+  for want in of1/knowledge templates/; do
+    grep -q "$want" helix-query.yaml || {
+      echo "⚠ helix-query.yaml exists but doesn't mention /${want%/} — left untouched." >&2
+      echo "  Ask the site owner to include /${want%/}/** in an index targeting /query-index.json;" >&2
+      echo "  of1-publish step 3a will try config.json overrides, otherwise its checks 2/3 will fail." >&2
+    }
+  done
+  echo "✓ helix-query.yaml present (customer-owned, not edited)"
 fi
 ```
 
@@ -423,7 +446,9 @@ These are two different layers, not a duplicated scope: `helix-query.yaml`
 controls what EDS puts *into* `query-index.json` (index membership, a build
 concern), while the worker's content-ingestion filter (default `/of1/knowledge/**`,
 overridable via `contentIngestion` in `config.json`, Step 7) decides what gets
-embedded. The worker needs both. After the knowledge
+embedded. The worker needs both. `/templates/**` is in the same index because the
+worker lists DA template docs from `query-index.json` too (unless `config.json`
+sets `templates.names`). After the knowledge
 pages are published (`of1-extract-content` Step 8), EDS rebuilds
 `/query-index.json` to include them; `of1-publish`'s `content.indexed > 0` gate
 is the coverage proof.
