@@ -432,10 +432,11 @@ YAML
   echo "✓ created helix-query.yaml (indexes /of1/knowledge/** + /templates/** → /query-index.json)"
 else
   # Warn only — never edit a customer's helix-query.yaml.
-  for want in of1/knowledge templates/; do
-    grep -q "$want" helix-query.yaml || {
-      echo "⚠ helix-query.yaml exists but doesn't mention /${want%/} — left untouched." >&2
-      echo "  Ask the site owner to include /${want%/}/** in an index targeting /query-index.json;" >&2
+  # Match a quoted include path ('/templates/… or "/of1/knowledge/…), not any substring.
+  for want in /of1/knowledge/ /templates/; do
+    grep -qE "[\"']${want}" helix-query.yaml || {
+      echo "⚠ helix-query.yaml exists but doesn't include ${want}** — left untouched." >&2
+      echo "  Ask the site owner to include ${want}** in an index targeting /query-index.json;" >&2
       echo "  of1-publish step 2b will try config.json overrides, otherwise its checks 2/3 will fail." >&2
     }
   done
@@ -449,7 +450,11 @@ concern), while the worker's content-ingestion filter (default `/of1/knowledge/*
 overridable via `contentIngestion` in `config.json`, Step 7) decides what gets
 embedded. The worker needs both. `/templates/**` is in the same index because the
 worker lists DA template docs from `query-index.json` too (unless `config.json`
-sets `templates.names`). After the knowledge
+sets `templates.names`). **But a doc only appears in an EDS index once it is
+*published* (live)** — `of1-build-templates` only *previews* template docs, so
+`/templates/**` is usually absent from the index and `of1-publish` step 2b ends
+up setting `templates.names` from the DA listing; that is the normal path, not
+an error. After the knowledge
 pages are published (`of1-extract-content` Step 8), EDS rebuilds
 `/query-index.json` to include them; `of1-publish`'s `content.indexed > 0` gate
 is the coverage proof.
