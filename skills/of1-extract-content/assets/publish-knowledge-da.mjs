@@ -56,9 +56,12 @@ export function slugify(input) {
 
 export function resolveSlug(entry) {
   if (entry.slug) return slugify(entry.slug);
+  const url = String(entry.url || '').trim();
   let last = '';
-  try { last = new URL(entry.url).pathname.split('/').filter(Boolean).pop() || ''; }
-  catch { last = String(entry.url || '').split('/').filter(Boolean).pop() || ''; }
+  try { last = new URL(url).pathname.split('/').filter(Boolean).pop() || ''; }
+  catch { last = url.replace(/[?#].*$/, '').split('/').filter(Boolean).pop() || ''; }
+  // The site root ("/") has no last segment — it is the home page.
+  if (!last && url) return 'home';
   return slugify(last);
 }
 

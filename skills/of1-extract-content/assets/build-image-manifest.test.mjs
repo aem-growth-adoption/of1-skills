@@ -22,6 +22,18 @@ test('buildManifest emits one entry per unique image src, keyed by hashSrc', () 
   ]);
 });
 
+test('buildManifest skips non-http(s) srcs (data: URIs, blob:, relative)', () => {
+  const entries = [{ title: 'A', blocks: [
+    { tag: 'img', src: 'data:image/svg+xml;base64,PHN2Zz4=', alt: '' },
+    { tag: 'img', src: 'blob:https://s/123', alt: '' },
+    { tag: 'img', src: '/media_1.png', alt: '' },
+    { tag: 'img', src: 'http://s/ok.png', alt: '' },
+  ] }];
+  assert.deepEqual(buildManifest(entries), [
+    { productId: hashSrc('http://s/ok.png'), urls: ['http://s/ok.png'] },
+  ]);
+});
+
 test('buildManifest returns [] when there are no image blocks', () => {
   assert.deepEqual(buildManifest([{ title: 'A', blocks: [{ tag: 'p', text: 'x' }] }]), []);
   assert.deepEqual(buildManifest([]), []);
