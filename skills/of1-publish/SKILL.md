@@ -118,33 +118,59 @@ The worker discovers `/templates/*` docs and `/of1/knowledge/**` pages from the 
 - `contentIngestion.indexPath` — the first index (`/sitemap.json`, then any index the user names) that lists `/of1/knowledge/` paths
 
 ```bash
-# Every path in an EDS JSON index (single- or multi-sheet), one per line.
+# Paths in an EDS JSON index, one per line — read exactly the way the worker does:
+# top-level `.data[].path`. A multi-sheet index (`:type: multi-sheet`, data under
+# per-sheet keys) is NOT readable by the worker: warn and return non-zero so it's
+# never chosen as indexPath.
 index_paths() {
-  curl -s --connect-timeout 10 --max-time 30 "${PREVIEW_BASE}$1" 2>/dev/null \
-    | jq -r '[.. | objects | .path? // empty | strings] | .[]' 2>/dev/null
+  local body
+  body=$(curl -s --connect-timeout 10 --max-time 30 "${PREVIEW_BASE}$1" 2>/dev/null) || return 1
+  if jq -e 'type == "object" and (.data | type) == "array"' >/dev/null 2>&1 <<<"$body"; then
+    jq -r '.data[]?.path // empty' <<<"$body"
+  elif jq -e 'type == "object" and (.[":type"] == "multi-sheet" or has(":names"))' >/dev/null 2>&1 <<<"$body"; then
+    echo "⚠ $1 is a multi-sheet index — the worker only reads top-level .data; not usable" >&2
+    return 2
+  else
+    return 1
+  fi
 }
-QI_PATHS=$(index_paths /query-index.json)
-QI_HAS_TEMPLATES=false; QI_HAS_KNOWLEDGE=false
-grep -q '^/templates/' <<<"$QI_PATHS" && QI_HAS_TEMPLATES=true
-grep -q '^/of1/knowledge/' <<<"$QI_PATHS" && QI_HAS_KNOWLEDGE=true
-echo "query-index.json: templates=$QI_HAS_TEMPLATES knowledge=$QI_HAS_KNOWLEDGE"
 
 CFG=of1/config/config.json
 CFG_NEW=$(cat "$CFG")
-if [ "$QI_HAS_TEMPLATES" != "true" ]; then
-  # (a) templates: list DA /templates (names of .html entries, no extension).
-  TPL_NAMES=$(curl -s --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $DA_TOKEN" \
-    "https://admin.da.live/list/${OWNER}/${REPO}/templates" \
-    | jq -c '[.[]? | select(.ext == "html") | .name] | sort' 2>/dev/null)
-  if [ -n "$TPL_NAMES" ] && [ "$TPL_NAMES" != "[]" ]; then
+# Template folder: honour a configured templates.daPath (default /templates).
+TPL_DIR=$(jq -r '.templates.daPath // "/templates"' "$CFG"); TPL_DIR="/${TPL_DIR#/}"; TPL_DIR="${TPL_DIR%/}"
+
+QI_PATHS=$(index_paths /query-index.json)
+QI_HAS_TEMPLATES=false; QI_HAS_KNOWLEDGE=false
+grep -q "^${TPL_DIR}/" <<<"$QI_PATHS" && QI_HAS_TEMPLATES=true
+grep -q '^/of1/knowledge/' <<<"$QI_PATHS" && QI_HAS_KNOWLEDGE=true
+echo "query-index.json: templates($TPL_DIR)=$QI_HAS_TEMPLATES knowledge=$QI_HAS_KNOWLEDGE"
+
+if [ "$QI_HAS_TEMPLATES" = "true" ]; then
+  # Index covers templates — drop a stale override so the worker uses the index.
+  CFG_NEW=$(jq 'del(.templates.names) | if .templates == {} then del(.templates) else . end' <<<"$CFG_NEW")
+else
+  # (a) templates: list the DA template folder (names of .html entries, no extension),
+  # keeping only names the worker accepts (same regex it validates with).
+  TPL_ALL=$(curl -s --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $DA_TOKEN" \
+    "https://admin.da.live/list/${OWNER}/${REPO}${TPL_DIR}" \
+    | jq -c 'if type == "array" then [.[] | select(.ext == "html") | .name] | sort else [] end' 2>/dev/null)
+  [ -n "$TPL_ALL" ] || TPL_ALL='[]'
+  TPL_NAMES=$(jq -c '[.[] | select(test("^[a-z0-9][a-z0-9-_]*$"; "i"))]' <<<"$TPL_ALL")
+  TPL_BAD=$(jq -r '[.[] | select(test("^[a-z0-9][a-z0-9-_]*$"; "i") | not)] | join(", ")' <<<"$TPL_ALL")
+  [ -n "$TPL_BAD" ] && echo "⚠ excluded template doc name(s) the worker rejects: $TPL_BAD (rename to [a-z0-9][a-z0-9-_]*)" >&2
+  if [ "$TPL_NAMES" != "[]" ]; then
     CFG_NEW=$(jq --argjson n "$TPL_NAMES" '.templates = ((.templates // {}) + {names: $n})' <<<"$CFG_NEW")
     echo "→ templates.names = $TPL_NAMES"
   else
-    echo "⚠ DA /templates is empty — run of1-build-templates; check 3 (hasTemplates) will fail" >&2
+    echo "⚠ DA ${TPL_DIR} has no usable template docs — run of1-build-templates; check 3 (hasTemplates) will fail" >&2
   fi
 fi
-if [ "$QI_HAS_KNOWLEDGE" != "true" ]; then
-  # (b) knowledge: first candidate index that lists /of1/knowledge/ paths.
+
+if [ "$QI_HAS_KNOWLEDGE" = "true" ]; then
+  CFG_NEW=$(jq 'del(.contentIngestion.indexPath) | if .contentIngestion == {} then del(.contentIngestion) else . end' <<<"$CFG_NEW")
+else
+  # (b) knowledge: first candidate index whose top-level .data lists /of1/knowledge/ paths.
   # Append any index the user names, e.g. INDEX_CANDIDATES+=("/en/query-index.json").
   INDEX_CANDIDATES=(/sitemap.json)
   KNOWLEDGE_INDEX=""
@@ -155,11 +181,12 @@ if [ "$QI_HAS_KNOWLEDGE" != "true" ]; then
     CFG_NEW=$(jq --arg p "$KNOWLEDGE_INDEX" '.contentIngestion = ((.contentIngestion // {}) + {indexPath: $p})' <<<"$CFG_NEW")
     echo "→ contentIngestion.indexPath = $KNOWLEDGE_INDEX"
   else
-    echo "⚠ no index lists /of1/knowledge/ (tried: ${INDEX_CANDIDATES[*]}) — check 2 (content.indexed > 0) will fail." >&2
+    echo "⚠ no single-sheet index lists /of1/knowledge/ (tried: ${INDEX_CANDIDATES[*]}) — check 2 (content.indexed > 0) will fail." >&2
     echo "  The site owner must add /of1/knowledge/** to an index (helix-query.yaml or the AEM config service)." >&2
   fi
 fi
-# Merge result (keeps domain + any existing fields); commit ONLY config.json.
+
+# Merge result (keeps domain + any other fields); commit ONLY config.json.
 if [ "$(jq -S . <<<"$CFG_NEW")" != "$(jq -S . "$CFG")" ]; then
   jq . <<<"$CFG_NEW" > "$CFG"
   git add -- "$CFG"
@@ -167,11 +194,11 @@ if [ "$(jq -S . <<<"$CFG_NEW")" != "$(jq -S . "$CFG")" ]; then
   git push origin "$BRANCH"
   echo "✓ $CFG updated + pushed"
 else
-  echo "✓ query-index covers OF1 paths (or overrides already set) — config.json unchanged"
+  echo "✓ config.json already matches index coverage — unchanged"
 fi
 ```
 
-If `/query-index.json` lists both `/templates/` and `/of1/knowledge/` paths, nothing is written. If the knowledge pages were published moments ago and the repo's `helix-query.yaml` does include them, the index may just be lagging — wait a minute and re-run this step before concluding the site needs overrides. If no index lists `/of1/knowledge/`, ask the user whether the site has another index (append it to `INDEX_CANDIDATES` and re-run); otherwise continue — check 2 will report the gap. Field shapes: `of1-integration/knowledge/worker-config-schemas.md` § `config.json`.
+If `/query-index.json` lists both `/templates/` (or the configured `templates.daPath`) and `/of1/knowledge/` paths, no override is set — and any stale `templates.names` / `contentIngestion.indexPath` is removed. Note template docs only appear in an index once **published**; `of1-build-templates` only previews them, so on most sites step 2b sets `templates.names`. If the knowledge pages were published moments ago and the repo's `helix-query.yaml` does include them, the index may just be lagging — wait a minute and re-run this step before concluding the site needs overrides. If no index lists `/of1/knowledge/`, ask the user whether the site has another index (append it to `INDEX_CANDIDATES` and re-run); otherwise continue — check 2 will report the gap. Field shapes: `of1-integration/knowledge/worker-config-schemas.md` § `config.json`.
 
 ### 3. Push the git config
 
@@ -195,9 +222,14 @@ curl -s -X POST "${WORKER_URL}/api/tenants/${TENANT_ID}/sync" > "$HUB/sync.json"
 jq . "$HUB/sync.json"
 OK=$(jq -r '.ok' "$HUB/sync.json")
 INDEXED=$(jq -r '.content.indexed // 0' "$HUB/sync.json")
-N_ERR=$(jq '.errors // [] | length' "$HUB/sync.json")
-echo "Sync: ok=$OK synced=$(jq -c '.synced' "$HUB/sync.json") errors=$N_ERR content.indexed=$INDEXED"
-[ "$N_ERR" -gt 0 ] && { echo "✗ sync reported $N_ERR error(s) (a failure even though ok=$OK):" >&2; jq -c '.errors[]' "$HUB/sync.json" >&2; }
+N_ERR=$(jq '.errors // [] | length' "$HUB/sync.json" 2>/dev/null)
+echo "Sync: ok=$OK synced=$(jq -c '.synced' "$HUB/sync.json") errors=${N_ERR:-0} content.indexed=$INDEXED"
+# `if`, not `[ … ] && …`: a bare && as the block's last command would leave a
+# non-zero status when there are no errors.
+if [ "${N_ERR:-0}" -gt 0 ]; then
+  echo "✗ sync reported $N_ERR error(s) (a failure even though ok=$OK):" >&2
+  jq -c '.errors[]' "$HUB/sync.json" >&2
+fi
 ```
 
 Pass: `ok: true` **and** `errors` empty **and** `content.indexed > 0`. The worker returns `ok: true` even when individual files failed — a non-empty `errors` array is a failure. Entries come as `{file, error}`, `{file, status}`, `{content, status}` or `{content, error}` — e.g. `brand-voice: empty document` means `/of1/brand-voice` wasn't previewed. If `content.indexed` is 0 while `$OF1_STATE_DIR/knowledge-pages.json` is non-empty, the knowledge pages aren't in the index the worker reads (`/query-index.json`, or `contentIngestion.indexPath` set in step 2b): check the site's `helix-query.yaml` (or, for config-service sites, the AEM config-service index) covers `/of1/knowledge/**` (an existing file is never edited by the skills — `of1-check-dependencies` warns when it doesn't), that `.hlxignore` doesn't exclude them, and that the pages are **published** (live), not just previewed. Don't stop on failure yet — finish steps 5–8 so the hub shows what failed, then fail in the checklist.
@@ -270,7 +302,7 @@ Step 1 passed: `git ls-files of1/config` ⊆ {`of1/config/config.json`} (+ `of1/
 
 ```bash
 [ "$(jq -r .ok "$HUB/sync.json")" = "true" ] || { echo "✗ FAIL (check 2): sync ok != true — see $HUB/sync.json .errors" >&2; exit 1; }
-[ "$(jq '.errors // [] | length' "$HUB/sync.json")" -eq 0 ] || { echo "✗ FAIL (check 2): sync errors (ok=true is not enough):" >&2; jq -c '.errors[]' "$HUB/sync.json" >&2; exit 1; }
+[ "$(jq '.errors // [] | length' "$HUB/sync.json" 2>/dev/null || echo 1)" -eq 0 ] || { echo "✗ FAIL (check 2): sync errors (ok=true is not enough):" >&2; jq -c '.errors[]' "$HUB/sync.json" >&2; exit 1; }
 [ "$(jq -r '.content.indexed // 0' "$HUB/sync.json")" -gt 0 ] || { echo "✗ FAIL (check 2): content.indexed = 0 — /of1/knowledge/** not in the worker's index (query-index.json or contentIngestion.indexPath — see step 2b; pages must be published live)" >&2; exit 1; }
 echo "✓ sync ok, $(jq -r .content.indexed "$HUB/sync.json") chunk(s) indexed"
 ```
