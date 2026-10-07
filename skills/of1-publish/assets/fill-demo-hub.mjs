@@ -23,7 +23,7 @@
 //
 // Writes: <repo-dir>/deliverables/index.html
 //
-// Exports renderConfigLinks / renderStatusPanel / buildHub for tests.
+// Exports renderConfigLinks / renderStatusPanel / formatSyncError / buildHub for tests.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -101,6 +101,20 @@ export function renderConfigLinks({ owner, repo, previewBase }) {
     .join('\n');
 }
 
+// Sync `errors[]` entries come in several worker shapes: {file,error},
+// {file,status}, {content,status}, {content,error}. Label = file/content path;
+// message = error text, else "HTTP <status>", else the raw entry.
+export function formatSyncError(e) {
+  if (!e || typeof e !== 'object') return { label: 'error', msg: String(e) };
+  const label = e.file ?? e.content ?? e.path ?? 'error';
+  let msg;
+  if (e.error != null && e.error !== '') msg = typeof e.error === 'string' ? e.error : JSON.stringify(e.error);
+  else if (e.status != null) msg = `HTTP ${e.status}`;
+  else if (e.message != null) msg = String(e.message);
+  else msg = JSON.stringify(e);
+  return { label: String(label), msg };
+}
+
 function statusColor(status) {
   if (status === 'done' || status === true) return 'var(--accent)';
   if (status === 'failed' || status === false) return 'var(--orange)';
@@ -120,7 +134,8 @@ export function renderStatusPanel({ statuses = [], sync = null, status = null } 
     for (const s of statuses) {
       const st = s.status ?? '?';
       html += '<tr style="border-bottom:1px solid var(--border);">';
-      html += `<td style="padding:6px 8px;">${htmlEscape(s.skill ?? '?')}</td>`;
+      const label = s.phase ? `${s.skill ?? '?'} · ${s.phase}` : (s.skill ?? '?');
+      html += `<td style="padding:6px 8px;">${htmlEscape(label)}</td>`;
       html += `<td style="color:${statusColor(st)};">${htmlEscape(st)}</td>`;
       html += `<td style="color:var(--dim);">${htmlEscape(s.summary ?? s.error ?? '')}</td>`;
       html += '</tr>\n';
@@ -140,9 +155,8 @@ export function renderStatusPanel({ statuses = [], sync = null, status = null } 
     html += ` &bull; synced: ${htmlEscape(synced.join(', ') || '—')}`;
     html += ` &bull; content indexed: ${htmlEscape(String(indexed))}</div>\n`;
     for (const e of errors) {
-      const file = typeof e === 'object' && e ? (e.file ?? '?') : '?';
-      const msg = typeof e === 'object' && e ? (e.error ?? JSON.stringify(e)) : String(e);
-      html += `  <div style="color:var(--orange);">✗ ${htmlEscape(file)}: ${htmlEscape(msg)}</div>\n`;
+      const { label, msg } = formatSyncError(e);
+      html += `  <div style="color:var(--orange);">✗ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`;
     }
   } else {
     html += '  <div style="color:var(--dim);">Sync: not synced (no hub/sync.json)</div>\n';
@@ -185,7 +199,12 @@ function loadStatuses(stateDir) {
     .map((f) => {
       const j = loadJsonOrNull(path.join(stateDir, f));
       if (!j || typeof j !== 'object') return null;
-      return { skill: j.skill ?? f.replace(/-status\.json$/, ''), status: j.status, summary: j.summary ?? j.error };
+      return {
+        skill: j.skill ?? f.replace(/-status\.json$/, ''),
+        ...(j.phase ? { phase: j.phase } : {}),
+        status: j.status,
+        summary: j.summary ?? j.error,
+      };
     })
     .filter(Boolean);
 }
@@ -424,6 +443,14 @@ function renderPrototypes(repoDir, previewBase) {
   return html || '  <span style="color:var(--dim)">No prototypes yet</span>';
 }
 
+function hasPrototypes(repoDir) {
+  try {
+    return fs.readdirSync(path.join(repoDir, 'deliverables')).some((f) => f.startsWith('prototype-') && f.endsWith('.html'));
+  } catch {
+    return false;
+  }
+}
+
 export function buildHub({ repoConfig, domain, stateDir, repoDir, template, now = new Date() }) {
   const { owner, repo, branch } = repoConfig;
   const previewBase = `https://${branch}--${repo}--${owner}.aem.page`;
@@ -491,8 +518,10 @@ function main() {
     return 1;
   }
 
+  // Discovery output is optional (standalone / content-only runs have none). Only
+  // warn when the full pipeline evidently ran (prototypes exist) yet it's missing.
   const discoveryPath = path.join(stateDir, 'of1-discovery-output.md');
-  if (!loadText(discoveryPath)) {
+  if (!loadText(discoveryPath) && hasPrototypes(repoDir)) {
     console.error(`WARN: ${discoveryPath} not found or empty — demo focus/narrative will fall back to defaults.`);
   }
   const hubDir = path.join(stateDir, 'hub');

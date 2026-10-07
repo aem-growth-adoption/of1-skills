@@ -234,12 +234,13 @@ later steps write. Only `of1/config/config.json` (plus
 
 ```bash
 # (cwd is $REPO_DIR — set in the Part 2 preamble.)
-ALLOWED="of1/config/config.json"
-[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED="$ALLOWED of1/config/cta-template.json"
+ALLOWED=(of1/config/config.json)
+[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED+=(of1/config/cta-template.json)
 LEGACY=()
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  case " $ALLOWED " in *" $f "*) ;; *) LEGACY+=("$f") ;; esac
+  ok=0; for a in "${ALLOWED[@]}"; do [ "$f" = "$a" ] && ok=1; done
+  [ "$ok" = 1 ] || LEGACY+=("$f")
 done < <(git ls-files of1/config)
 if [ "${#LEGACY[@]}" -gt 0 ]; then
   echo "Legacy OF1 config files tracked in git (would shadow DA config / no longer read):"

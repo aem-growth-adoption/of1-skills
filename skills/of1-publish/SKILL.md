@@ -73,8 +73,15 @@ The worker pulls each tenant source from the preview host `${PREVIEW_BASE}` on `
 ```bash
 HUB="$OF1_STATE_DIR/hub"
 mkdir -p "$HUB"
-ALLOWED="of1/config/config.json"
-[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED="$ALLOWED of1/config/cta-template.json"
+# Bash array — never a space-joined string expanded unquoted (zsh doesn't word-split it).
+ALLOWED=(of1/config/config.json)
+[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED+=(of1/config/cta-template.json)
+# The worker gates `ready` on these two flags only; every other /status flag is informational.
+GATED_FLAGS='["hasTemplates","hasContent"]'
+# playwright-cli writes a .playwright-cli/ folder into cwd — always run it from the
+# state dir (in a subshell), never from the repo.
+pw() { ( cd "$OF1_STATE_DIR" && playwright-cli "$@" ); }
+pw_result() { awk '/^### Result/{f=1;next} /^### /{f=0} f'; }
 ```
 
 ### 1. Assert the git config set (check 1)
@@ -82,8 +89,9 @@ ALLOWED="of1/config/config.json"
 Only `of1/config/config.json` (and `of1/config/cta-template.json` in pipeline mode) may be tracked under `of1/config/`. Any other tracked file — especially `personas.json` / `suggestions.json` — would shadow the DA sheet at the same URL (a git file beats a DA sheet on EDS). Fail and list the extras; do not delete them here — `of1-check-dependencies` step 3b ("Remove legacy `of1/config/*.json`") removes them on every run, so this check is the backstop for when that was declined or skipped.
 
 ```bash
-EXTRA=$(git ls-files of1/config | while read -r f; do
-  case " $ALLOWED " in *" $f "*) ;; *) echo "$f" ;; esac
+EXTRA=$(git ls-files of1/config | while IFS= read -r f; do
+  ok=0; for a in "${ALLOWED[@]}"; do [ "$f" = "$a" ] && ok=1; done
+  [ "$ok" = 1 ] || echo "$f"
 done)
 if [ -n "$EXTRA" ]; then
   echo "✗ FAIL (check 1): unexpected files tracked under of1/config/ — they shadow DA config or are no longer read:" >&2
@@ -170,9 +178,12 @@ If `/query-index.json` lists both `/templates/` and `/of1/knowledge/` paths, not
 `of1-check-dependencies` already committed `config.json`; in pipeline mode `of1-build-cta-template` leaves `cta-template.json` uncommitted. Push it before syncing so the worker can read it:
 
 ```bash
-git add -- $ALLOWED
-if ! git diff --cached --quiet -- $ALLOWED; then
-  git commit -m "feat: OF1 config for ${DOMAIN}" -- $ALLOWED
+# Only paths that exist (cta-template.json is absent in standalone mode).
+PUSH=()
+for f in "${ALLOWED[@]}"; do [ -f "$f" ] && PUSH+=("$f"); done
+git add -- "${PUSH[@]}"
+if ! git diff --cached --quiet -- "${PUSH[@]}"; then
+  git commit -m "feat: OF1 config for ${DOMAIN}" -- "${PUSH[@]}"
   git push origin "$BRANCH"
 fi
 ```
@@ -184,10 +195,12 @@ curl -s -X POST "${WORKER_URL}/api/tenants/${TENANT_ID}/sync" > "$HUB/sync.json"
 jq . "$HUB/sync.json"
 OK=$(jq -r '.ok' "$HUB/sync.json")
 INDEXED=$(jq -r '.content.indexed // 0' "$HUB/sync.json")
-echo "Sync: ok=$OK synced=$(jq -c '.synced' "$HUB/sync.json") errors=$(jq '.errors | length' "$HUB/sync.json") content.indexed=$INDEXED"
+N_ERR=$(jq '.errors // [] | length' "$HUB/sync.json")
+echo "Sync: ok=$OK synced=$(jq -c '.synced' "$HUB/sync.json") errors=$N_ERR content.indexed=$INDEXED"
+[ "$N_ERR" -gt 0 ] && { echo "✗ sync reported $N_ERR error(s) (a failure even though ok=$OK):" >&2; jq -c '.errors[]' "$HUB/sync.json" >&2; }
 ```
 
-Pass: `ok: true` **and** `content.indexed > 0`. Per-file failures are in `.errors[]` (`{file, error}`) — e.g. `brand-voice: empty document` means `/of1/brand-voice` wasn't previewed. If `content.indexed` is 0 while `$OF1_STATE_DIR/knowledge-pages.json` is non-empty, the knowledge pages aren't in the index the worker reads (`/query-index.json`, or `contentIngestion.indexPath` set in step 2b): check the site's `helix-query.yaml` (or, for config-service sites, the AEM config-service index) covers `/of1/knowledge/**` (an existing file is never edited by the skills — `of1-check-dependencies` warns when it doesn't), that `.hlxignore` doesn't exclude them, and that the pages are **published** (live), not just previewed. Don't stop on failure yet — finish steps 5–8 so the hub shows what failed, then fail in the checklist.
+Pass: `ok: true` **and** `errors` empty **and** `content.indexed > 0`. The worker returns `ok: true` even when individual files failed — a non-empty `errors` array is a failure. Entries come as `{file, error}`, `{file, status}`, `{content, status}` or `{content, error}` — e.g. `brand-voice: empty document` means `/of1/brand-voice` wasn't previewed. If `content.indexed` is 0 while `$OF1_STATE_DIR/knowledge-pages.json` is non-empty, the knowledge pages aren't in the index the worker reads (`/query-index.json`, or `contentIngestion.indexPath` set in step 2b): check the site's `helix-query.yaml` (or, for config-service sites, the AEM config-service index) covers `/of1/knowledge/**` (an existing file is never edited by the skills — `of1-check-dependencies` warns when it doesn't), that `.hlxignore` doesn't exclude them, and that the pages are **published** (live), not just previewed. Don't stop on failure yet — finish steps 5–8 so the hub shows what failed, then fail in the checklist.
 
 ### 5. Tenant status → `hub/status.json` (check 3)
 
@@ -195,7 +208,11 @@ Pass: `ok: true` **and** `content.indexed > 0`. Per-file failures are in `.error
 curl -s "${WORKER_URL}/api/tenants/${TENANT_ID}/status" > "$HUB/status.json"
 jq . "$HUB/status.json"
 echo "ready=$(jq -r .ready "$HUB/status.json")"
-jq -r '.config | to_entries[] | select(.value == false or .value == 0) | "  ✗ \(.key)"' "$HUB/status.json"
+# Gated flags → failures; everything else → info only.
+jq -r --argjson g "$GATED_FLAGS" '.config // {} | to_entries[]
+  | if (.key | IN($g[])) then
+      (if (.value == false or .value == 0) then "  ✗ \(.key) (gates ready)" else "  ✓ \(.key)" end)
+    else "  · \(.key)=\(.value) (info)" end' "$HUB/status.json"
 ```
 
 `ready` = `hasTemplates` (renderable DA templates) **and** `hasContent` (indexed knowledge chunks > 0). `hasBrandVoice`, `hasSuggestions`, `hasCtaTemplate`, `hasStrategy` are reported, not gated (still expect `hasBrandVoice`/`hasSuggestions` true — missing means the DA doc/sheet wasn't previewed).
@@ -253,6 +270,7 @@ Step 1 passed: `git ls-files of1/config` ⊆ {`of1/config/config.json`} (+ `of1/
 
 ```bash
 [ "$(jq -r .ok "$HUB/sync.json")" = "true" ] || { echo "✗ FAIL (check 2): sync ok != true — see $HUB/sync.json .errors" >&2; exit 1; }
+[ "$(jq '.errors // [] | length' "$HUB/sync.json")" -eq 0 ] || { echo "✗ FAIL (check 2): sync errors (ok=true is not enough):" >&2; jq -c '.errors[]' "$HUB/sync.json" >&2; exit 1; }
 [ "$(jq -r '.content.indexed // 0' "$HUB/sync.json")" -gt 0 ] || { echo "✗ FAIL (check 2): content.indexed = 0 — /of1/knowledge/** not in the worker's index (query-index.json or contentIngestion.indexPath — see step 2b; pages must be published live)" >&2; exit 1; }
 echo "✓ sync ok, $(jq -r .content.indexed "$HUB/sync.json") chunk(s) indexed"
 ```
@@ -261,24 +279,31 @@ echo "✓ sync ok, $(jq -r .content.indexed "$HUB/sync.json") chunk(s) indexed"
 
 ```bash
 [ "$(jq -r .ready "$HUB/status.json")" = "true" ] || {
-  echo "✗ FAIL (check 3): tenant not ready; failing flags:" >&2
-  jq -r '.config | to_entries[] | select(.value == false or .value == 0) | "  \(.key)"' "$HUB/status.json" >&2
+  echo "✗ FAIL (check 3): tenant not ready; failing gated flags:" >&2
+  jq -r --argjson g "$GATED_FLAGS" '.config // {} | to_entries[]
+    | select((.key | IN($g[])) and (.value == false or .value == 0)) | "  \(.key)"' "$HUB/status.json" >&2
   exit 1
 }
 echo "✓ tenant ready"
+# Not gated — informational only (never fail on these):
+jq -r --argjson g "$GATED_FLAGS" '.config // {} | to_entries[] | select(.key | IN($g[]) | not) | "  · \(.key)=\(.value)"' "$HUB/status.json"
 ```
 
 ### Check 4: `/of1` renders header, footer and the `of1` block with the authored title and ≥1 chip
 
 ```bash
-playwright-cli open "${PREVIEW_BASE}/of1"
+# `pw` (Process preamble) runs playwright-cli from $OF1_STATE_DIR so its
+# .playwright-cli/ folder never lands in the repo; `pw_result` keeps only the
+# `### Result` section of eval's Markdown output.
+pw open "${PREVIEW_BASE}/of1"
 sleep 6
-playwright-cli screenshot --full-page --filename "$OF1_STATE_DIR/check-of1.png"
-playwright-cli eval "() => (document.querySelector('header .header a') ? 'header OK' : 'HEADER MISSING')"
-playwright-cli eval "() => (document.querySelector('footer .footer') && document.querySelector('footer .footer').textContent.trim() ? 'footer OK' : 'FOOTER MISSING')"
-playwright-cli eval "() => (document.querySelector('main .of1') ? 'of1 block OK' : 'OF1 BLOCK MISSING')"
-playwright-cli eval "() => (document.querySelector('.of1 .of1-title')?.textContent.trim() || 'TITLE MISSING')"
-playwright-cli eval "() => ('chips: ' + document.querySelectorAll('.of1 .of1-chip').length)"
+pw screenshot --full-page --filename "$OF1_STATE_DIR/check-of1.png"
+pw eval "() => (document.querySelector('header .header a') ? 'header OK' : 'HEADER MISSING')" | pw_result
+pw eval "() => (document.querySelector('footer .footer') && document.querySelector('footer .footer').textContent.trim() ? 'footer OK' : 'FOOTER MISSING')" | pw_result
+pw eval "() => (document.querySelector('main .of1') ? 'of1 block OK' : 'OF1 BLOCK MISSING')" | pw_result
+pw eval "() => (document.querySelector('.of1 .of1-title')?.textContent.trim() || 'TITLE MISSING')" | pw_result
+pw eval "() => ('chips: ' + document.querySelectorAll('.of1 .of1-chip').length)" | pw_result
+pw close >/dev/null 2>&1 || true
 jq -r '.title // "(no of1-landing.json title — SDK default expected)"' "$OF1_STATE_DIR/of1-landing.json" 2>/dev/null
 ```
 
@@ -308,23 +333,31 @@ done
 [ "$ALL_OK" = "true" ] || { echo "✗ FAIL (check 5): some deliverable URLs return non-200" >&2; exit 1; }
 ```
 
-### Check 6: `/api/generate` returns ≥2 sections
+### Check 6: `/api/generate` returns ≥2 sections, no errors
 
 ```bash
 RESPONSE=$(curl -s -X POST "${WORKER_URL}/api/generate" \
   -H "Content-Type: application/json" \
   -d "{\"domain\":\"${TENANT_ID}\",\"query\":\"show me your best products\",\"followUp\":false,\"context\":{\"browsing\":[],\"conversationHistory\":[]}}")
-SECTIONS=$(echo "$RESPONSE" | grep -c '"type"' || echo "0")
-if [ "$SECTIONS" -ge 2 ]; then
+# The response is NDJSON (one event per line). Count real section events; any
+# {"type":"error"} line is a failure even if sections were also emitted.
+# (`grep -c … || echo 0` printed "0" twice on no match — never use it.)
+SECTIONS=$(printf '%s\n' "$RESPONSE" | jq -R 'fromjson? | select(.type == "section")' | jq -s 'length')
+GEN_ERRORS=$(printf '%s\n' "$RESPONSE" | jq -R -c 'fromjson? | select(.type == "error")')
+if [ -n "$GEN_ERRORS" ]; then
+  echo "✗ FAIL (check 6): generation streamed error event(s):" >&2
+  printf '%s\n' "$GEN_ERRORS" >&2
+  exit 1
+elif [ "$SECTIONS" -ge 2 ]; then
   echo "✓ Generation returned ${SECTIONS} sections"
 else
   echo "✗ FAIL (check 6): generation returned ${SECTIONS} sections (expected ≥2)" >&2
-  echo "$RESPONSE" | head -20
+  printf '%s\n' "$RESPONSE" | head -20
   exit 1
 fi
 ```
 
-**If fails:** check `hasTemplates`/`hasContent` in `hub/status.json`.
+**If fails:** check `hasTemplates`/`hasContent` in `hub/status.json`; an error event like `template not selected` means no synced template matched (re-run sync after `of1-build-templates` assemble; for config-service sites see step 2b `templates.names`).
 
 ### Check 7: CTA injection (pipeline mode only)
 
@@ -350,11 +383,11 @@ Mark `of1-publish` done only if ALL applicable checks pass (7 in pipeline mode, 
 | # | Check |
 |---|-------|
 | 1 | No `of1/config/*.json` in git other than `config.json` (and `cta-template.json` in pipeline mode) |
-| 2 | Sync `ok: true`; `content.indexed > 0` |
-| 3 | `/api/tenants/<id>/status` → `ready: true` |
+| 2 | Sync `ok: true`, `errors` empty; `content.indexed > 0` |
+| 3 | `/api/tenants/<id>/status` → `ready: true` (only `hasTemplates`/`hasContent` gate it; other flags are info) |
 | 4 | `/of1` renders header, footer and the `of1` block, with the authored title and ≥1 chip |
 | 5 | `nav.plain.html`, `footer.plain.html`, `/of1`, `deliverables/index.html` return 200 |
-| 6 | `/api/generate` returns ≥2 sections |
+| 6 | `/api/generate` streams ≥2 `type:"section"` events and no `type:"error"` |
 | 7 | Pipeline mode only: `cta-template.json` present and `/api/personalize` streams an `inject_cta` |
 
 ## Completion

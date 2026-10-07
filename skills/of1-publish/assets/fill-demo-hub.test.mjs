@@ -40,6 +40,61 @@ test('renderStatusPanel shows skill status, sync errors, indexed count and faili
   }
 });
 
+test('renderStatusPanel renders worker error shapes {content,status} / {content,error} / {file,status}', () => {
+  const html = renderStatusPanel({
+    sync: {
+      ok: true,
+      synced: ['config'],
+      errors: [
+        { content: '/of1/knowledge/faq', status: 404 },
+        { content: '/of1/knowledge/about', error: 'empty body' },
+        { file: 'templates', status: 500 },
+      ],
+      content: { indexed: 3 },
+    },
+  });
+  assert.ok(html.includes('/of1/knowledge/faq: HTTP 404'), html);
+  assert.ok(html.includes('/of1/knowledge/about: empty body'), html);
+  assert.ok(html.includes('templates: HTTP 500'), html);
+  assert.ok(!html.includes('✗ ?'), 'unlabelled error row');
+  assert.ok(!html.includes('{&quot;'), 'raw JSON dumped');
+});
+
+test('renderStatusPanel shows the phase on repeated skill rows', () => {
+  const html = renderStatusPanel({
+    statuses: [
+      { skill: 'of1-build-templates', phase: 'base', status: 'done', summary: 'plan' },
+      { skill: 'of1-build-templates', phase: 'intent-budget', status: 'done', summary: 'b' },
+      { skill: 'of1-publish', status: 'done', summary: 'p' },
+    ],
+  });
+  assert.ok(html.includes('of1-build-templates · base'));
+  assert.ok(html.includes('of1-build-templates · intent-budget'));
+  assert.ok(html.includes('>of1-publish<'));
+});
+
+test('buildHub carries the status-file phase into the panel', () => {
+  const stateDir = tmpdir();
+  const repoDir = tmpdir();
+  fs.writeFileSync(path.join(stateDir, 'of1-build-templates-base-status.json'), JSON.stringify({ skill: 'of1-build-templates', phase: 'base', status: 'done', summary: 's' }));
+  const html = buildHub({ repoConfig: { owner: 'o', repo: 'r', branch: 'b' }, domain: 'd', stateDir, repoDir, template: TEMPLATE });
+  assert.ok(html.includes('of1-build-templates · base'));
+});
+
+test('CLI does not warn about missing discovery output when there are no prototypes', () => {
+  const stateDir = tmpdir();
+  const repoDir = tmpdir();
+  fs.writeFileSync(path.join(stateDir, 'repo-config.json'), JSON.stringify({ owner: 'o', repo: 'r', branch: 'b' }));
+  let r = spawnSync(process.execPath, [SCRIPT, repoDir, 'example.com'], { env: { ...process.env, OF1_STATE_DIR: stateDir }, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /of1-discovery-output\.md/);
+  // With a prototype (full pipeline) the missing discovery output is worth a warning.
+  fs.mkdirSync(path.join(repoDir, 'deliverables'), { recursive: true });
+  fs.writeFileSync(path.join(repoDir, 'deliverables', 'prototype-home.html'), '<html></html>');
+  r = spawnSync(process.execPath, [SCRIPT, repoDir, 'example.com'], { env: { ...process.env, OF1_STATE_DIR: stateDir }, encoding: 'utf8' });
+  assert.match(r.stderr, /of1-discovery-output\.md/);
+});
+
 test('renderStatusPanel escapes HTML and tolerates missing inputs', () => {
   const html = renderStatusPanel({
     statuses: [{ skill: '<b>x</b>', status: 'done', summary: '<script>' }],
