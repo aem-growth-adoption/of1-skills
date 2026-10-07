@@ -43,7 +43,7 @@ and `of1-extract-brand-voice` (which own the live-site-vs-replica source resolut
 - `$OF1_STATE_DIR/knowledge-pages.json` — captured site pages (`[{ url, title, blocks: [{tag, text} | {tag:'img', src, alt}] }]`), produced by `of1-extract-content`. **Page titles and headings are the ground truth for chip subjects.**
 - `$OF1_STATE_DIR/personas-rows.json` — persona rows (`id, name, description, keywords[], priorities[], explore…support`), produced by `of1-extract-content`
 - Brand voice — the DA doc `/of1/brand-voice` (`https://$PREVIEW/of1/brand-voice.plain.html`, authoritative — an author may have edited it), falling back to the local copy `$OF1_STATE_DIR/brand-voice.html`; produced by `of1-extract-brand-voice`
-- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge)
+- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge) — **optional**; standalone runs usually have none, and `knowledge-pages.json` is enough on its own
 
 **REQUIRED — read the content-extraction outputs before generating suggestions.** This skill runs AFTER `of1-extract-brand-voice` and `of1-extract-content` complete, so these exist:
 
@@ -82,7 +82,7 @@ Also generate:
 - `comparison`: "Compare [A] vs [B]" — side-by-side layouts
 - `recommendation`: "Best [category] for [persona need]" — featured product + alternatives
 - `discovery`: "Show me [broad category]" — diverse card grids
-- `budget`: "[Category] under $[price]" — price-focused results
+- `budget`: "[Category] under $[price]" — price-focused results. **Site has no prices?** (services, institutions, B2B, content sites — check `knowledge-pages.json` for currency amounts) Never invent prices. Map `budget` to a cost / effort / "start small" angle on real content instead — e.g. "Free resources to get started", "What's included at no cost?", "Quickest way to start with [real program]", "Low-commitment options for [persona need]".
 
 ### 2. Write the chips to the DA sheet `/of1/config/suggestions`
 
@@ -107,7 +107,7 @@ node "$DA_WRITE" sheet --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
   --rows "$OF1_STATE_DIR/suggestions-rows.json"
 ```
 
-It prints `✓ of1/config/suggestions previewed` on success. On `FAIL <step> <path> HTTP <status>` (non-zero exit) **stop** and report the failure — do not mark the skill done.
+It prints `✓ of1/config/suggestions previewed` on success. **The chips won't appear on `/of1` yet** — the block reads them from the worker (`/api/suggest`), which only sees the sheet after the tenant is re-synced (`of1-publish` step 4, or the DA "Sync OF1" app). Empty chips right after this step are expected. On `FAIL <step> <path> HTTP <status>` (non-zero exit) **stop** and report the failure — do not mark the skill done.
 
 ### 3. Write the landing copy to `$OF1_STATE_DIR/of1-landing.json`
 
@@ -121,7 +121,9 @@ It prints `✓ of1/config/suggestions previewed` on success. On `FAIL <step> <pa
 
 `of1-style-generative-block` (Step 5) writes these as `title` / `subtitle` / `placeholder` rows on the `/of1` page's `of1` block, where authors can edit them in DA. If that skill has already run, re-run its Step 5 (or edit the `/of1` doc in DA) to apply the copy; when the rows are absent the SDK falls back to its defaults.
 
-## Completion (pipeline mode)
+## Completion (both modes)
+
+Write the status file in **both** standalone and pipeline mode — `of1-publish`'s demo hub reads every `of1-*-status.json` for its "What worked" panel.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-build-quick-suggestions-status.json" <<EOF

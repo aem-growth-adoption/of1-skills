@@ -242,7 +242,7 @@ done
 node "$SKILL_DIR/assets/fill-demo-hub.mjs" . "${DOMAIN}"
 ```
 
-Reads `$OF1_STATE_DIR/repo-config.json`, `of1-discovery-output.md`, `pipeline-audit.json`, every `$OF1_STATE_DIR/of1-*-status.json`, and the `hub/` files staged above; links prototypes (`deliverables/prototype-*.html`, committed by Stage 2b — a content-only demo has none) and `deliverables/discovery.html` when present. Writes `deliverables/index.html` with DA edit links for each authored item (brand voice, personas, suggestions, `/of1`, `/templates`, `/of1/knowledge`) and a **"What worked"** panel (per-skill status, sync `synced`/`errors`/`content.indexed`, `ready` + failing `/status` flags). Do NOT hand-write the hub HTML.
+Reads `$OF1_STATE_DIR/repo-config.json`, `of1-discovery-output.md` (optional — absent in standalone runs; the hub falls back to defaults and only warns when prototypes exist), `pipeline-audit.json`, every `$OF1_STATE_DIR/of1-*-status.json`, and the `hub/` files staged above; links prototypes (`deliverables/prototype-*.html`, committed by Stage 2b — a content-only demo has none) and `deliverables/discovery.html` when present. Writes `deliverables/index.html` with DA edit links for each authored item (brand voice, personas, suggestions, `/of1`, `/templates`, `/of1/knowledge`) and a **"What worked"** panel (per-skill status, sync `synced`/`errors`/`content.indexed`, `ready` + failing `/status` flags). Do NOT hand-write the hub HTML.
 
 ### 8. Commit and push the hub
 

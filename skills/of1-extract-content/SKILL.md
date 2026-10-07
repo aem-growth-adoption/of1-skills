@@ -44,7 +44,7 @@ PAGES="$OF1_STATE_DIR/knowledge-pages.json"
 cd "$OF1_DEMO_REPO"
 ```
 
-If discovery output exists, read it to focus on the right product category:
+Discovery output is **optional** (only the full e2e pipeline writes it). If it exists, read it to focus on the right product category:
 ```bash
 cat "$OF1_STATE_DIR/of1-discovery-output.md" 2>/dev/null
 ```
@@ -95,19 +95,23 @@ Fetch main product listing pages with WebFetch. Extract for each visible product
 **Non-commerce sites (no catalog).** If the site sells nothing / has no product listing (services, B2B, content, events, institutions), capture the site's **main content pages** instead — the knowledge base is "what this site says", not a product list. Take them from the site index or the nav, in that order:
 
 ```bash
-# EDS JSON index (paths) — skip drafts/fragments/OF1/template paths.
-mapfile -t PRODUCT_URLS < <(curl -s --max-time 20 "${SOURCE_BASE}/sitemap.json" \
-  | jq -r '[.. | objects | .path? // empty | strings] | .[]' 2>/dev/null \
-  | grep -vE '^/(drafts|fragments|of1|templates|nav|footer)(/|$)' | head -20 \
-  | sed "s|^|${SOURCE_BASE}|")
-# Fallback: the nav fragment's links.
-[ "${#PRODUCT_URLS[@]}" -gt 0 ] || mapfile -t PRODUCT_URLS < <(curl -s --max-time 20 "${SOURCE_BASE}/nav.plain.html" \
-  | grep -oE 'href="[^"#?]+"' | sed -E 's/^href="//; s/"$//' \
-  | sed -E "s|^/|${SOURCE_BASE}/|" | grep "^${SOURCE_BASE}" | sort -u | head -20)
+# EDS JSON index (paths) — skip drafts/fragments/OF1/template paths. Read line by
+# line into an array (no mapfile / unquoted splitting — works in bash and zsh).
+PRODUCT_URLS=()
+while IFS= read -r p; do [ -n "$p" ] && PRODUCT_URLS+=("${SOURCE_BASE}${p}"); done < <(
+  curl -s --max-time 20 "${SOURCE_BASE}/sitemap.json" \
+    | jq -r '[.. | objects | .path? // empty | strings] | .[]' 2>/dev/null \
+    | grep -vE '^/(drafts|fragments|of1|templates|nav|footer)(/|$)' | head -20)
+# Fallback: the nav fragment's site-relative links.
+if [ "${#PRODUCT_URLS[@]}" -eq 0 ]; then
+  while IFS= read -r p; do [ -n "$p" ] && PRODUCT_URLS+=("${SOURCE_BASE}${p}"); done < <(
+    curl -s --max-time 20 "${SOURCE_BASE}/nav.plain.html" \
+      | grep -oE 'href="/[^"#?]*"' | sed -E 's/^href="//; s/"$//' | sort -u | head -20)
+fi
 printf '%s\n' "${PRODUCT_URLS[@]}"
 ```
 
-(`mapfile` is bash; under zsh use `PRODUCT_URLS=("${(@f)$(…)}")`.) Always include the home page (`${SOURCE_BASE}/`). Hand-prune the list to the 10–20 pages with real content (about, services/solutions, programs, FAQ/help, pricing/plans if any) before Step 3.
+Always include the home page (`${SOURCE_BASE}/`). Hand-prune the list to the 10–20 pages with real content (about, services/solutions, programs, FAQ/help, pricing/plans if any) before Step 3.
 
 ### 3. Extract page data (parallel scraping)
 

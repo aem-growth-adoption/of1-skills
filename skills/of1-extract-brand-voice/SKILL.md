@@ -58,7 +58,7 @@ Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everyt
 ## Inputs
 
 - `$SOURCE_BASE` (resolved above) — the base URL to crawl. In pipeline mode this is the target domain; in standalone mode it's the replica preview.
-- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (if available — use for page URLs instead of re-discovering)
+- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` — **optional** (only the full e2e pipeline produces it; standalone runs usually have none). Use it for page URLs when present; otherwise pick pages as in Step 1.
 
 ## Process
 
@@ -69,6 +69,33 @@ Fetch **3–5 pages** to get a representative sample of the brand's writing:
 1. **Homepage** — `$SOURCE_BASE`
 2. **Product/service page** — a detail page (from discovery output if available)
 3. **About or editorial** — `$SOURCE_BASE/about`, `$SOURCE_BASE/blog`, `$SOURCE_BASE/stories`
+
+**No discovery output?** Don't guess URLs — pick real pages from the site's nav or index, then read each page's undecorated EDS markup (`<path>.plain.html`, the authored copy without chrome):
+
+```bash
+# Candidate pages: nav links first, else the JSON index. Collected into an
+# array line by line (no unquoted word-splitting — works in bash and zsh).
+PAGE_PATHS=()
+while IFS= read -r p; do [ -n "$p" ] && PAGE_PATHS+=("$p"); done < <(
+  curl -s --max-time 20 "${SOURCE_BASE}/nav.plain.html" \
+    | grep -oE 'href="/[^"#?]*"' | sed -E 's/^href="//; s/"$//' | sort -u)
+if [ "${#PAGE_PATHS[@]}" -eq 0 ]; then
+  while IFS= read -r p; do [ -n "$p" ] && PAGE_PATHS+=("$p"); done < <(
+    curl -s --max-time 20 "${SOURCE_BASE}/sitemap.json" \
+      | jq -r '[.. | objects | .path? // empty | strings] | .[]' 2>/dev/null \
+      | grep -vE '^/(drafts|fragments|of1|templates)(/|$)')
+fi
+printf '%s\n' "${PAGE_PATHS[@]}" | head -20
+# Fetch the home page + up to 4 others (pick the most editorial ones from the list):
+PICK=(/)
+for p in "${PAGE_PATHS[@]}"; do [ "$p" = "/" ] || PICK+=("$p"); [ "${#PICK[@]}" -ge 5 ] && break; done
+for page in "${PICK[@]}"; do
+  if [ "$page" = "/" ]; then plain="${SOURCE_BASE}/index.plain.html"; else plain="${SOURCE_BASE}${page%/}.plain.html"; fi
+  echo "=== $page"; curl -s --max-time 20 "$plain" | head -c 20000; echo
+done
+```
+
+(For a non-EDS live site in pipeline mode, `.plain.html` won't exist — fetch the page itself with WebFetch.)
 
 For each page, analyze:
 - TONE: Formal/informal, technical/accessible, playful/serious?
@@ -144,9 +171,9 @@ node "$DA_WRITE" doc --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
 
 It prints `✓ of1/brand-voice previewed` on success. On `FAIL <step> <path> HTTP <status>` (non-zero exit) **stop** and report the failure — do not mark the skill done.
 
-## Completion (pipeline mode)
+## Completion (both modes)
 
-This skill runs alongside `of1-extract-content`. Both must complete before the content track is treated as done.
+Write the status file in **both** standalone and pipeline mode — `of1-publish`'s demo hub reads every `of1-*-status.json` for its "What worked" panel. In pipeline mode this skill runs alongside `of1-extract-content`. Both must complete before the content track is treated as done.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-brand-voice-status.json" <<EOF

@@ -59,7 +59,8 @@ cd "$OF1_DEMO_REPO"
 Reason in this order. **Reuse first; invent general blocks only when genuinely useful; never author a
 slot-specific, single-template block.**
 
-1. **Use cases first.** From `$OF1_STATE_DIR/of1-discovery-output.md` (discovery narrative) +
+1. **Use cases first.** From `$OF1_STATE_DIR/of1-discovery-output.md` (discovery narrative — optional,
+   standalone runs usually have none) +
    `$OF1_STATE_DIR/knowledge-pages.json` (the site's captured pages — titles, headings, copy — from
    `of1-extract-content`, when present) and `$OF1_STATE_DIR/personas-rows.json` determine what the
    generative-search experience must actually answer.
