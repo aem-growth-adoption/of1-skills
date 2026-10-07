@@ -76,6 +76,17 @@ test('formatSyncError renders templateErrors, named errors and content truncatio
   assert.ok(!html.includes('{&quot;'));
 });
 
+test('formatSyncError renders warnings, non-string names and vectors purge errors', () => {
+  const w = formatSyncError({ file: 'templates', warning: 'more than 30 templates found — sync truncated' });
+  assert.deepEqual(w, { label: 'templates', msg: 'more than 30 templates found — sync truncated', warning: true });
+  assert.deepEqual(formatSyncError({ file: 'templates', name: { id: 1 }, error: 'x' }), { label: 'templates ({"id":1})', msg: 'x' });
+  assert.deepEqual(formatSyncError({ file: 'templates', name: null, error: 'x' }), { label: 'templates', msg: 'x' });
+  assert.deepEqual(formatSyncError({ vectors: 'purge', error: 'timeout' }), { label: 'vectors purge', msg: 'timeout' });
+  const html = renderStatusPanel({ sync: { ok: true, synced: [], errors: [{ file: 'templates', warning: 'more than 30 templates found' }] } });
+  assert.ok(html.includes('⚠ templates: more than 30 templates found'), html);
+  assert.ok(!html.includes('✗ templates'));
+});
+
 test('renderStatusPanel shows the phase on repeated skill rows', () => {
   const html = renderStatusPanel({
     statuses: [

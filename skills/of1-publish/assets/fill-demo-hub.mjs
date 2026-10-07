@@ -104,7 +104,8 @@ export function renderConfigLinks({ owner, repo, previewBase }) {
 // Sync `errors[]` entries come in several worker shapes (worker/src/sync.js):
 // {file,error} {file,status} {file,name,error} {file,templateErrors:[{template,error}]}
 // {file,records} {file,fallback} {template,error} {content,status} {content,error}
-// {content:"truncated",total,indexed}. Returns a readable { label, msg }.
+// {content:"truncated",total,indexed} {file,warning} {vectors:"purge",error}.
+// Returns a readable { label, msg } (+ warning: true for non-fatal warnings).
 export function formatSyncError(e) {
   if (!e || typeof e !== 'object') return { label: 'error', msg: String(e) };
   const str = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
@@ -112,9 +113,11 @@ export function formatSyncError(e) {
     return { label: 'content', msg: `truncated — indexed ${e.indexed ?? '?'} of ${e.total ?? '?'} page(s)` };
   }
   let label;
-  if (e.file != null) label = e.name != null ? `${e.file} (${e.name})` : String(e.file);
-  else if (e.template != null) label = `template ${e.template}`;
+  if (e.file != null) label = e.name != null ? `${str(e.file)} (${str(e.name)})` : str(e.file);
+  else if (e.vectors != null) label = `vectors ${str(e.vectors)}`;
+  else if (e.template != null) label = `template ${str(e.template)}`;
   else label = String(e.content ?? e.path ?? 'error');
+  if (e.warning != null && e.error == null) return { label, msg: str(e.warning), warning: true };
   let msg;
   if (Array.isArray(e.templateErrors)) {
     const parts = e.templateErrors.map((t) => (t && typeof t === 'object'
@@ -170,8 +173,10 @@ export function renderStatusPanel({ statuses = [], sync = null, status = null } 
     html += ` &bull; synced: ${htmlEscape(synced.join(', ') || '—')}`;
     html += ` &bull; content indexed: ${htmlEscape(String(indexed))}</div>\n`;
     for (const e of errors) {
-      const { label, msg } = formatSyncError(e);
-      html += `  <div style="color:var(--orange);">✗ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`;
+      const { label, msg, warning } = formatSyncError(e);
+      html += warning
+        ? `  <div style="color:var(--dim);">⚠ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`
+        : `  <div style="color:var(--orange);">✗ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`;
     }
   } else {
     html += '  <div style="color:var(--dim);">Sync: not synced (no hub/sync.json)</div>\n';
