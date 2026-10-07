@@ -101,18 +101,33 @@ export function renderConfigLinks({ owner, repo, previewBase }) {
     .join('\n');
 }
 
-// Sync `errors[]` entries come in several worker shapes: {file,error},
-// {file,status}, {content,status}, {content,error}. Label = file/content path;
-// message = error text, else "HTTP <status>", else the raw entry.
+// Sync `errors[]` entries come in several worker shapes (worker/src/sync.js):
+// {file,error} {file,status} {file,name,error} {file,templateErrors:[{template,error}]}
+// {file,records} {file,fallback} {template,error} {content,status} {content,error}
+// {content:"truncated",total,indexed}. Returns a readable { label, msg }.
 export function formatSyncError(e) {
   if (!e || typeof e !== 'object') return { label: 'error', msg: String(e) };
-  const label = e.file ?? e.content ?? e.path ?? 'error';
+  const str = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
+  if (e.content === 'truncated' && (e.total != null || e.indexed != null)) {
+    return { label: 'content', msg: `truncated — indexed ${e.indexed ?? '?'} of ${e.total ?? '?'} page(s)` };
+  }
+  let label;
+  if (e.file != null) label = e.name != null ? `${e.file} (${e.name})` : String(e.file);
+  else if (e.template != null) label = `template ${e.template}`;
+  else label = String(e.content ?? e.path ?? 'error');
   let msg;
-  if (e.error != null && e.error !== '') msg = typeof e.error === 'string' ? e.error : JSON.stringify(e.error);
+  if (Array.isArray(e.templateErrors)) {
+    const parts = e.templateErrors.map((t) => (t && typeof t === 'object'
+      ? `${t.template ?? t.name ?? '?'}: ${str(t.error ?? t.status ?? t)}`
+      : String(t)));
+    msg = `${e.templateErrors.length} template error(s): ${parts.join('; ')}`;
+  } else if (e.error != null && e.error !== '') msg = str(e.error);
   else if (e.status != null) msg = `HTTP ${e.status}`;
+  else if (Array.isArray(e.records)) msg = `${e.records.length} invalid record(s)`;
+  else if (e.fallback != null) msg = `fell back to ${e.fallback}`;
   else if (e.message != null) msg = String(e.message);
   else msg = JSON.stringify(e);
-  return { label: String(label), msg };
+  return { label, msg };
 }
 
 function statusColor(status) {

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderConfigLinks, renderStatusPanel, buildHub } from './fill-demo-hub.mjs';
+import { renderConfigLinks, renderStatusPanel, buildHub, formatSyncError } from './fill-demo-hub.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./fill-demo-hub.mjs', import.meta.url));
 const TEMPLATE = fs.readFileSync(new URL('./demo-hub.html', import.meta.url), 'utf8');
@@ -58,6 +58,22 @@ test('renderStatusPanel renders worker error shapes {content,status} / {content,
   assert.ok(html.includes('templates: HTTP 500'), html);
   assert.ok(!html.includes('✗ ?'), 'unlabelled error row');
   assert.ok(!html.includes('{&quot;'), 'raw JSON dumped');
+});
+
+test('formatSyncError renders templateErrors, named errors and content truncation readably', () => {
+  assert.deepEqual(
+    formatSyncError({ file: 'templates', templateErrors: [{ template: 'rec-a', error: 'no section-metadata' }, { template: 'cmp', error: 'empty' }] }),
+    { label: 'templates', msg: '2 template error(s): rec-a: no section-metadata; cmp: empty' },
+  );
+  assert.deepEqual(formatSyncError({ file: 'templates', name: 'rec-a', error: 'bad slot' }), { label: 'templates (rec-a)', msg: 'bad slot' });
+  assert.deepEqual(formatSyncError({ template: 'rec-a', error: 'boom' }), { label: 'template rec-a', msg: 'boom' });
+  assert.deepEqual(
+    formatSyncError({ content: 'truncated', total: 80, indexed: 50 }),
+    { label: 'content', msg: 'truncated — indexed 50 of 80 page(s)' },
+  );
+  const html = renderStatusPanel({ sync: { ok: true, synced: [], errors: [{ content: 'truncated', total: 80, indexed: 50 }] } });
+  assert.ok(html.includes('content: truncated — indexed 50 of 80 page(s)'), html);
+  assert.ok(!html.includes('{&quot;'));
 });
 
 test('renderStatusPanel shows the phase on repeated skill rows', () => {
