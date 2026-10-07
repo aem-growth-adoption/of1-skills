@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { countContentBlocks, maxItems } from './template-richness.mjs';
 
@@ -65,4 +68,18 @@ test('CLI prints "<blocks> <maxItems>" from stdin (maxItems empty when absent)',
   assert.equal(r.stdout.trim(), '3 4');
   const r2 = spawnSync(process.execPath, [SCRIPT], { input: '<div><div class="hero"></div></div>', encoding: 'utf8' });
   assert.equal(r2.stdout, '1 \n');
+});
+
+test('CLI works when invoked through a symlink (installed-skill layout)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tpl-richness-'));
+  const link = path.join(dir, 'template-richness.mjs');
+  fs.symlinkSync(SCRIPT, link);
+  const r = spawnSync(process.execPath, [link], { input: PLAIN, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), '3 4');
+});
+
+test('countContentBlocks excludes page metadata blocks too', () => {
+  const html = '<div><div class="hero"></div><div class="metadata"><div><div>Title</div><div>x</div></div></div></div>';
+  assert.equal(countContentBlocks(html), 1);
 });

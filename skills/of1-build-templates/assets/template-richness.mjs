@@ -9,10 +9,12 @@
 // CLI: reads plain.html on stdin, prints "<contentBlocks> <maxItems>" (maxItems
 // empty when the template has no `Template Max Items` row).
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
-/** Number of block wrappers directly inside sections, excluding section-metadata. */
+const NON_CONTENT = new Set(['section-metadata', 'metadata']);
+
+/** Number of block wrappers directly inside sections, excluding section-metadata / metadata. */
 export function countContentBlocks(html) {
   const re = /<div\b([^>]*)>|<\/div\s*>/gi;
   let depth = 0;
@@ -22,7 +24,7 @@ export function countContentBlocks(html) {
     if (depth === 1) {
       const cls = /\bclass\s*=\s*"([^"]*)"/i.exec(m[1] || '');
       const name = cls && cls[1].trim().split(/\s+/)[0];
-      if (name && name !== 'section-metadata') n += 1;
+      if (name && !NON_CONTENT.has(name)) n += 1;
     }
     depth += 1;
   }
@@ -36,8 +38,15 @@ export function maxItems(html) {
   return m ? Number(m[1]) : null;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const html = readFileSync(0, 'utf8');
+// Compare against the realpath: Node resolves import.meta.url through
+// symlinks, but argv[1] keeps the symlinked path (installed skills are symlinks).
+function isDirectRun() {
+  if (!process.argv[1]) return false;
+  try { return import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href; } catch { return false; }
+}
+
+if (isDirectRun()) {
+  const html = fs.readFileSync(0, 'utf8');
   const mi = maxItems(html);
   process.stdout.write(`${countContentBlocks(html)} ${mi === null ? '' : mi}\n`);
 }

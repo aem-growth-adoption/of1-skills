@@ -284,15 +284,27 @@ Run once after all 5 intent agents complete.
    source "$SKILL_DIR/assets/da-api.sh"
    # da_list returns paths like "/<ORG>/<REPO>/templates/x.html"; aem_preview wants
    # "templates/x". Never name the loop variable `path` — in zsh it is tied to $PATH.
-   # Template doc paths, one per line, relative + extensionless (e.g. templates/x):
+   # Template doc paths, one per line, relative + extensionless (e.g. templates/x).
+   # Fails (non-zero) when da_list fails, returns a non-list (401/404 error body), or
+   # lists no .html docs — an empty /templates must never pass as "all previewed".
    template_docs() {
-     da_list templates | jq -r '.[]? | select(.ext == "html") | .path' 2>/dev/null \
-       | while IFS= read -r p; do p="${p#/$ORG/$REPO/}"; printf '%s\n' "${p%.html}"; done
+     local listing docs
+     listing=$(da_list templates) \
+       || { echo "ABORT: da_list templates failed — check DA_TOKEN / path" >&2; return 1; }
+     docs=$(printf '%s' "$listing" \
+       | jq -r 'if type == "array" then .[] | select(.ext == "html") | .path else error("not a DA list") end' 2>/dev/null) \
+       || { echo "ABORT: /templates listing is not a DA list: $(printf '%s' "$listing" | head -c 200)" >&2; return 1; }
+     [ -n "$docs" ] \
+       || { echo "ABORT: no /templates docs listed — check DA_TOKEN / path (did the intent phase da_put any?)" >&2; return 1; }
+     printf '%s\n' "$docs" | while IFS= read -r p; do p="${p#/$ORG/$REPO/}"; printf '%s\n' "${p%.html}"; done
    }
-   template_docs | while IFS= read -r doc; do
+   # Capture first (a failure inside `template_docs | while` would be masked by the
+   # pipeline's exit status), then iterate a here-string — no subshell in either shell.
+   DOCS=$(template_docs) || exit 1
+   while IFS= read -r doc; do
      [ -n "$doc" ] || continue
      aem_preview "$doc" || { echo "ABORT: preview failed for $doc (see the status above)" >&2; exit 1; }
-   done || exit 1
+   done <<<"$DOCS"
    ```
    `aem_preview` returns non-zero on any non-2xx. On 401/403 **stop and report the org-authorization
    gap** (see `of1-check-dependencies` step 5); other statuses (404 bad path/ref, 5xx) are reported as-is.
@@ -306,25 +318,29 @@ Run once after all 5 intent agents complete.
    proceeding.
 3. **Check template richness against purpose (CRITICAL RULE 6).** Count the content blocks in each
    template's `.plain.html` (every `<div class="NAME">` block wrapper directly inside a section,
-   excluding `section-metadata` — `.plain.html` carries no `block` class). **Reject**
+   excluding `section-metadata` and `metadata` — `.plain.html` carries no `block` class). **Reject**
    only an empty template (0 blocks). For **exploratory** templates (`Template Max Items ≥ 3`), **warn**
    when the count is below 3 (they should target 4–5). **Quick-answer** templates (`Max Items ≤ 2`) are
    fine at 1–2 and are not warned.
    ```bash
-   template_docs | while IFS= read -r doc; do
+   DOCS=$(template_docs) || exit 1
+   while IFS= read -r doc; do
      [ -n "$doc" ] || continue
      html=$(curl -sf "https://${BRANCH}--${REPO}--${OWNER}.aem.page/${doc}.plain.html") \
        || { echo "ABORT: ${doc}.plain.html not served — preview didn't materialize" >&2; exit 1; }
      # Real .plain.html has no "block" class: template-richness.mjs counts the
-     # <div class="NAME"> wrappers at section level (minus section-metadata) and reads
-     # `Template Max Items` across line breaks. Prints "<blocks> <maxItems>".
-     read -r n maxItems <<<"$(printf '%s' "$html" | node "$SKILL_DIR/assets/template-richness.mjs")"
-     [ "${n:-0}" -eq 0 ] && { echo "ABORT: $doc has 0 content blocks — empty template, fix before assemble" >&2; exit 1; }
+     # <div class="NAME"> wrappers at section level (minus section-metadata / metadata)
+     # and reads `Template Max Items` across line breaks. Prints "<blocks> <maxItems>".
+     RICH=$(printf '%s' "$html" | node "$SKILL_DIR/assets/template-richness.mjs")
+     # No output = the helper itself failed (not "0 blocks") — never default it to 0.
+     [ -n "$RICH" ] || { echo "ABORT: template-richness.mjs printed nothing for $doc — check node / \$SKILL_DIR" >&2; exit 1; }
+     read -r n maxItems <<<"$RICH"
+     [ "$n" -eq 0 ] && { echo "ABORT: $doc has 0 content blocks — empty template, fix before assemble" >&2; exit 1; }
      if [ -n "$maxItems" ] && [ "$maxItems" -ge 3 ] && [ "$n" -lt 3 ]; then
        echo "WARN: exploratory $doc (Max Items $maxItems) has only $n content blocks (target 4–5)" >&2
      fi
      echo "✓ $doc: $n content block(s), Max Items ${maxItems:-?}"
-   done || exit 1
+   done <<<"$DOCS"
    ```
 4. **Final status file** (the deliverable status the orchestrator reports):
    ```bash
