@@ -15,7 +15,7 @@ Assert the git config set, refresh the `/of1` page, sync the OF1 worker, generat
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-publish-status.json` and the staged hub inputs under `hub/` |
 | `OF1_PIPELINE_MODE` | `1` in pipeline mode — `cta-template.json` is expected, committed and checked (check 7) |
 | `OF1_GENWEB_URL` | optional gen-web worker override (default prod) |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill (used to find `assets/fill-demo-hub.*` and the sibling `of1-style-generative-block` skill) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |

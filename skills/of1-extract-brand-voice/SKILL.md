@@ -13,7 +13,7 @@ Analyze a website to extract its brand voice, tone, and personality, then write 
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-brand-voice-status.json` |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill (used to find `../of1-integration/assets/da-write.mjs`) |
 | `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | DA token (resolved by `da-write.mjs`) |
 | `OF1_PIPELINE_MODE` | `1` in pipeline mode — overwrite `/of1/brand-voice` without asking |

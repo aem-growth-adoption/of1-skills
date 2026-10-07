@@ -493,7 +493,7 @@ Optional (for humans): `repoUrl`, `previewUrl`, `daSource`.
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_DEMO_REPO` | **required** — absolute path to a local clone of an EDS repo (any org/repo — validated structurally, not by identity) |
+| `OF1_DEMO_REPO` | **required** — absolute path to the local EDS site repo (any org/repo — validated structurally, not by identity) |
 | `OF1_STATE_DIR` | shared IPC + state dir. SLICC: `/shared/of1-demo-orchestrator`. CC: `$PWD/.of1/state` (default). |
 | `DOMAIN` | the target domain for this demo (e.g. `frescopa.coffee`) — recorded in `repo-config.json` |
 | `ADOBE_IMS_TOKEN` | raw token value (preferred — highest priority) |

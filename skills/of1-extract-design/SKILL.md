@@ -22,7 +22,7 @@ Everything below is identical either way — only the target URL argument change
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-design-status.json` on completion (see "## Completion" below) |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR`     | absolute path to this skill's directory (used to find `assets/fill-brand-review.mjs`) |
 
 Read `$OWNER`, `$REPO`, `$BRANCH`, `$DOMAIN` from `repo-config.json`:

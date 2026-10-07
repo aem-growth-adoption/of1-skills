@@ -23,7 +23,7 @@ and this repo's `docs/superpowers/specs/2026-08-31-of1-build-templates-da-blocks
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives status JSON |
-| `OF1_DEMO_REPO` | absolute path to the local tenant EDS repo clone (also `TENANT_REPO_DIR` for `inventory.sh`) |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo (also `TENANT_REPO_DIR` for `inventory.sh`) |
 | `SKILL_DIR` | absolute path to this skill (finds `assets/da-api.sh`, `assets/inventory.sh`) |
 | `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | source of `DA_TOKEN` (see resolution below) |
 

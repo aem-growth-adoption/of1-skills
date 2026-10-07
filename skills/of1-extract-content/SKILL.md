@@ -13,7 +13,7 @@ Crawl a website to capture the site's own page content (products, features, FAQs
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-content-status.json` |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill (used to find `assets/*.mjs` and `../of1-integration/assets/da-write.mjs`) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |

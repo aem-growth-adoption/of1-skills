@@ -13,7 +13,7 @@ Own the `/of1` page top to bottom: install the block, generate brand-aligned CSS
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-style-generative-block-status.json` |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill's directory (used to find the canonical `assets/of1.js` and `assets/of1.css` that get installed in `blocks/of1/`) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |

@@ -13,7 +13,7 @@ Generate domain-specific quick suggestion chips, placeholder text, and search UI
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; holds the inputs below, receives `suggestions-rows.json`, `of1-landing.json`, and `of1-build-quick-suggestions-status.json` |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill (used to find `../of1-integration/assets/da-write.mjs`) |
 | `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | DA token (resolved by `da-write.mjs`) |
 
