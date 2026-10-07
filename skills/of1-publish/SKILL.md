@@ -102,6 +102,69 @@ echo "✓ git config set OK: $(git ls-files of1/config | tr '\n' ' ')"
 
 `of1-style-generative-block` may have written `/of1` before `of1-build-quick-suggestions` produced the landing copy (`$OF1_STATE_DIR/of1-landing.json`). Run **`of1-style-generative-block` Step 5 ("Upload OF1 DA content") again**, exactly as written there — read `$SKILL_DIR/../of1-style-generative-block/SKILL.md` § Step 5 and run its bash block in this shell, then its Step 5b gate (it needs `DA_TOKEN`, `OWNER`, `REPO`, `BRANCH`, `DOMAIN`, `OF1_STATE_DIR`, `OF1_GENWEB_URL`, all set above). It is idempotent: it PUTs the whole `/of1` doc (with the `title`/`subtitle`/`placeholder` rows now present) and previews it, failing loud on a non-2xx preview. Do not copy the HTML here — Step 5 is the single source of truth for the `/of1` document.
 
+### 2b. Index coverage — `config.json` overrides for config-service sites
+
+The worker discovers `/templates/*` docs and `/of1/knowledge/**` pages from the site-root `/query-index.json` (built from `helix-query.yaml`, which `of1-check-dependencies` step 8 authors). Some sites manage their index in the **AEM configuration service** instead — a repo `helix-query.yaml` is not honoured there, and `/query-index.json` 404s or doesn't list OF1 paths. Probe before committing/syncing; when the query index doesn't cover both, point the worker at the right sources through `config.json`:
+
+- `templates.names` — the DA `/templates` doc names (worker then skips the query index for templates)
+- `contentIngestion.indexPath` — the first index (`/sitemap.json`, then any index the user names) that lists `/of1/knowledge/` paths
+
+```bash
+# Every path in an EDS JSON index (single- or multi-sheet), one per line.
+index_paths() {
+  curl -s --connect-timeout 10 --max-time 30 "${PREVIEW_BASE}$1" 2>/dev/null \
+    | jq -r '[.. | objects | .path? // empty | strings] | .[]' 2>/dev/null
+}
+QI_PATHS=$(index_paths /query-index.json)
+QI_HAS_TEMPLATES=false; QI_HAS_KNOWLEDGE=false
+grep -q '^/templates/' <<<"$QI_PATHS" && QI_HAS_TEMPLATES=true
+grep -q '^/of1/knowledge/' <<<"$QI_PATHS" && QI_HAS_KNOWLEDGE=true
+echo "query-index.json: templates=$QI_HAS_TEMPLATES knowledge=$QI_HAS_KNOWLEDGE"
+
+CFG=of1/config/config.json
+CFG_NEW=$(cat "$CFG")
+if [ "$QI_HAS_TEMPLATES" != "true" ]; then
+  # (a) templates: list DA /templates (names of .html entries, no extension).
+  TPL_NAMES=$(curl -s --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $DA_TOKEN" \
+    "https://admin.da.live/list/${OWNER}/${REPO}/templates" \
+    | jq -c '[.[]? | select(.ext == "html") | .name] | sort' 2>/dev/null)
+  if [ -n "$TPL_NAMES" ] && [ "$TPL_NAMES" != "[]" ]; then
+    CFG_NEW=$(jq --argjson n "$TPL_NAMES" '.templates = ((.templates // {}) + {names: $n})' <<<"$CFG_NEW")
+    echo "→ templates.names = $TPL_NAMES"
+  else
+    echo "⚠ DA /templates is empty — run of1-build-templates; check 3 (hasTemplates) will fail" >&2
+  fi
+fi
+if [ "$QI_HAS_KNOWLEDGE" != "true" ]; then
+  # (b) knowledge: first candidate index that lists /of1/knowledge/ paths.
+  # Append any index the user names, e.g. INDEX_CANDIDATES+=("/en/query-index.json").
+  INDEX_CANDIDATES=(/sitemap.json)
+  KNOWLEDGE_INDEX=""
+  for idx in "${INDEX_CANDIDATES[@]}"; do
+    if index_paths "$idx" | grep -q '^/of1/knowledge/'; then KNOWLEDGE_INDEX="$idx"; break; fi
+  done
+  if [ -n "$KNOWLEDGE_INDEX" ]; then
+    CFG_NEW=$(jq --arg p "$KNOWLEDGE_INDEX" '.contentIngestion = ((.contentIngestion // {}) + {indexPath: $p})' <<<"$CFG_NEW")
+    echo "→ contentIngestion.indexPath = $KNOWLEDGE_INDEX"
+  else
+    echo "⚠ no index lists /of1/knowledge/ (tried: ${INDEX_CANDIDATES[*]}) — check 2 (content.indexed > 0) will fail." >&2
+    echo "  The site owner must add /of1/knowledge/** to an index (helix-query.yaml or the AEM config service)." >&2
+  fi
+fi
+# Merge result (keeps domain + any existing fields); commit ONLY config.json.
+if [ "$(jq -S . <<<"$CFG_NEW")" != "$(jq -S . "$CFG")" ]; then
+  jq . <<<"$CFG_NEW" > "$CFG"
+  git add -- "$CFG"
+  git commit -m "feat: OF1 index overrides for ${DOMAIN}" -- "$CFG"
+  git push origin "$BRANCH"
+  echo "✓ $CFG updated + pushed"
+else
+  echo "✓ query-index covers OF1 paths (or overrides already set) — config.json unchanged"
+fi
+```
+
+If `/query-index.json` lists both `/templates/` and `/of1/knowledge/` paths, nothing is written. If the knowledge pages were published moments ago and the repo's `helix-query.yaml` does include them, the index may just be lagging — wait a minute and re-run this step before concluding the site needs overrides. If no index lists `/of1/knowledge/`, ask the user whether the site has another index (append it to `INDEX_CANDIDATES` and re-run); otherwise continue — check 2 will report the gap. Field shapes: `of1-integration/knowledge/worker-config-schemas.md` § `config.json`.
+
 ### 3. Push the git config
 
 `of1-check-dependencies` already committed `config.json`; in pipeline mode `of1-build-cta-template` leaves `cta-template.json` uncommitted. Push it before syncing so the worker can read it:
@@ -124,7 +187,7 @@ INDEXED=$(jq -r '.content.indexed // 0' "$HUB/sync.json")
 echo "Sync: ok=$OK synced=$(jq -c '.synced' "$HUB/sync.json") errors=$(jq '.errors | length' "$HUB/sync.json") content.indexed=$INDEXED"
 ```
 
-Pass: `ok: true` **and** `content.indexed > 0`. Per-file failures are in `.errors[]` (`{file, error}`) — e.g. `brand-voice: empty document` means `/of1/brand-voice` wasn't previewed. If `content.indexed` is 0 while `$OF1_STATE_DIR/knowledge-pages.json` is non-empty, the knowledge pages aren't in the `query-index.json` the worker reads: check the site's `helix-query.yaml` indexes `/of1/knowledge/**` (an existing file is never edited by the skills — `of1-check-dependencies` warns when it doesn't), that `.hlxignore` doesn't exclude them, and that the pages are **published** (live), not just previewed. Don't stop on failure yet — finish steps 5–8 so the hub shows what failed, then fail in the checklist.
+Pass: `ok: true` **and** `content.indexed > 0`. Per-file failures are in `.errors[]` (`{file, error}`) — e.g. `brand-voice: empty document` means `/of1/brand-voice` wasn't previewed. If `content.indexed` is 0 while `$OF1_STATE_DIR/knowledge-pages.json` is non-empty, the knowledge pages aren't in the index the worker reads (`/query-index.json`, or `contentIngestion.indexPath` set in step 2b): check the site's `helix-query.yaml` (or, for config-service sites, the AEM config-service index) covers `/of1/knowledge/**` (an existing file is never edited by the skills — `of1-check-dependencies` warns when it doesn't), that `.hlxignore` doesn't exclude them, and that the pages are **published** (live), not just previewed. Don't stop on failure yet — finish steps 5–8 so the hub shows what failed, then fail in the checklist.
 
 ### 5. Tenant status → `hub/status.json` (check 3)
 
@@ -190,7 +253,7 @@ Step 1 passed: `git ls-files of1/config` ⊆ {`of1/config/config.json`} (+ `of1/
 
 ```bash
 [ "$(jq -r .ok "$HUB/sync.json")" = "true" ] || { echo "✗ FAIL (check 2): sync ok != true — see $HUB/sync.json .errors" >&2; exit 1; }
-[ "$(jq -r '.content.indexed // 0' "$HUB/sync.json")" -gt 0 ] || { echo "✗ FAIL (check 2): content.indexed = 0 — /of1/knowledge/** not in query-index.json (helix-query.yaml must index /of1/knowledge/**; pages must be published live)" >&2; exit 1; }
+[ "$(jq -r '.content.indexed // 0' "$HUB/sync.json")" -gt 0 ] || { echo "✗ FAIL (check 2): content.indexed = 0 — /of1/knowledge/** not in the worker's index (query-index.json or contentIngestion.indexPath — see step 2b; pages must be published live)" >&2; exit 1; }
 echo "✓ sync ok, $(jq -r .content.indexed "$HUB/sync.json") chunk(s) indexed"
 ```
 

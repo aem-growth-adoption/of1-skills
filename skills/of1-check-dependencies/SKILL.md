@@ -366,7 +366,7 @@ the CDN.
 `config.json` is the only committed OF1 config file this skill writes. It carries just
 the target `domain` (which can differ from the EDS host). Nothing else goes in it —
 content ingestion uses the worker default `/of1/knowledge/**`; add `contentIngestion`
-here only to override. (`of1-publish` step 3a may later merge `templates.names` /
+here only to override. (`of1-publish` step 2b may later merge `templates.names` /
 `contentIngestion.indexPath` into it for sites whose index is managed by the AEM
 config service — see step 8.)
 
@@ -403,15 +403,15 @@ stated in the site's own `AGENTS.md`/README, and the root `/query-index.json`
 typically 404s or doesn't list `/of1/knowledge/` / `/templates/` paths even
 though the site has an index (e.g. `/sitemap.json`). **Do not create a
 `helix-query.yaml` for such a site** (it would be dead weight in the customer's
-repo). Skip this step; `of1-publish` step 3a detects the gap and points the
+repo). Skip this step; `of1-publish` step 2b detects the gap and points the
 worker at the right sources via `config.json` overrides
 (`templates.names`, `contentIngestion.indexPath`).
 
 ```bash
 # Set SKIP_HELIX_QUERY=1 when the site's index is managed by the AEM config
-# service (see above) — of1-publish step 3a handles those sites.
+# service (see above) — of1-publish step 2b handles those sites.
 if [ "${SKIP_HELIX_QUERY:-0}" = "1" ]; then
-  echo "↷ index managed by the AEM config service — no helix-query.yaml; of1-publish step 3a sets config.json overrides"
+  echo "↷ index managed by the AEM config service — no helix-query.yaml; of1-publish step 2b sets config.json overrides"
 elif [ ! -f helix-query.yaml ]; then
   cat > helix-query.yaml <<'YAML'
 version: 1
@@ -435,7 +435,7 @@ else
     grep -q "$want" helix-query.yaml || {
       echo "⚠ helix-query.yaml exists but doesn't mention /${want%/} — left untouched." >&2
       echo "  Ask the site owner to include /${want%/}/** in an index targeting /query-index.json;" >&2
-      echo "  of1-publish step 3a will try config.json overrides, otherwise its checks 2/3 will fail." >&2
+      echo "  of1-publish step 2b will try config.json overrides, otherwise its checks 2/3 will fail." >&2
     }
   done
   echo "✓ helix-query.yaml present (customer-owned, not edited)"
