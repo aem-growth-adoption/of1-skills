@@ -1,6 +1,6 @@
 ---
 name: of1-extract-design
-description: Capture a live site's design tokens, brand surface, screenshots, per-page image URLs, and logo via stardust:extract, then publish a brand-review page. Stage 2a of the prototype+snowflake pipeline; also the extraction step of of1-integration when no DESIGN.json exists yet.
+description: Capture a live site's design tokens, brand surface, screenshots, per-page image URLs, and logo via stardust:extract, then publish a brand-review page. Called by of1-integration when no DESIGN.json exists, or by a caller that wants design extraction first.
 user-invocable: false
 ---
 
@@ -10,7 +10,7 @@ Delegate site-extraction to the `stardust:extract` skill, then publish the resul
 
 Two callers, one procedure:
 
-- **Stage 2a** of the prototype+snowflake pipeline — the target URL is the live external domain.
+- **A caller wanting design extraction first** — the target URL is the live external domain.
 - **of1-integration's extraction fallback** — invoked when no `DESIGN.json` exists yet for an
   existing EDS/Stardust site; the target URL is that site's own EDS preview URL
   (`https://<branch>--<repo>--<owner>.aem.page`).
@@ -38,9 +38,8 @@ DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 ## Inputs
 
 - **Target URL** (argument) — the live external domain (e.g. `https://frescopa.coffee`) when run
-  as Stage 2a, or the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`)
+  for a standalone extraction, or the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`)
   when run as of1-integration's extraction fallback.
-- Discovery output from step 3 (`$OF1_STATE_DIR/step-3-output.md`), when available — demo focus, persona, key pages
 - `repo-config.json` (from step 2)
 
 Keep the page cap of 3 (homepage + 2 key pages) regardless of caller.
@@ -86,12 +85,12 @@ Wait for the extraction to finish. On success it writes all of the following und
 
 `stardust:extract` can silently capture placeholder/gradient imagery instead of real
 product photography when the source bot-blocks the crawler. That degraded capture must NOT
-flow into prototype + snowflake. After extraction, verify the capture is real:
+flow into downstream steps. After extraction, verify the capture is real:
 
 - If `stardust:extract` surfaces a machine-readable blocked-capture signal (a non-zero exit,
   or a `blocked`/`degraded` field in `stardust/state.json`), hard-stop: write
   `of1-extract-design-status.json` with `"status": "failed"` and a `summary` naming the block,
-  and stop Stage 2. Do NOT proceed to prototype.
+  and stop; do not continue to downstream steps.
 - If no machine-readable signal exists, inspect the captured screenshots / `stardust/current/pages/*.json`
   for placeholder or flat-gradient imagery; on detection, fail the same way.
 
@@ -147,7 +146,7 @@ git add -f stardust/current/DESIGN.json stardust/current/DESIGN.md stardust/curr
 
 **Private fonts** — when the site uses private fonts (e.g. Sentinel, Gotham Narrow), use the closest system-font fallback AND note the substitution in `DESIGN.json`. Don't invent a different typeface.
 
-Logo SVG completeness, deliverable image paths, and image format rules are documented in `of1-demo/knowledge/common-pitfalls.md` (§ 2-3).
+Logo SVG completeness, deliverable image paths, and image format rules follow three rules: the logo SVG must be complete (not truncated), image paths must resolve on the EDS preview URL, and use real image formats (no placeholder or mislabeled files).
 
 ## Expected output structure
 

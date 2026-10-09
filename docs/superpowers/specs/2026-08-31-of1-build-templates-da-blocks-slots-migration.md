@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-31
 **Author:** Florian Froese
-**Status:** Draft — pending review
+**Status:** Implemented
 **Repos touched:** `of1-skills` (4 skills), `of1-demo-skills` (conditional — 3 orchestrator docs)
 **Repos NOT touched:** `of1-gen-web-service` (da-blocks-slots engine already merged to main)
 

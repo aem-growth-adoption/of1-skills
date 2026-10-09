@@ -12,8 +12,7 @@
 #
 # repo-config.json (owner/repo/branch/domain/repoDir) is NOT written by this
 # script — it's written interactively by of1-check-dependencies/SKILL.md's "Repo state"
-# section after this script exits 0, since detecting an in-progress demo and
-# asking continue/restart requires AskUserQuestion (not available in bash).
+# section after this script exits 0.
 #
 # Token resolution order:
 #   1. $ADOBE_IMS_TOKEN (env var with the raw value)

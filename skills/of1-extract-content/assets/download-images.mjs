@@ -12,22 +12,14 @@
 //     --owner aem-growth-adoption \
 //     --repo of1-demo-orchestrator \
 //     --branch wknd-2 \
-//     [--input image-manifest.json] \
+//     --input image-manifest.json \
 //     [--output image-mapping.json] \
 //     [--max-per-product 5] \
 //     [--workers 8] \
-//     [--update-products] \
-//     [--products-json of1/config/products.json] \
 //     [--token-file path/to/token.json] \
 //     [--mount-dir /mnt/da]
 //
-// Manifest source: pass --input to read an explicit manifest file, OR omit it
-// and the script derives the manifest directly from --products-json (default
-// of1/config/products.json) — one entry per product that has an images[] array.
-// The separate manifest file is redundant when products.json already carries the
-// source URLs, so the common path is to skip --input entirely.
-//
-// Manifest shape (when --input is used):
+// Manifest shape (--input, required):
 //   [{"productId": "house-blend", "urls": ["https://...", "https://..."]}, ...]
 //
 // Token resolution order (first that works wins):
@@ -113,7 +105,6 @@ function parseArgs(argv) {
   const args = {
     input: null, owner: null, repo: null, branch: null,
     output: 'image-mapping.json', maxPerProduct: 5, workers: DEFAULT_WORKERS,
-    updateProducts: false, productsJson: 'of1/config/products.json',
     tokenFile: null, mountDir: '/mnt/da',
   };
   const raw = argv;
@@ -142,8 +133,6 @@ function parseArgs(argv) {
         }
         break;
       }
-      case '--update-products': args.updateProducts = true; break;
-      case '--products-json': args.productsJson = raw[++i]; break;
       case '--token-file': args.tokenFile = raw[++i]; break;
       case '--mount-dir': args.mountDir = raw[++i]; break;
       default:
@@ -151,8 +140,8 @@ function parseArgs(argv) {
         process.exit(1);
     }
   }
-  if (!args.owner || !args.repo || !args.branch) {
-    console.error('Required: --owner, --repo, --branch (manifest comes from --input or --products-json)');
+  if (!args.owner || !args.repo || !args.branch || !args.input) {
+    console.error('Required: --owner, --repo, --branch, --input');
     process.exit(1);
   }
   return args;
@@ -319,23 +308,7 @@ async function main() {
 
   const mountDir = fs.existsSync(args.mountDir) ? args.mountDir : null;
 
-  let manifest;
-  if (args.input) {
-    manifest = JSON.parse(fs.readFileSync(args.input, 'utf8'));
-  } else {
-    // No explicit manifest — derive it from products.json (the common path).
-    if (!fs.existsSync(args.productsJson)) {
-      console.error(
-        `No --input manifest given and ${args.productsJson} not found — nothing to download.`,
-      );
-      process.exit(1);
-    }
-    const products = JSON.parse(fs.readFileSync(args.productsJson, 'utf8'));
-    manifest = products
-      .filter((p) => Array.isArray(p.images) && p.images.length)
-      .map((p) => ({ productId: p.id, urls: p.images }));
-    console.log(`Derived manifest from ${args.productsJson}: ${manifest.length} product(s) with images`);
-  }
+  const manifest = JSON.parse(fs.readFileSync(args.input, 'utf8'));
 
   const tasks = [];
   for (const item of manifest) {
@@ -381,24 +354,6 @@ async function main() {
 
   fs.writeFileSync(args.output, JSON.stringify(mapping, null, 2));
   console.log(`Mapping written to: ${args.output}`);
-
-  if (args.updateProducts) {
-    if (fs.existsSync(args.productsJson)) {
-      const products = JSON.parse(fs.readFileSync(args.productsJson, 'utf8'));
-      let updated = 0;
-      for (const p of products) {
-        const pid = p.id || '';
-        if (mapping[pid]) {
-          p.images = mapping[pid];
-          updated++;
-        }
-      }
-      fs.writeFileSync(args.productsJson, JSON.stringify(products, null, 2));
-      console.log(`Updated ${updated} products in ${args.productsJson}`);
-    } else {
-      console.error(`WARN: --update-products requested but ${args.productsJson} not found`);
-    }
-  }
 
   process.exit(failN === 0 ? 0 : 1);
 }

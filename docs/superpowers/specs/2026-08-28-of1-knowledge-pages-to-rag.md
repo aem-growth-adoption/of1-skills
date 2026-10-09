@@ -1,5 +1,7 @@
 # OF1 Knowledge Pages → Content RAG — Design
 
+Status: Superseded by 2026-10-05-da-first-config-design
+
 ## Goal
 
 Feed the OF1 demo agent rich, retrievable knowledge from the target site's
