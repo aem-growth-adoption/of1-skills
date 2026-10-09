@@ -1,7 +1,7 @@
 # of1-skills cleanup: self-contained integration plugin
 
 Date: 2026-10-09
-Status: draft, awaiting review
+Status: approved, plan 1 in progress
 
 ## Intent
 

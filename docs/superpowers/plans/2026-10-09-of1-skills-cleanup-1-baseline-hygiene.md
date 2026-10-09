@@ -1,5 +1,7 @@
 # of1-skills cleanup, plan 1: baseline and hygiene (spec stages 1-2)
 
+Status: in progress
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Record a regression baseline of what `of1-integration` produces today, then remove dead code, the Restart feature, stale wording, stale branches/worktrees, and add the missing project docs, without changing what a run produces.

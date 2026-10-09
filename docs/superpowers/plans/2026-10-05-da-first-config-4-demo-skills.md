@@ -1,5 +1,7 @@
 # DA-first config — Plan 4/4: of1-demo-skills Implementation Plan
 
+Status: Historical
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The demo orchestrator dispatches the new Stage-3 graph (no `config-review`, CTA pipeline-only, hub kept) and owns the optional full wipe for throwaway repos.
