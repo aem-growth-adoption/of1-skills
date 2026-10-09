@@ -36,6 +36,14 @@ export DA_TOKEN
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
+# Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
+DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
+  -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}")
+case "$DA_PROBE" in
+  200) ;;
+  401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; exit 1 ;;
+  *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
+esac
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 SKILL_DIR="${SKILL_DIR:-/workspace/skills/of1-extract-content}"
 DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
