@@ -81,7 +81,7 @@ fi
 
 ### 1. Clear the previous run's local state
 
-Every run is idempotent and overwrites only OF1-owned paths; a full wipe of a throwaway demo repo is the caller's job.
+Every run is idempotent and overwrites only OF1-owned paths; This skill never deletes DA or git content; removing a previous demo's artifacts is outside its scope.
 
 Local state (not customer content) — reset it so the pipeline starts cleanly:
 
