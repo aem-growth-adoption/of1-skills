@@ -281,6 +281,26 @@ if ! git diff --cached --quiet -- "${PUSH[@]}"; then
 fi
 ```
 
+### 3b. Wait for the pushed `config.json` to be served
+
+The worker reads `of1/config/config.json` from the preview host, and Code Sync takes a few seconds after a push. Syncing before it lands would sync the **old** config (e.g. without step 2b's overrides). Poll until the served JSON equals the committed file (bounded: 24 × 5 s); on timeout warn and continue.
+
+```bash
+CFG_LOCAL=$(jq -S . of1/config/config.json)
+CFG_OK=false
+for i in $(seq 1 24); do
+  CFG_LIVE=$(curl -s --connect-timeout 5 --max-time 15 -H 'Cache-Control: no-cache' \
+    "${PREVIEW_BASE}/of1/config/config.json" | jq -S . 2>/dev/null)
+  if [ -n "$CFG_LIVE" ] && [ "$CFG_LIVE" = "$CFG_LOCAL" ]; then CFG_OK=true; break; fi
+  sleep 5
+done
+if [ "$CFG_OK" = "true" ]; then
+  echo "✓ ${PREVIEW_BASE}/of1/config/config.json matches the committed file"
+else
+  echo "⚠ config.json on the preview host still differs from the committed file after 2 min — syncing anyway; re-run step 4 if the sync used stale config" >&2
+fi
+```
+
 ### 4. Sync → `hub/sync.json` (check 2)
 
 ```bash
