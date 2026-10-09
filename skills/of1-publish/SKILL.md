@@ -90,6 +90,33 @@ GATED_FLAGS='["hasTemplates","hasContent"]'
 # state dir (in a subshell), never from the repo.
 pw() { ( cd "$OF1_STATE_DIR" && playwright-cli "$@" ); }
 pw_result() { awk '/^### Result/{f=1;next} /^### /{f=0} f'; }
+
+# write_publish_status <running|done|failed> <summary> — this run's own status file.
+write_publish_status() {
+  jq -n --arg st "$1" --arg sum "$2" \
+    --arg hub "${PREVIEW_BASE}/deliverables/index.html" --arg of1 "${PREVIEW_BASE}/of1" \
+    '{stage: 3, skill: "of1-publish", status: $st, summary: $sum,
+      deliverables: [{url: $hub, label: "Demo hub"}, {url: $of1, label: "OF1 page"}]}' \
+    > "$OF1_STATE_DIR/of1-publish-status.json"
+}
+# publish_hub — (re)generate deliverables/index.html from the CURRENT status files,
+# commit it only if it changed (an identical hub must not fail), rebase, push.
+publish_hub() {
+  node "$SKILL_DIR/assets/fill-demo-hub.mjs" . "${DOMAIN}" || return 1
+  git add -- deliverables/index.html
+  if ! git diff --cached --quiet -- deliverables/index.html; then
+    git commit -q -m "feat: OF1 demo hub for ${DOMAIN}" -- deliverables/index.html
+    # Rebase onto the remote first so a concurrent push never rejects ours.
+    git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; return 1; }
+    git push origin "$BRANCH"
+  else
+    echo "✓ hub unchanged — nothing to commit"
+  fi
+}
+
+# Replace the PREVIOUS run's of1-publish-status.json right away — otherwise every
+# hub built during this run would show last run's "done"/"failed".
+write_publish_status running "Publishing — sync and pre-launch checks in progress."
 ```
 
 ### 1. Assert the git config set (check 1)
@@ -311,6 +338,8 @@ done
 
 ### 7. Generate the demo hub
 
+Generated now (status file says "in progress" — set in the Process preamble) so check 5 can verify the hub URL, and **regenerated after the checklist** (Completion) so the committed hub shows this run's final result:
+
 ```bash
 node "$SKILL_DIR/assets/fill-demo-hub.mjs" . "${DOMAIN}"
 ```
@@ -320,15 +349,8 @@ Reads `$OF1_STATE_DIR/repo-config.json`, `of1-discovery-output.md` (optional —
 ### 8. Commit and push the hub
 
 ```bash
-git add -- deliverables/index.html
-# Same guard as step 3: an identical hub (same-day re-run) leaves nothing staged,
-# and an unguarded `git commit` would exit 1.
-if ! git diff --cached --quiet -- deliverables/index.html; then
-  git commit -m "feat: OF1 demo hub for ${DOMAIN}" -- deliverables/index.html
-  # Rebase onto the remote first so a concurrent push never rejects ours.
-  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
-  git push origin "$BRANCH"
-fi
+# publish_hub (Process preamble): regenerate, commit only if changed, rebase, push.
+publish_hub
 ```
 
 Never `git add of1/config/` or `git add -A` — only the explicit allowed paths (step 3) and the hub.
@@ -480,22 +502,17 @@ Present final report:
 Pre-launch checklist: N/N passed ✓
 ```
 
+Write the final status, then **always** regenerate + commit the hub so it reflects this run (never the previous run's status):
+
 ```bash
-HUB_URL="${PREVIEW_BASE}/deliverables/index.html"
-OF1_URL="${PREVIEW_BASE}/of1"
 N_CHECKS=6; [ "${OF1_PIPELINE_MODE:-}" = "1" ] && N_CHECKS=7
-cat > "$OF1_STATE_DIR/of1-publish-status.json" <<EOF
-{
-  "stage": 3,
-  "skill": "of1-publish",
-  "status": "done",
-  "deliverables": [
-    { "url": "${HUB_URL}", "label": "Demo hub" },
-    { "url": "${OF1_URL}", "label": "OF1 page" }
-  ],
-  "summary": "Synced (${INDEXED} knowledge chunks) + all ${N_CHECKS} pre-launch checks passed."
-}
-EOF
+write_publish_status done "Synced (${INDEXED} knowledge chunks) + all ${N_CHECKS} pre-launch checks passed."
+publish_hub
 ```
 
-On a failed check, write the same file with `"status": "failed"` and the failing check(s) in `summary`, then re-run steps 7–8 so the committed hub's "What worked" panel reflects it.
+**On a failed check** do the same with the failure, then stop — the committed hub's "What worked" panel must show it:
+
+```bash
+write_publish_status failed "Check <N> failed: <one-line reason>"
+publish_hub
+```

@@ -133,6 +133,13 @@ export function formatSyncError(e) {
   return { label, msg };
 }
 
+// of1-publish writes status "running" at the start of a run (so the hub is never
+// built from the previous run's done/failed status); show it as in progress.
+const IN_PROGRESS = new Set(['running', 'in-progress', 'in_progress']);
+function statusLabel(status) {
+  return IN_PROGRESS.has(status) ? 'in progress' : String(status);
+}
+
 function statusColor(status) {
   if (status === 'done' || status === true) return 'var(--accent)';
   if (status === 'failed' || status === false) return 'var(--orange)';
@@ -154,7 +161,7 @@ export function renderStatusPanel({ statuses = [], sync = null, status = null } 
       html += '<tr style="border-bottom:1px solid var(--border);">';
       const label = s.phase ? `${s.skill ?? '?'} · ${s.phase}` : (s.skill ?? '?');
       html += `<td style="padding:6px 8px;">${htmlEscape(label)}</td>`;
-      html += `<td style="color:${statusColor(st)};">${htmlEscape(st)}</td>`;
+      html += `<td style="color:${statusColor(st)};">${htmlEscape(statusLabel(st))}</td>`;
       html += `<td style="color:var(--dim);">${htmlEscape(s.summary ?? s.error ?? '')}</td>`;
       html += '</tr>\n';
     }

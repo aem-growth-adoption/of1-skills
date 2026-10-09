@@ -87,6 +87,15 @@ test('formatSyncError renders warnings, non-string names and vectors purge error
   assert.ok(!html.includes('✗ templates'));
 });
 
+test('renderStatusPanel renders an in-progress status as "in progress", neutral colour', () => {
+  for (const st of ['running', 'in-progress', 'in_progress']) {
+    const html = renderStatusPanel({ statuses: [{ skill: 'of1-publish', status: st, summary: 'Publishing — checks pending' }] });
+    assert.ok(html.includes('>in progress<'), html);
+    assert.ok(html.includes('color:var(--dim);">in progress'), html);
+    assert.ok(!html.includes('var(--orange);">in progress'));
+  }
+});
+
 test('renderStatusPanel shows the phase on repeated skill rows', () => {
   const html = renderStatusPanel({
     statuses: [
