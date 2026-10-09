@@ -176,10 +176,19 @@ elif [ "$QI_HAS_TEMPLATES" = "true" ]; then
 else
   # (a) templates: list the DA template folder (names of .html entries, no extension),
   # keeping only names the worker accepts (same regex it validates with).
-  TPL_ALL=$(curl -s --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $DA_TOKEN" \
-    "https://admin.da.live/list/${OWNER}/${REPO}${TPL_DIR}" \
-    | jq -c 'if type == "array" then [.[] | select(.ext == "html") | .name] | sort else [] end' 2>/dev/null)
-  [ -n "$TPL_ALL" ] || TPL_ALL='[]'
+  # A failed listing must never look like "no templates": check the HTTP status and
+  # the body shape; only a genuine empty array means the folder is empty.
+  TPL_RESP=$(curl -s -w '\n%{http_code}' --connect-timeout 10 --max-time 30 \
+    -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}${TPL_DIR}")
+  TPL_CODE=$(printf '%s\n' "$TPL_RESP" | tail -n1)
+  TPL_BODY=$(printf '%s\n' "$TPL_RESP" | sed '$d')
+  case "$TPL_CODE" in
+    200) ;;
+    401|403) echo "✗ FAIL: DA token expired or lacks access to ${OWNER}/${REPO}${TPL_DIR} (HTTP ${TPL_CODE}) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE and re-run" >&2; exit 1 ;;
+    *) echo "✗ FAIL: listing DA ${TPL_DIR} returned HTTP ${TPL_CODE}: $(printf '%s' "$TPL_BODY" | head -c 200)" >&2; exit 1 ;;
+  esac
+  TPL_ALL=$(jq -c 'if type == "array" then [.[] | select(.ext == "html") | .name] | sort else error("not a list") end' <<<"$TPL_BODY" 2>/dev/null) \
+    || { echo "✗ FAIL: DA ${TPL_DIR} listing (HTTP 200) is not a JSON array: $(printf '%s' "$TPL_BODY" | head -c 200)" >&2; exit 1; }
   TPL_NAMES=$(jq -c '[.[] | select(test("^[a-z0-9][a-z0-9-_]*$"; "i"))]' <<<"$TPL_ALL")
   TPL_BAD=$(jq -r '[.[] | select(test("^[a-z0-9][a-z0-9-_]*$"; "i") | not)] | join(", ")' <<<"$TPL_ALL")
   [ -n "$TPL_BAD" ] && echo "⚠ excluded template doc name(s) the worker rejects: $TPL_BAD (rename to [a-z0-9][a-z0-9-_]*)" >&2
