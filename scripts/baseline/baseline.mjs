@@ -124,6 +124,12 @@ function flatten(v, prefix, out) {
   return out;
 }
 
+export const OWNED_PATHSPECS = ['blocks/of1', 'of1', 'deliverables', 'helix-query.yaml', '.hlxignore'];
+
+export function filterOwnedPaths(files) {
+  return files.filter((f) => OWNED_PATHSPECS.some((p) => f === p || f.startsWith(`${p}/`)));
+}
+
 export function diffShapes(a, b) {
   const fa = flatten(a, '', {});
   const fb = flatten(b, '', {});
@@ -196,7 +202,7 @@ async function main(argv = process.argv.slice(2)) {
   const [cmd, ...rest] = args._;
   if (cmd === 'capture') {
     if (!args.tenant || !args['repo-dir'] || !args.out) throw new Error('capture needs --tenant, --repo-dir, --out');
-    const gitFiles = execFileSync('git', ['ls-files'], { cwd: args['repo-dir'], encoding: 'utf8' }).split('\n').filter(Boolean);
+    const gitFiles = execFileSync('git', ['ls-files', '--', ...OWNED_PATHSPECS], { cwd: args['repo-dir'], encoding: 'utf8' }).split('\n').filter(Boolean);
     const shape = await captureShape({ base: `https://${args.tenant}.aem.page`, worker: args.worker ?? DEFAULT_WORKER, tenantId: args.tenant, gitFiles });
     fs.writeFileSync(args.out, `${JSON.stringify(shape, null, 2)}\n`);
     return 0;

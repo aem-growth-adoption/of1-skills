@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shapeOfConfig, shapeOfSheet, shapeOfTemplate, shapeOfOf1Page, shapeOfBrandVoice,
-  shapeOfStatus, shapeOfGenerate, diffShapes, captureShape, DEFAULT_WORKER, parseArgs,
+  shapeOfStatus, shapeOfGenerate, diffShapes, captureShape, DEFAULT_WORKER, parseArgs, OWNED_PATHSPECS, filterOwnedPaths,
 } from './baseline.mjs';
 
 test('shapeOfConfig', () => {
@@ -115,4 +115,12 @@ test('parseArgs rejects flags without a value', () => {
   assert.throws(() => parseArgs(['--tenant']), /--tenant/);
   assert.throws(() => parseArgs(['--tenant', '--out', 'x']), /--tenant/);
   assert.deepEqual(parseArgs(['capture', '--tenant', 't']), { _: ['capture'], tenant: 't' });
+});
+
+test('filterOwnedPaths keeps only OF1-owned paths', () => {
+  const files = ['blocks/of1/of1.js', 'of1/config/config.json', 'deliverables/index.html', 'helix-query.yaml', '.hlxignore',
+    'scripts/aem.js', 'styles/styles.css', 'stardust/current/DESIGN.json', 'blocks/of1x/a.js', 'of1.txt'];
+  assert.deepEqual(filterOwnedPaths(files),
+    ['blocks/of1/of1.js', 'of1/config/config.json', 'deliverables/index.html', 'helix-query.yaml', '.hlxignore']);
+  assert.deepEqual(OWNED_PATHSPECS, ['blocks/of1', 'of1', 'deliverables', 'helix-query.yaml', '.hlxignore']);
 });
