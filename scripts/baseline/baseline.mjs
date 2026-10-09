@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
+export const DEFAULT_WORKER = 'https://of1-gen-web-service.franklin-prod.workers.dev';
+
 const sorted = (a) => [...a].sort();
 
 export function shapeOfConfig(cfg) {
@@ -50,8 +52,13 @@ const numAttr = (html, name) => {
 export function shapeOfTemplate(plainHtml) {
   if (typeof plainHtml !== 'string') return null;
   const blocks = [];
-  for (const m of plainHtml.matchAll(/<div\s+class="([^"\s]+)"/g)) {
-    if (m[1] !== 'section-metadata' && m[1] !== 'metadata') blocks.push(m[1]);
+  let depth = 0;
+  for (const t of plainHtml.matchAll(/<(\/?)div\b([^>]*)>/g)) {
+    if (t[1]) { depth -= 1; continue; }
+    depth += 1;
+    if (depth !== 2) continue; // direct child of a top-level section div
+    const cls = t[2].match(/\sclass="\s*([^"\s]+)/);
+    if (cls && cls[1] !== 'section-metadata' && cls[1] !== 'metadata') blocks.push(cls[1]);
   }
   const intent = plainHtml.match(/data-template-intent="([^"]*)"/);
   return { blocks, intent: intent ? intent[1] : null, minItems: numAttr(plainHtml, 'min-items'), maxItems: numAttr(plainHtml, 'max-items') };
@@ -172,10 +179,14 @@ export async function captureShape({ base, worker, tenantId, gitFiles, fetchImpl
   };
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const o = { _: [] };
   for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i].startsWith('--')) { o[argv[i].slice(2)] = argv[i + 1]; i += 1; } else o._.push(argv[i]);
+    if (argv[i].startsWith('--')) {
+      const v = argv[i + 1];
+      if (v === undefined || v.startsWith('--')) throw new Error(`flag ${argv[i]} needs a value`);
+      o[argv[i].slice(2)] = v; i += 1;
+    } else o._.push(argv[i]);
   }
   return o;
 }
@@ -186,7 +197,7 @@ async function main(argv = process.argv.slice(2)) {
   if (cmd === 'capture') {
     if (!args.tenant || !args['repo-dir'] || !args.out) throw new Error('capture needs --tenant, --repo-dir, --out');
     const gitFiles = execFileSync('git', ['ls-files'], { cwd: args['repo-dir'], encoding: 'utf8' }).split('\n').filter(Boolean);
-    const shape = await captureShape({ base: `https://${args.tenant}.aem.page`, worker: args.worker, tenantId: args.tenant, gitFiles });
+    const shape = await captureShape({ base: `https://${args.tenant}.aem.page`, worker: args.worker ?? DEFAULT_WORKER, tenantId: args.tenant, gitFiles });
     fs.writeFileSync(args.out, `${JSON.stringify(shape, null, 2)}\n`);
     return 0;
   }

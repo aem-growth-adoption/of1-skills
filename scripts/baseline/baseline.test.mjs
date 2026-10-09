@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shapeOfConfig, shapeOfSheet, shapeOfTemplate, shapeOfOf1Page, shapeOfBrandVoice,
-  shapeOfStatus, shapeOfGenerate, diffShapes, captureShape,
+  shapeOfStatus, shapeOfGenerate, diffShapes, captureShape, DEFAULT_WORKER, parseArgs,
 } from './baseline.mjs';
 
 test('shapeOfConfig', () => {
@@ -84,4 +84,35 @@ test('captureShape tolerates 404s', async () => {
   assert.deepEqual(out.templates.home.blocks, ['hero']);
   assert.equal(out.generate.sections, 1);
   assert.equal(out.status.ready, true);
+});
+
+test('shapeOfTemplate uses first class token of variant blocks', () => {
+  assert.deepEqual(shapeOfTemplate('<div><div class="cards dark"></div></div>').blocks, ['cards']);
+});
+
+test('shapeOfTemplate ignores classed divs nested inside cells', () => {
+  const html = '<div><div class="hero"><div><div class="inner"></div></div></div></div>';
+  assert.deepEqual(shapeOfTemplate(html).blocks, ['hero']);
+});
+
+test('shapeOfTemplate lists blocks of several sections in order', () => {
+  const html = '<div><div class="hero"></div></div><div><div class="cards"></div></div>';
+  assert.deepEqual(shapeOfTemplate(html).blocks, ['hero', 'cards']);
+});
+
+test('default worker is used by capture and opt-out is honoured', async () => {
+  assert.equal(DEFAULT_WORKER, 'https://of1-gen-web-service.franklin-prod.workers.dev');
+  const urls = [];
+  const fetchImpl = async (u) => { urls.push(String(u)); return { ok: false, status: 404 }; };
+  await captureShape({ base: 'https://t.aem.page', worker: DEFAULT_WORKER, tenantId: 't', gitFiles: [], fetchImpl });
+  assert.ok(urls.some((u) => u.startsWith(`${DEFAULT_WORKER}/api/tenants/t/status`)));
+  urls.length = 0;
+  await captureShape({ base: 'https://t.aem.page', worker: '', tenantId: 't', gitFiles: [], fetchImpl });
+  assert.ok(!urls.some((u) => u.includes('/api/')));
+});
+
+test('parseArgs rejects flags without a value', () => {
+  assert.throws(() => parseArgs(['--tenant']), /--tenant/);
+  assert.throws(() => parseArgs(['--tenant', '--out', 'x']), /--tenant/);
+  assert.deepEqual(parseArgs(['capture', '--tenant', 't']), { _: ['capture'], tenant: 't' });
 });
