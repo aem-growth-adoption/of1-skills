@@ -9,9 +9,7 @@ only `config.json` (and, in pipeline mode, `cta-template.json`) is committed to 
 > `<owner>/<repo>`; every branch's preview host reads the same `/of1/**` and
 > `/templates/**`. Only the git files (`config.json`, `cta-template.json`) are
 > branch-scoped. The supported model is therefore **one EDS repo per site/demo** — two
-> demos on different branches of the same repo would overwrite each other's DA config,
-> and `of1-check-dependencies` Restart's deletion of DA `/of1` and `/templates` affects
-> every branch of the repo.
+> demos on different branches of the same repo would overwrite each other's DA config.
 
 | Source | Where | Produced by | Sync file |
 |---|---|---|---|

@@ -68,8 +68,8 @@ OWNER=$(echo "$SETUP" | jq -r .owner)
 REPO=$(echo "$SETUP" | jq -r .repo)
 BRANCH=$(echo "$SETUP" | jq -r .branch)
 REPO_DIR=$(echo "$SETUP" | jq -r .of1Repo)
-# Every step below (3, 3b, 6, 7, 8) uses repo-relative paths and git — run them all
-# from the repo root, on fresh, Continue and Restart runs alike.
+# Every step below (3b, 6, 7, 8) uses repo-relative paths and git — run them all
+# from the repo root.
 cd "$REPO_DIR" || { echo "✗ cannot cd into $REPO_DIR" >&2; exit 1; }
 
 if [ "$(echo "$SETUP" | jq -r .tokenFromEnv)" = "true" ]; then
@@ -79,33 +79,20 @@ else
 fi
 ```
 
-### 1. Detect an in-progress demo
+### 1. Clear the previous run's local state
+
+Every run is idempotent and overwrites only OF1-owned paths; a full wipe of a throwaway demo repo is the caller's job.
+
+Local state (not customer content) — reset it so the pipeline starts cleanly:
 
 ```bash
-if [ -f "$OF1_STATE_DIR/repo-config.json" ]; then
-  echo "=== Existing demo found ==="
-  cat "$OF1_STATE_DIR/repo-config.json"
-  echo ""
-  for f in "$OF1_STATE_DIR"/of1-*-status.json; do
-    [ -f "$f" ] && { echo "--- $(basename "$f") ---"; cat "$f"; echo ""; }
-  done
-fi
+rm -f "$OF1_STATE_DIR"/of1-*-status.json
+rm -f "$OF1_STATE_DIR/discovery.html"
+# Staged DA inputs + hub inputs from the previous run — otherwise a re-run
+# could re-upload stale landing copy / personas / chips / knowledge pages.
+rm -f "$OF1_STATE_DIR"/{of1-landing.json,personas-rows.json,suggestions-rows.json,knowledge-pages.json,brand-voice.html}
+rm -rf "$OF1_STATE_DIR/hub"
 ```
-
-- **If `repo-config.json` does NOT exist:** no demo in progress — treat as
-  fresh. **No Restart deletion**: skip step 3 and go to step 3b (legacy
-  config JSON check), then step 4 (Code Sync check). Every later step
-  overwrites only OF1-owned paths, so a fresh run on a site with existing
-  content is idempotent and non-destructive.
-- **If it DOES exist:** summarize the branch, domain, and last completed
-  step to the user from the printed JSON, then ask via `AskUserQuestion`:
-  - **Continue** this demo — skip cleanup entirely, keep all existing
-    artifacts and DA content, go to step 3b, then step 4 (Code Sync check).
-  - **Restart** this demo — run step 3 (remove OF1-owned content only)
-    against the *same* branch, then continue to step 3b and step 4. Restart's
-    DA deletions are **not branch-scoped** (see step 3).
-
-Step 3b runs on **every** run — fresh, Continue and Restart alike.
 
 ### 2. Warn if on `main` or detached HEAD
 
@@ -118,113 +105,9 @@ If `setup.json`'s `branch` field is empty or `"main"`, tell the user:
 
 Then proceed regardless — never block on this.
 
-### 3. Restart: remove OF1-owned content only
-
-**Runs only when the user chose Restart in step 1.** A fresh run (no
-`repo-config.json`) deletes nothing — skip this step entirely.
-
-Restart removes **only OF1-owned paths**:
-
-- **DA:** `/of1/**` and `/templates/**`
-- **git:** `blocks/of1/` and `of1/config/`
-
-> ⚠️ **DA config is shared per org/repo, not per branch.** DA has one content
-> tree per `${OWNER}/${REPO}` — every branch's preview (`<branch>--repo--owner.aem.page`)
-> reads the same `/of1/**` and `/templates/**`. The supported model is **one EDS
-> repo per site/demo**. Restart's DA deletion of `/of1` and `/templates` therefore
-> affects **every branch** of this repo, not just `${BRANCH}` (the git removal
-> below is branch-scoped). If other branches of this repo carry their own OF1
-> demo, do not Restart — use a separate repo instead.
-
-**Never delete** — these belong to the customer site, even on a throwaway branch:
-
-- DA `/nav`, `/footer`, `/index` (the home page), or any other DA path outside `/of1` and `/templates`
-- `content/`, `drafts/`, `tools/`
-- any `blocks/<name>/` other than `blocks/of1/` (including general blocks a prior run created)
-- EDS boilerplate (`styles/`, `scripts/`, `head.html`, `fstab.yaml`, `helix-query.yaml`, `.hlxignore`)
-
-(A full wipe for throwaway demo repos is not this skill's job — it belongs to an
-`of1-demo-skills` orchestrator step.)
-
-Local state (not customer content) — reset it so the pipeline restarts cleanly:
-
-```bash
-rm -f "$OF1_STATE_DIR"/of1-*-status.json
-rm -f "$OF1_STATE_DIR/discovery.html"
-# Staged DA inputs + hub inputs from the previous run — otherwise a restarted
-# run could re-upload stale landing copy / personas / chips / knowledge pages.
-rm -f "$OF1_STATE_DIR"/{of1-landing.json,personas-rows.json,suggestions-rows.json,knowledge-pages.json,brand-voice.html}
-rm -rf "$OF1_STATE_DIR/hub"
-```
-
-git — remove only the OF1-owned trees, commit, push:
-
-```bash
-# (cwd is $REPO_DIR — set in the Part 2 preamble.)
-# `git rm` stages exactly these paths' deletions — never a bare `git add -A`/`.`
-# (see common-pitfalls.md § 6).
-# Only pass paths that exist in HEAD: a `git commit -- <path>` whose pathspec git
-# doesn't know fails the whole commit (e.g. an interrupted demo that committed
-# blocks/of1 but never of1/config).
-P=()
-for p in blocks/of1 of1/config; do
-  git ls-tree -d --name-only HEAD -- "$p" 2>/dev/null | grep -q . && P+=("$p")
-done
-if [ "${#P[@]}" -gt 0 ]; then
-  git rm -r -q -- "${P[@]}"
-  # Diff + commit scoped to these paths, so unrelated staged changes are never swept in.
-  if ! git diff --cached --quiet -- "${P[@]}"; then
-    git commit -m "chore: reset OF1 artefacts for ${BRANCH}" -- "${P[@]}"
-    # Rebase onto the remote first so a concurrent push never rejects ours.
-    git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
-    git push origin "$BRANCH"
-    echo "✓ OF1 artefacts (${P[*]}) removed + pushed"
-  fi
-else
-  echo "✓ No OF1 artefacts committed — nothing to remove"
-fi
-```
-
-DA — list and delete recursively, **only under `/of1` and `/templates`**.
-`GET admin.da.live/list/${OWNER}/${REPO}/<path>` returns entries with `name` and
-`ext` (folders have no `ext`); the walk recurses into folders and never leaves
-the root it started from:
-
-```bash
-da_delete_tree() {
-  local dir="$1"   # repo-relative, e.g. "/of1/config"
-  case "$dir" in
-    /of1|/of1/*|/templates|/templates/*) ;;
-    *) echo "✗ refusing to delete outside /of1, /templates: $dir" >&2; return 1 ;;
-  esac
-  local list
-  list=$(curl -s --connect-timeout 10 --max-time 30 -H "Authorization: Bearer $DA_TOKEN" \
-    "https://admin.da.live/list/${OWNER}/${REPO}${dir}" 2>/dev/null || echo "[]")
-  echo "$list" | jq -r '.[]? | [.name, (.ext // "")] | @tsv' 2>/dev/null |
-  while IFS=$'\t' read -r name ext; do
-    [ -n "$name" ] || continue
-    if [ -z "$ext" ]; then
-      da_delete_tree "${dir}/${name}"            # folder → recurse
-    else
-      curl -s -o /dev/null --connect-timeout 10 --max-time 30 -X DELETE \
-        -H "Authorization: Bearer $DA_TOKEN" \
-        "https://admin.da.live/source/${OWNER}/${REPO}${dir}/${name}.${ext}"
-    fi
-  done
-  # Remove the (now empty) folder itself; best-effort.
-  curl -s -o /dev/null --connect-timeout 10 --max-time 30 -X DELETE \
-    -H "Authorization: Bearer $DA_TOKEN" \
-    "https://admin.da.live/source/${OWNER}/${REPO}${dir}" || true
-}
-
-da_delete_tree /of1
-da_delete_tree /templates
-echo "✓ DA /of1/** and /templates/** removed (nav, footer, index and all other content untouched)"
-```
-
 ### 3b. Remove legacy `of1/config/*.json` (every run)
 
-**Runs on every run** — fresh, Continue and Restart. Sites integrated by an
+**Runs on every run.** Sites integrated by an
 older version of these skills still track `of1/config/*.json` files that are no
 longer produced or read (`knowledge.json`, `personas.json`, `suggestions.json`,
 `brand-voice.json`, `templates.json`, `of1-endpoint.json`, `products.json`,
