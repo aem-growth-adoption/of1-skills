@@ -14,7 +14,7 @@ only `config.json` (and, in pipeline mode, `cta-template.json`) is committed to 
 | Source | Where | Produced by | Sync file |
 |---|---|---|---|
 | `of1/config/config.json` | git | `of1-check-dependencies` | `config` |
-| `of1/config/cta-template.json` | git — **pipeline mode only** | `of1-build-cta-template` | `cta-template` |
+| `of1/config/cta-template.json` | git — **pipeline mode only** | `of1-build-cta-template` | `cta-template` (gen-web worker; served via `/api/personalize` `inject_cta`) |
 | `/of1/brand-voice` | DA document | `of1-extract-brand-voice` | `brand-voice` |
 | `/of1/config/personas` | DA sheet | `of1-extract-content` | — (not synced; read by the extension / edge proxy) |
 | `/of1/config/suggestions` | DA sheet | `of1-build-quick-suggestions` | `suggestions` |
@@ -65,7 +65,7 @@ Example with both overrides (config-service site):
 ## `cta-template.json` (git, pipeline mode only)
 
 Produced only when `OF1_PIPELINE_MODE=1`. The extension / edge proxy inject it into customer pages
-via `/api/personalize` (`inject_cta` event). Optional for the worker — not part of the ready gate.
+via `/api/personalize` (`inject_cta` event). The gen-web worker reads it (synced as `cta-template`); personas are read by the preview extension / edge proxy, not the worker. Optional for the worker — not part of the ready gate.
 
 Mustache-style template with placeholders `{{title}}`, `{{description}}`, `{{buttonText}}`, `{{href}}`.
 

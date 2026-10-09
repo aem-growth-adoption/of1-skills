@@ -445,8 +445,8 @@ function renderDiscovery(repoDir, previewBase) {
   return html || '  <span style="color:var(--dim)">No discovery report for this flow</span>';
 }
 
-// Prototypes are the standalone HTML redesign pages. Stage 2b (of1-prototype, wrapping
-// stardust:prototype) copies them into `deliverables/prototype-<slug>.html` and commits them;
+// Prototypes are the standalone HTML redesign pages. the migration step that precedes
+// integration (if any) copies them into `deliverables/prototype-<slug>.html` and commits them;
 // EDS serves that dir. This renderer links those deployed copies directly. We read from
 // `deliverables/` (the committed, served location) rather than `stardust/prototypes/`, which may
 // be gitignored — and whose basenames already start with `prototype-`, so prefixing them again
