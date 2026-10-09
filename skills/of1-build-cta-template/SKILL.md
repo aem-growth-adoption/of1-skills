@@ -13,7 +13,7 @@ Analyze a website's visual design system (fonts, colors, button styles, spacing)
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-build-cta-template-status.json` |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 
 ```bash
 cd "$OF1_DEMO_REPO"

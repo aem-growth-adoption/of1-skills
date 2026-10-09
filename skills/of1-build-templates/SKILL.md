@@ -23,7 +23,7 @@ and this repo's `docs/superpowers/specs/2026-08-31-of1-build-templates-da-blocks
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives status JSON |
-| `OF1_DEMO_REPO` | absolute path to the local tenant EDS repo clone (also `TENANT_REPO_DIR` for `inventory.sh`) |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo (also `TENANT_REPO_DIR` for `inventory.sh`) |
 | `SKILL_DIR` | absolute path to this skill (finds `assets/da-api.sh`, `assets/inventory.sh`) |
 | `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | source of `DA_TOKEN` (see resolution below) |
 
@@ -48,6 +48,14 @@ AEM_TOKEN="${AEM_TOKEN:-$DA_TOKEN}"
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")   # DA org, e.g. of1-labs
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")   # DA repo,  e.g. of1-af1bb1a3
+# Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
+DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
+  -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}")
+case "$DA_PROBE" in
+  200) ;;
+  401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; exit 1 ;;
+  *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
+esac
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 export ORG="$OWNER" REPO DA_TOKEN AEM_TOKEN   # da-api.sh reads ORG/REPO/DA_TOKEN/AEM_TOKEN
@@ -59,7 +67,8 @@ cd "$OF1_DEMO_REPO"
 Reason in this order. **Reuse first; invent general blocks only when genuinely useful; never author a
 slot-specific, single-template block.**
 
-1. **Use cases first.** From `$OF1_STATE_DIR/of1-discovery-output.md` (discovery narrative) +
+1. **Use cases first.** From `$OF1_STATE_DIR/of1-discovery-output.md` (discovery narrative — optional,
+   standalone runs usually have none) +
    `$OF1_STATE_DIR/knowledge-pages.json` (the site's captured pages — titles, headings, copy — from
    `of1-extract-content`, when present) and `$OF1_STATE_DIR/personas-rows.json` determine what the
    generative-search experience must actually answer.
@@ -161,7 +170,7 @@ An authored template is a normal EDS document. What the worker requires
 - **Naming:** EDS strips a leading underscore from a path (`templates/_foo` → `/templates/foo`). Use a
   `templates/_drafts/` subfolder for scratch, not an underscore prefix.
 
-`assets/da-api.sh` provides `da_put` / `da_delete` / `da_list` / `aem_preview`. `assets/inventory.sh`
+`assets/da-api.sh` provides `da_put` / `da_delete` / `da_list` / `aem_preview` (source it; it sets no shell options, so it is safe to source in bash or zsh). `assets/template-richness.mjs` counts content blocks / reads `Template Max Items` from a `.plain.html`. `assets/inventory.sh`
 enumerates usable positional blocks in `$TENANT_REPO_DIR/blocks/*`.
 
 ## Phases
@@ -216,6 +225,8 @@ skill writes no engine/template config file.
      ```bash
      git add blocks/<name>/
      git commit -m "feat: add general-purpose <name> block for OF1 templates"
+     # Rebase onto the remote first so a concurrent push never rejects ours.
+     git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
      git push origin "$BRANCH"
      # Wait for code sync — poll the block JS on the code bus until 200:
      for i in $(seq 1 30); do
@@ -281,34 +292,65 @@ Run once after all 5 intent agents complete.
    `.plain.html`, so the worker syncs nothing.
    ```bash
    source "$SKILL_DIR/assets/da-api.sh"
-   for path in $(da_list templates | jq -r '.[].path' 2>/dev/null); do
-     aem_preview "${path#/}" || { echo "ABORT: preview failed for $path — org lacks AEM preview rights (see of1-check-dependencies)" >&2; exit 1; }
-   done
+   # da_list returns paths like "/<ORG>/<REPO>/templates/x.html"; aem_preview wants
+   # "templates/x". Never name the loop variable `path` — in zsh it is tied to $PATH.
+   # Template doc paths, one per line, relative + extensionless (e.g. templates/x).
+   # Fails (non-zero) when da_list fails, returns a non-list (401/404 error body), or
+   # lists no .html docs — an empty /templates must never pass as "all previewed".
+   template_docs() {
+     local listing docs
+     listing=$(da_list templates) \
+       || { echo "ABORT: da_list templates failed — check DA_TOKEN / path" >&2; return 1; }
+     docs=$(printf '%s' "$listing" \
+       | jq -r 'if type == "array" then .[] | select(.ext == "html") | .path else error("not a DA list") end' 2>/dev/null) \
+       || { echo "ABORT: /templates listing is not a DA list: $(printf '%s' "$listing" | head -c 200)" >&2; return 1; }
+     [ -n "$docs" ] \
+       || { echo "ABORT: no /templates docs listed — check DA_TOKEN / path (did the intent phase da_put any?)" >&2; return 1; }
+     printf '%s\n' "$docs" | while IFS= read -r p; do p="${p#/$ORG/$REPO/}"; printf '%s\n' "${p%.html}"; done
+   }
+   # Capture first (a failure inside `template_docs | while` would be masked by the
+   # pipeline's exit status), then iterate a here-string — no subshell in either shell.
+   DOCS=$(template_docs) || exit 1
+   while IFS= read -r doc; do
+     [ -n "$doc" ] || continue
+     aem_preview "$doc" || { echo "ABORT: preview failed for $doc (see the status above)" >&2; exit 1; }
+   done <<<"$DOCS"
    ```
-   `aem_preview` exits non-zero on 403. **Stop and report the org-authorization gap** — do NOT report
-   templates as ready with unpublished docs.
+   `aem_preview` returns non-zero on any non-2xx. On 401/403 **stop and report the org-authorization
+   gap** (see `of1-check-dependencies` step 5); other statuses (404 bad path/ref, 5xx) are reported as-is.
+   Do NOT report templates as ready with unpublished docs. The preview ref is `${BRANCH:-main}`; DA
+   content is shared across branches, so a preview on any existing ref is visible on every branch's
+   preview host.
 2. **Verify the round-trip** for each template: fetch
    `https://{BRANCH}--{REPO}--{OWNER}.aem.page/templates/{name}.plain.html` and confirm 200 + that each
    block's row count and per-row cell count match what was authored (the harvested fingerprint). A 404
    means preview didn't materialize; a shape mismatch means markdown-intermediate mangling — fix before
    proceeding.
 3. **Check template richness against purpose (CRITICAL RULE 6).** Count the content blocks in each
-   template's `.plain.html` (every block wrapper under `<main>`, excluding `section-metadata`). **Reject**
+   template's `.plain.html` (every `<div class="NAME">` block wrapper directly inside a section,
+   excluding `section-metadata` and `metadata` — `.plain.html` carries no `block` class). **Reject**
    only an empty template (0 blocks). For **exploratory** templates (`Template Max Items ≥ 3`), **warn**
    when the count is below 3 (they should target 4–5). **Quick-answer** templates (`Max Items ≤ 2`) are
    fine at 1–2 and are not warned.
    ```bash
-   for path in $(da_list templates | jq -r '.[].path' 2>/dev/null); do
-     name="${path#/}"
-     html=$(curl -sf "https://${BRANCH}--${REPO}--${OWNER}.aem.page/${name}.plain.html") || continue
-     # content blocks = block wrappers minus section-metadata
-     n=$(printf '%s' "$html" | grep -oE 'class="[a-z0-9-]+ block"' | grep -vc 'section-metadata block')
-     [ "$n" -eq 0 ] && { echo "ABORT: $name has 0 content blocks — empty template, fix before assemble" >&2; exit 1; }
-     maxItems=$(printf '%s' "$html" | grep -oiE 'Template Max Items</div>[[:space:]]*<div>[[:space:]]*[0-9]+' | grep -oE '[0-9]+$' | head -1)
+   DOCS=$(template_docs) || exit 1
+   while IFS= read -r doc; do
+     [ -n "$doc" ] || continue
+     html=$(curl -sf "https://${BRANCH}--${REPO}--${OWNER}.aem.page/${doc}.plain.html") \
+       || { echo "ABORT: ${doc}.plain.html not served — preview didn't materialize" >&2; exit 1; }
+     # Real .plain.html has no "block" class: template-richness.mjs counts the
+     # <div class="NAME"> wrappers at section level (minus section-metadata / metadata)
+     # and reads `Template Max Items` across line breaks. Prints "<blocks> <maxItems>".
+     RICH=$(printf '%s' "$html" | node "$SKILL_DIR/assets/template-richness.mjs")
+     # No output = the helper itself failed (not "0 blocks") — never default it to 0.
+     [ -n "$RICH" ] || { echo "ABORT: template-richness.mjs printed nothing for $doc — check node / \$SKILL_DIR" >&2; exit 1; }
+     read -r n maxItems <<<"$RICH"
+     [ "$n" -eq 0 ] && { echo "ABORT: $doc has 0 content blocks — empty template, fix before assemble" >&2; exit 1; }
      if [ -n "$maxItems" ] && [ "$maxItems" -ge 3 ] && [ "$n" -lt 3 ]; then
-       echo "WARN: exploratory $name (Max Items $maxItems) has only $n content blocks (target 4–5)" >&2
+       echo "WARN: exploratory $doc (Max Items $maxItems) has only $n content blocks (target 4–5)" >&2
      fi
-   done
+     echo "✓ $doc: $n content block(s), Max Items ${maxItems:-?}"
+   done <<<"$DOCS"
    ```
 4. **Final status file** (the deliverable status the orchestrator reports):
    ```bash

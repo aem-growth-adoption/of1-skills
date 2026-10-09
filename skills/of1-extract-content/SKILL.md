@@ -13,7 +13,7 @@ Crawl a website to capture the site's own page content (products, features, FAQs
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-content-status.json` |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill (used to find `assets/*.mjs` and `../of1-integration/assets/da-write.mjs`) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
@@ -36,6 +36,14 @@ export DA_TOKEN
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
+# Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
+DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
+  -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}")
+case "$DA_PROBE" in
+  200) ;;
+  401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; exit 1 ;;
+  *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
+esac
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 SKILL_DIR="${SKILL_DIR:-/workspace/skills/of1-extract-content}"
 DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
@@ -44,7 +52,7 @@ PAGES="$OF1_STATE_DIR/knowledge-pages.json"
 cd "$OF1_DEMO_REPO"
 ```
 
-If discovery output exists, read it to focus on the right product category:
+Discovery output is **optional** (only the full e2e pipeline writes it). If it exists, read it to focus on the right product category:
 ```bash
 cat "$OF1_STATE_DIR/of1-discovery-output.md" 2>/dev/null
 ```
@@ -88,70 +96,111 @@ In pipeline mode: use `$SOURCE_BASE` and focus on the **demo category** from dis
 In standalone mode, ask:
 > What should I index? Full catalog / specific category / curated list of URLs?
 
-### 2. Discover catalog
+### 2. Discover catalog (or main content pages)
 
-Fetch main product listing pages with WebFetch. Extract for each visible product: name, URL, category, price, short description.
+Fetch main product listing pages with WebFetch. Extract for each visible product: name, URL, category, price, short description. Put the page URLs to capture in a bash array `PRODUCT_URLS=( … )`.
 
-### 3. Extract product data (parallel scraping)
+**Non-commerce sites (no catalog).** If the site sells nothing / has no product listing (services, B2B, content, events, institutions), capture the site's **main content pages** instead — the knowledge base is "what this site says", not a product list. Take them from the site index or the nav, in that order:
+
+```bash
+# EDS JSON index (paths) — skip drafts/fragments/OF1/template paths. Read line by
+# line into an array (no mapfile / unquoted splitting — works in bash and zsh).
+PRODUCT_URLS=()
+while IFS= read -r p; do [ -n "$p" ] && PRODUCT_URLS+=("${SOURCE_BASE}${p}"); done < <(
+  curl -s --max-time 20 "${SOURCE_BASE}/sitemap.json" \
+    | jq -r '[.. | objects | .path? // empty | strings] | .[]' 2>/dev/null \
+    | grep -vE '^/(drafts|fragments|of1|templates|nav|footer)(/|$)' | head -20)
+# Fallback: the nav fragment's site-relative links.
+if [ "${#PRODUCT_URLS[@]}" -eq 0 ]; then
+  while IFS= read -r p; do [ -n "$p" ] && PRODUCT_URLS+=("${SOURCE_BASE}${p}"); done < <(
+    curl -s --max-time 20 "${SOURCE_BASE}/nav.plain.html" \
+      | grep -oE 'href="/[^"#?]*"' | sed -E 's/^href="//; s/"$//' | sort -u | head -20)
+fi
+# Always capture the home page: prepend it when the index/nav didn't list it.
+HOME_URL="${SOURCE_BASE}/"
+has_home=0
+for u in "${PRODUCT_URLS[@]}"; do [ "$u" = "$HOME_URL" ] && has_home=1; done
+[ "$has_home" = 1 ] || PRODUCT_URLS=("$HOME_URL" "${PRODUCT_URLS[@]}")
+printf '%s\n' "${PRODUCT_URLS[@]}"
+```
+
+The snippet always includes the home page (`${SOURCE_BASE}/`). Hand-prune the list to the 10–20 pages with real content (about, services/solutions, programs, FAQ/help, pricing/plans if any) before Step 3.
+
+### 3. Extract page data (parallel scraping)
 
 Start each run from a fresh `$PAGES` (`rm -f "$PAGES"` before the first batch) so re-runs do not duplicate pages.
 
-**Open product pages in parallel batches of 5, then extract from each batch.** Do NOT scrape pages one at a time in a serial loop — that takes 2 min per page × 16 pages = 32 min. Batches of 5 take ~5 min total.
+**Open pages in parallel batches of 5, then extract from each batch.** Do NOT scrape pages one at a time in a serial loop — that takes 2 min per page × 16 pages = 32 min. Batches of 5 take ~5 min total.
+
+`playwright-cli` rules (verified on the current CLI):
+
+- **Run it from `$OF1_STATE_DIR`, never from the repo** — it writes a `.playwright-cli/` folder (snapshots, console logs) into the current directory, which would otherwise end up in the customer's git tree. The `pw` helper below does that in a subshell, so your shell's cwd is left untouched.
+- First URL of a batch → `playwright-cli open URL` (starts the browser); every other URL → `playwright-cli tab-new URL`. Calling `open` repeatedly does not open new tabs.
+- Tab ids come from `playwright-cli tab-list` lines shaped `- <id>: …` → `grep -oE '^- [0-9]+:' | grep -oE '[0-9]+'` (a bare `grep -oE '[0-9]+'` also picks up digits in titles/URLs).
+- `playwright-cli eval` prints a Markdown report; the returned value is under `### Result`. Extract it with `awk '/^### Result/{f=1;next} /^### /{f=0} f'`.
+- Close the batch with `playwright-cli close` — it closes the **default session's** browser and all its tabs (any other `-s=<name>` session is untouched; don't run another default-session task in parallel). If you close tabs individually, go from the **highest id down** — ids are positional and renumber after each close.
 
 ```bash
-# Process in batches of 5 tabs at a time
+# playwright-cli writes .playwright-cli/ into cwd — run it from the state dir in a
+# subshell so it never lands in the repo and this shell's cwd doesn't change.
+pw() { ( cd "$OF1_STATE_DIR" && playwright-cli "$@" ); }
+pw_result() { awk '/^### Result/{f=1;next} /^### /{f=0} f'; }
+CAPTURE_JS="() => {
+  const root = document.querySelector('main') || document.querySelector('article') || document.body;
+  const title = (document.querySelector('h1')?.innerText || document.title || '').trim();
+  const blocks = [];
+  root.querySelectorAll('h1,h2,h3,p,li,img').forEach((el) => {
+    if (el.closest('nav,header,footer,aside')) return;
+    if (el.tagName.toLowerCase() === 'img') {
+      const src = el.currentSrc || el.src || '';
+      if (src) blocks.push({ tag: 'img', src, alt: (el.alt || '').trim() });
+      return;
+    }
+    const text = el.innerText.replace(/\\s+/g, ' ').trim();
+    if (text) blocks.push({ tag: el.tagName.toLowerCase(), text });
+  });
+  return { url: location.href, title, blocks };
+}"
+rm -f "$PAGES"
 BATCH_SIZE=5
 for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
-  # Open this batch
-  for URL in "${PRODUCT_URLS[@]:i:BATCH_SIZE}"; do
-    playwright-cli open "$URL"
+  # Open this batch: first URL starts the browser, the rest are new tabs.
+  first=1
+  for URL in "${PRODUCT_URLS[@]:$i:$BATCH_SIZE}"; do
+    if [ "$first" = 1 ]; then pw open "$URL"; first=0
+    else pw tab-new "$URL"; fi
   done
   sleep 5  # wait for batch to render
 
-  # Extract data from each tab in this batch
-  for TAB_ID in $(playwright-cli tab-list | grep -oE '[0-9]+'); do
-    playwright-cli tab-select "$TAB_ID"
-    playwright-cli eval "() => {
-      // extract name, price, description, images, features, etc.
-    }"
+  # Extract data from each tab in this batch.
+  TAB_IDS=($(pw tab-list | grep -oE '^- [0-9]+:' | grep -oE '[0-9]+'))
+  for TAB_ID in "${TAB_IDS[@]}"; do
+    pw tab-select "$TAB_ID" >/dev/null
+    # (Commerce sites) product facts for persona inference — working notes only:
+    # pw eval "() => ({ name: …, price: …, description: … })" | pw_result
 
-    # Also capture each page's readable content for the knowledge RAG —
-    # same tab, no extra page load:
-    playwright-cli eval "() => {
-      const root = document.querySelector('main') || document.querySelector('article') || document.body;
-      const title = (document.querySelector('h1')?.innerText || document.title || '').trim();
-      const blocks = [];
-      root.querySelectorAll('h1,h2,h3,p,li,img').forEach((el) => {
-        if (el.closest('nav,header,footer,aside')) return;
-        if (el.tagName.toLowerCase() === 'img') {
-          const src = el.currentSrc || el.src || '';
-          if (src) blocks.push({ tag: 'img', src, alt: (el.alt || '').trim() });
-          return;
-        }
-        const text = el.innerText.replace(/\s+/g, ' ').trim();
-        if (text) blocks.push({ tag: el.tagName.toLowerCase(), text });
-      });
-      return { url: location.href, title, blocks };
-    }"
-    # Append each captured page to $OF1_STATE_DIR/knowledge-pages.json — use jq
-    # so the array stays valid JSON (never hand-concatenate); skip empty-blocks
-    # pages. Same tabs already open — do not open extra tabs.
-    CAP='<the { url, title, blocks } object the eval above returned, as JSON>'
-    if [ "$(jq '.blocks | length' <<<"$CAP")" -gt 0 ]; then
+    # Readable page content for the knowledge RAG — same tab, no extra page load.
+    CAP=$(pw eval "$CAPTURE_JS" | pw_result \
+      | jq -c 'if type == "string" then fromjson else . end' 2>/dev/null)
+    # Append to $PAGES with jq (never hand-concatenate); skip empty/failed captures.
+    if [ -n "$CAP" ] && [ "$(jq '.blocks | length' <<<"$CAP" 2>/dev/null || echo 0)" -gt 0 ]; then
       if [ -f "$PAGES" ]; then
         jq --argjson p "$CAP" '. + [$p]' "$PAGES" > "$PAGES.tmp" && mv "$PAGES.tmp" "$PAGES"
       else
         jq -n --argjson p "$CAP" '[$p]' > "$PAGES"
       fi
+    else
+      echo "WARN: no content captured from tab $TAB_ID" >&2
     fi
   done
 
-  # Close batch tabs before opening the next batch
-  playwright-cli tab-list | grep -oE '[0-9]+' | while read TAB; do
-    playwright-cli tab-close "$TAB" 2>/dev/null
-  done
+  # Close the whole batch (browser + tabs) before opening the next one.
+  pw close >/dev/null 2>&1 || true
 done
+echo "captured $(jq length "$PAGES" 2>/dev/null || echo 0) page(s) → $PAGES"
 ```
+
+(Works in bash and zsh: `$(…)` inside `( )` splits into array elements in both, and the slice uses `$i`/`$BATCH_SIZE` — zsh rejects a bare `${arr[@]:i:n}`.)
 
 For each product (cap at 20 in pipeline mode), note: name, price, category, features, description, use cases, target audience. These notes are working context for persona inference (Step 4) only — the knowledge the worker uses is the captured page content in `$PAGES`.
 
@@ -229,7 +278,11 @@ inline `<img>` pointing at the rehosted URLs. `download-images.mjs` is reused
 unchanged — `build-image-manifest.mjs` feeds it a per-image manifest keyed by a
 hash of each source URL, and `publish-knowledge-da.mjs --image-map` maps each
 captured `<img>` back to its rehosted DA url by that same key. Images that fail
-to download/upload are dropped from the doc; the text still publishes.
+to download/upload are dropped from the doc; the text still publishes. **A partial
+image failure is OK** — `download-images.mjs` exits non-zero when any image fails
+but still writes the mapping for the ones that succeeded; carry on to step 3 (only
+`publish-knowledge-da.mjs` failing is a real failure). Non-http(s) srcs (inline
+`data:` SVG placeholders, `blob:`) are skipped by `build-image-manifest.mjs`.
 
 ```bash
 cd "$OF1_DEMO_REPO"
@@ -245,7 +298,8 @@ if [ "$(jq 'length' /tmp/knowledge-image-manifest.json)" -gt 0 ]; then
   node "$SKILL_DIR/assets/download-images.mjs" \
     --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
     --input /tmp/knowledge-image-manifest.json \
-    --output /tmp/knowledge-image-mapping.json
+    --output /tmp/knowledge-image-mapping.json \
+    || echo "WARN: some images failed to rehost — publishing text with the ones that succeeded" >&2
 fi
 
 # 3. author the bare knowledge docs with inline <img> (text-only if no map)
@@ -258,7 +312,8 @@ rm -f /tmp/knowledge-image-manifest.json /tmp/knowledge-image-mapping.json
 ```
 
 The worker indexes `/of1/knowledge/**` by default (no `contentIngestion` needed in
-`config.json`; `of1-check-dependencies` makes sure `helix-query.yaml` covers it) and
+`config.json`; `of1-check-dependencies` makes sure `helix-query.yaml` covers it, and
+`of1-publish` step 2b sets `contentIngestion.indexPath` for config-service sites) and
 `of1-publish`'s sync indexes them. Do NOT convert these to EDS blocks.
 
 ## Tips

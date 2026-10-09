@@ -43,10 +43,22 @@ mode) is tracked in git.
 
 | Field | Required | Notes |
 |---|---|---|
-| `domain` | yes | Edge-proxy 404 domain fallback. The only field the skills write |
+| `domain` | yes | Edge-proxy 404 domain fallback. Always written by `of1-check-dependencies` |
 | `contentIngestion` | no | Override knowledge-page indexing. Worker defaults: `includePaths ["/of1/knowledge/**"]`, `maxChunkTokens 400`, `contentTopK 4`. `enabled: false` opts out (tenant then never becomes ready) |
+| `contentIngestion.indexPath` | no | Site-root index the worker reads knowledge-page paths from (e.g. `"/sitemap.json"`). Default `"/query-index.json"`. Set by `of1-publish` step 2b when the site's index is managed by the AEM config service and `/query-index.json` doesn't list `/of1/knowledge/` |
 | `of1Endpoint` | no | Override the derived CTA/landing URL (default `https://<id>.aem.page/of1`) |
 | `templates.daPath` | no | Override the template folder (default `/templates`) |
+| `templates.names` | no | Array of DA template doc names under `/templates` (e.g. `["product-grid","faq"]`, no extension). When set, the worker uses this list instead of discovering templates from the query index. Set by `of1-publish` step 2b when `/query-index.json` doesn't list `/templates/` |
+
+Example with both overrides (config-service site):
+
+```json
+{
+  "domain": "example.com",
+  "contentIngestion": { "indexPath": "/sitemap.json" },
+  "templates": { "names": ["product-grid", "faq", "comparison"] }
+}
+```
 
 `of1/config/` must be served: if `.hlxignore` excludes it, `of1-check-dependencies` fixes that.
 

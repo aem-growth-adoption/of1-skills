@@ -23,7 +23,7 @@
 //
 // Writes: <repo-dir>/deliverables/index.html
 //
-// Exports renderConfigLinks / renderStatusPanel / buildHub for tests.
+// Exports renderConfigLinks / renderStatusPanel / formatSyncError / buildHub for tests.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -101,6 +101,45 @@ export function renderConfigLinks({ owner, repo, previewBase }) {
     .join('\n');
 }
 
+// Sync `errors[]` entries come in several worker shapes (worker/src/sync.js):
+// {file,error} {file,status} {file,name,error} {file,templateErrors:[{template,error}]}
+// {file,records} {file,fallback} {template,error} {content,status} {content,error}
+// {content:"truncated",total,indexed} {file,warning} {vectors:"purge",error}.
+// Returns a readable { label, msg } (+ warning: true for non-fatal warnings).
+export function formatSyncError(e) {
+  if (!e || typeof e !== 'object') return { label: 'error', msg: String(e) };
+  const str = (v) => (typeof v === 'string' ? v : JSON.stringify(v));
+  if (e.content === 'truncated' && (e.total != null || e.indexed != null)) {
+    return { label: 'content', msg: `truncated — indexed ${e.indexed ?? '?'} of ${e.total ?? '?'} page(s)` };
+  }
+  let label;
+  if (e.file != null) label = e.name != null ? `${str(e.file)} (${str(e.name)})` : str(e.file);
+  else if (e.vectors != null) label = `vectors ${str(e.vectors)}`;
+  else if (e.template != null) label = `template ${str(e.template)}`;
+  else label = String(e.content ?? e.path ?? 'error');
+  if (e.warning != null && e.error == null) return { label, msg: str(e.warning), warning: true };
+  let msg;
+  if (Array.isArray(e.templateErrors)) {
+    const parts = e.templateErrors.map((t) => (t && typeof t === 'object'
+      ? `${t.template ?? t.name ?? '?'}: ${str(t.error ?? t.status ?? t)}`
+      : String(t)));
+    msg = `${e.templateErrors.length} template error(s): ${parts.join('; ')}`;
+  } else if (e.error != null && e.error !== '') msg = str(e.error);
+  else if (e.status != null) msg = `HTTP ${e.status}`;
+  else if (Array.isArray(e.records)) msg = `${e.records.length} invalid record(s)`;
+  else if (e.fallback != null) msg = `fell back to ${e.fallback}`;
+  else if (e.message != null) msg = String(e.message);
+  else msg = JSON.stringify(e);
+  return { label, msg };
+}
+
+// of1-publish writes status "running" at the start of a run (so the hub is never
+// built from the previous run's done/failed status); show it as in progress.
+const IN_PROGRESS = new Set(['running', 'in-progress', 'in_progress']);
+function statusLabel(status) {
+  return IN_PROGRESS.has(status) ? 'in progress' : String(status);
+}
+
 function statusColor(status) {
   if (status === 'done' || status === true) return 'var(--accent)';
   if (status === 'failed' || status === false) return 'var(--orange)';
@@ -120,8 +159,9 @@ export function renderStatusPanel({ statuses = [], sync = null, status = null } 
     for (const s of statuses) {
       const st = s.status ?? '?';
       html += '<tr style="border-bottom:1px solid var(--border);">';
-      html += `<td style="padding:6px 8px;">${htmlEscape(s.skill ?? '?')}</td>`;
-      html += `<td style="color:${statusColor(st)};">${htmlEscape(st)}</td>`;
+      const label = s.phase ? `${s.skill ?? '?'} · ${s.phase}` : (s.skill ?? '?');
+      html += `<td style="padding:6px 8px;">${htmlEscape(label)}</td>`;
+      html += `<td style="color:${statusColor(st)};">${htmlEscape(statusLabel(st))}</td>`;
       html += `<td style="color:var(--dim);">${htmlEscape(s.summary ?? s.error ?? '')}</td>`;
       html += '</tr>\n';
     }
@@ -140,9 +180,10 @@ export function renderStatusPanel({ statuses = [], sync = null, status = null } 
     html += ` &bull; synced: ${htmlEscape(synced.join(', ') || '—')}`;
     html += ` &bull; content indexed: ${htmlEscape(String(indexed))}</div>\n`;
     for (const e of errors) {
-      const file = typeof e === 'object' && e ? (e.file ?? '?') : '?';
-      const msg = typeof e === 'object' && e ? (e.error ?? JSON.stringify(e)) : String(e);
-      html += `  <div style="color:var(--orange);">✗ ${htmlEscape(file)}: ${htmlEscape(msg)}</div>\n`;
+      const { label, msg, warning } = formatSyncError(e);
+      html += warning
+        ? `  <div style="color:var(--dim);">⚠ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`
+        : `  <div style="color:var(--orange);">✗ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`;
     }
   } else {
     html += '  <div style="color:var(--dim);">Sync: not synced (no hub/sync.json)</div>\n';
@@ -185,7 +226,12 @@ function loadStatuses(stateDir) {
     .map((f) => {
       const j = loadJsonOrNull(path.join(stateDir, f));
       if (!j || typeof j !== 'object') return null;
-      return { skill: j.skill ?? f.replace(/-status\.json$/, ''), status: j.status, summary: j.summary ?? j.error };
+      return {
+        skill: j.skill ?? f.replace(/-status\.json$/, ''),
+        ...(j.phase ? { phase: j.phase } : {}),
+        status: j.status,
+        summary: j.summary ?? j.error,
+      };
     })
     .filter(Boolean);
 }
@@ -424,6 +470,14 @@ function renderPrototypes(repoDir, previewBase) {
   return html || '  <span style="color:var(--dim)">No prototypes yet</span>';
 }
 
+function hasPrototypes(repoDir) {
+  try {
+    return fs.readdirSync(path.join(repoDir, 'deliverables')).some((f) => f.startsWith('prototype-') && f.endsWith('.html'));
+  } catch {
+    return false;
+  }
+}
+
 export function buildHub({ repoConfig, domain, stateDir, repoDir, template, now = new Date() }) {
   const { owner, repo, branch } = repoConfig;
   const previewBase = `https://${branch}--${repo}--${owner}.aem.page`;
@@ -491,8 +545,10 @@ function main() {
     return 1;
   }
 
+  // Discovery output is optional (standalone / content-only runs have none). Only
+  // warn when the full pipeline evidently ran (prototypes exist) yet it's missing.
   const discoveryPath = path.join(stateDir, 'of1-discovery-output.md');
-  if (!loadText(discoveryPath)) {
+  if (!loadText(discoveryPath) && hasPrototypes(repoDir)) {
     console.error(`WARN: ${discoveryPath} not found or empty — demo focus/narrative will fall back to defaults.`);
   }
   const hubDir = path.join(stateDir, 'hub');

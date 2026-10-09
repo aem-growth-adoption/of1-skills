@@ -21,7 +21,9 @@ export function buildManifest(entries) {
     for (const b of blocks) {
       if (b?.tag !== 'img') continue;
       const src = String(b.src || '').trim();
-      if (!src || seen.has(src)) continue;
+      // Only absolute http(s) URLs can be downloaded + rehosted; data: URIs
+      // (inline SVG placeholders), blob: and relative srcs are skipped.
+      if (!/^https?:\/\//i.test(src) || seen.has(src)) continue;
       seen.add(src);
       manifest.push({ productId: hashSrc(src), urls: [src] });
     }

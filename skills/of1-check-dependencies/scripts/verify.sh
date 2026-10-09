@@ -217,11 +217,13 @@ OWNER=""
 REPO=""
 BRANCH=""
 
-if [ -n "${OF1_DEMO_REPO:-}" ] && [ -d "${OF1_DEMO_REPO}/.git" ]; then
+if [ -n "${OF1_DEMO_REPO:-}" ] && [ -e "${OF1_DEMO_REPO}/.git" ]; then  # -e: worktrees have a .git file
   # Use subshell + cd — SLICC's git shim doesn't support `-C` or `remote get-url`.
   REMOTE=$(cd "$OF1_DEMO_REPO" && git config remote.origin.url 2>/dev/null || true)
-  OWNER=$(echo "$REMOTE" | sed 's|.*github.com[:/]||' | cut -d/ -f1)
-  REPO=$(echo "$REMOTE" | sed 's|.*github.com[:/]||' | cut -d/ -f2 | sed 's/\.git$//')
+  # Last two path segments of any remote form (https://github.com/o/r.git,
+  # git@github.com:o/r.git, ssh host aliases like git@github-perso:o/r.git).
+  OWNER=$(echo "$REMOTE" | sed -E 's|\.git$||; s|^.*[:/]([^/:]+)/([^/:]+)$|\1|')
+  REPO=$(echo "$REMOTE" | sed -E 's|\.git$||; s|^.*[:/]([^/:]+)/([^/:]+)$|\2|')
   BRANCH=$(cd "$OF1_DEMO_REPO" && git branch --show-current 2>/dev/null || true)
 
   if { [ -f "${OF1_DEMO_REPO}/scripts/aem.js" ] || [ -f "${OF1_DEMO_REPO}/scripts/lib-franklin.js" ]; } \

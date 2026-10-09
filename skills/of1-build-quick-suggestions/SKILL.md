@@ -13,7 +13,7 @@ Generate domain-specific quick suggestion chips, placeholder text, and search UI
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; holds the inputs below, receives `suggestions-rows.json`, `of1-landing.json`, and `of1-build-quick-suggestions-status.json` |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill (used to find `../of1-integration/assets/da-write.mjs`) |
 | `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | DA token (resolved by `da-write.mjs`) |
 
@@ -24,6 +24,26 @@ SKILL_DIR="${SKILL_DIR:-/workspace/skills/of1-build-quick-suggestions}"
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
+# Resolve the token in the shell only to probe it (da-write.mjs resolves its own,
+# same order + `oauth-token adobe` on SLICC).
+DA_TOKEN="${DA_TOKEN:-${ADOBE_IMS_TOKEN:-}}"
+for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
+  [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
+  [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
+done
+[ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] || DA_TOKEN=$(oauth-token adobe 2>/dev/null || true)
+if [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ]; then
+  # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
+  DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
+    -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}")
+  case "$DA_PROBE" in
+    200) ;;
+    401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; exit 1 ;;
+    *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
+  esac
+else
+  echo "WARN: no DA token resolvable in the shell — skipping the probe (da-write.mjs will report)" >&2
+fi
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 PREVIEW="${BRANCH}--${REPO}--${OWNER}.aem.page"
 DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
@@ -43,7 +63,7 @@ and `of1-extract-brand-voice` (which own the live-site-vs-replica source resolut
 - `$OF1_STATE_DIR/knowledge-pages.json` — captured site pages (`[{ url, title, blocks: [{tag, text} | {tag:'img', src, alt}] }]`), produced by `of1-extract-content`. **Page titles and headings are the ground truth for chip subjects.**
 - `$OF1_STATE_DIR/personas-rows.json` — persona rows (`id, name, description, keywords[], priorities[], explore…support`), produced by `of1-extract-content`
 - Brand voice — the DA doc `/of1/brand-voice` (`https://$PREVIEW/of1/brand-voice.plain.html`, authoritative — an author may have edited it), falling back to the local copy `$OF1_STATE_DIR/brand-voice.html`; produced by `of1-extract-brand-voice`
-- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge)
+- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge) — **optional**; standalone runs usually have none, and `knowledge-pages.json` is enough on its own
 
 **REQUIRED — read the content-extraction outputs before generating suggestions.** This skill runs AFTER `of1-extract-brand-voice` and `of1-extract-content` complete, so these exist:
 
@@ -82,7 +102,7 @@ Also generate:
 - `comparison`: "Compare [A] vs [B]" — side-by-side layouts
 - `recommendation`: "Best [category] for [persona need]" — featured product + alternatives
 - `discovery`: "Show me [broad category]" — diverse card grids
-- `budget`: "[Category] under $[price]" — price-focused results
+- `budget`: "[Category] under $[price]" — price-focused results. **Site has no prices?** (services, institutions, B2B, content sites — check `knowledge-pages.json` for currency amounts) Never invent prices. Map `budget` to a cost / effort / "start small" angle on real content instead — e.g. "Free resources to get started", "What's included at no cost?", "Quickest way to start with [real program]", "Low-commitment options for [persona need]".
 
 ### 2. Write the chips to the DA sheet `/of1/config/suggestions`
 
@@ -107,7 +127,7 @@ node "$DA_WRITE" sheet --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
   --rows "$OF1_STATE_DIR/suggestions-rows.json"
 ```
 
-It prints `✓ of1/config/suggestions previewed` on success. On `FAIL <step> <path> HTTP <status>` (non-zero exit) **stop** and report the failure — do not mark the skill done.
+It prints `✓ of1/config/suggestions previewed` on success. **The chips won't appear on `/of1` yet** — the block reads them from the worker (`/api/suggest`), which only sees the sheet after the tenant is re-synced (`of1-publish` step 4, or the DA "Sync OF1" app). Empty chips right after this step are expected. On `FAIL <step> <path> HTTP <status>` (non-zero exit) **stop** and report the failure — do not mark the skill done.
 
 ### 3. Write the landing copy to `$OF1_STATE_DIR/of1-landing.json`
 
@@ -121,7 +141,9 @@ It prints `✓ of1/config/suggestions previewed` on success. On `FAIL <step> <pa
 
 `of1-style-generative-block` (Step 5) writes these as `title` / `subtitle` / `placeholder` rows on the `/of1` page's `of1` block, where authors can edit them in DA. If that skill has already run, re-run its Step 5 (or edit the `/of1` doc in DA) to apply the copy; when the rows are absent the SDK falls back to its defaults.
 
-## Completion (pipeline mode)
+## Completion (both modes)
+
+Write the status file in **both** standalone and pipeline mode — `of1-publish`'s demo hub reads every `of1-*-status.json` for its "What worked" panel.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-build-quick-suggestions-status.json" <<EOF

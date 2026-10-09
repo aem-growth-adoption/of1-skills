@@ -13,7 +13,7 @@ Analyze a website to extract its brand voice, tone, and personality, then write 
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-brand-voice-status.json` |
-| `OF1_DEMO_REPO` | absolute path to the local `of1-demo-orchestrator` git clone |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill (used to find `../of1-integration/assets/da-write.mjs`) |
 | `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | DA token (resolved by `da-write.mjs`) |
 | `OF1_PIPELINE_MODE` | `1` in pipeline mode — overwrite `/of1/brand-voice` without asking |
@@ -24,6 +24,26 @@ Read repo config:
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
+# Resolve the token in the shell only to probe it (da-write.mjs resolves its own,
+# same order + `oauth-token adobe` on SLICC).
+DA_TOKEN="${DA_TOKEN:-${ADOBE_IMS_TOKEN:-}}"
+for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
+  [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
+  [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
+done
+[ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] || DA_TOKEN=$(oauth-token adobe 2>/dev/null || true)
+if [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ]; then
+  # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
+  DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
+    -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}")
+  case "$DA_PROBE" in
+    200) ;;
+    401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; exit 1 ;;
+    *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
+  esac
+else
+  echo "WARN: no DA token resolvable in the shell — skipping the probe (da-write.mjs will report)" >&2
+fi
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 PREVIEW="${BRANCH}--${REPO}--${OWNER}.aem.page"
 SKILL_DIR="${SKILL_DIR:-/workspace/skills/of1-extract-brand-voice}"
@@ -58,7 +78,7 @@ Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everyt
 ## Inputs
 
 - `$SOURCE_BASE` (resolved above) — the base URL to crawl. In pipeline mode this is the target domain; in standalone mode it's the replica preview.
-- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (if available — use for page URLs instead of re-discovering)
+- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` — **optional** (only the full e2e pipeline produces it; standalone runs usually have none). Use it for page URLs when present; otherwise pick pages as in Step 1.
 
 ## Process
 
@@ -69,6 +89,33 @@ Fetch **3–5 pages** to get a representative sample of the brand's writing:
 1. **Homepage** — `$SOURCE_BASE`
 2. **Product/service page** — a detail page (from discovery output if available)
 3. **About or editorial** — `$SOURCE_BASE/about`, `$SOURCE_BASE/blog`, `$SOURCE_BASE/stories`
+
+**No discovery output?** Don't guess URLs — pick real pages from the site's nav or index, then read each page's undecorated EDS markup (`<path>.plain.html`, the authored copy without chrome):
+
+```bash
+# Candidate pages: nav links first, else the JSON index. Collected into an
+# array line by line (no unquoted word-splitting — works in bash and zsh).
+PAGE_PATHS=()
+while IFS= read -r p; do [ -n "$p" ] && PAGE_PATHS+=("$p"); done < <(
+  curl -s --max-time 20 "${SOURCE_BASE}/nav.plain.html" \
+    | grep -oE 'href="/[^"#?]*"' | sed -E 's/^href="//; s/"$//' | sort -u)
+if [ "${#PAGE_PATHS[@]}" -eq 0 ]; then
+  while IFS= read -r p; do [ -n "$p" ] && PAGE_PATHS+=("$p"); done < <(
+    curl -s --max-time 20 "${SOURCE_BASE}/sitemap.json" \
+      | jq -r '[.. | objects | .path? // empty | strings] | .[]' 2>/dev/null \
+      | grep -vE '^/(drafts|fragments|of1|templates)(/|$)')
+fi
+printf '%s\n' "${PAGE_PATHS[@]}" | head -20
+# Fetch the home page + up to 4 others (pick the most editorial ones from the list):
+PICK=(/)
+for p in "${PAGE_PATHS[@]}"; do [ "$p" = "/" ] || PICK+=("$p"); [ "${#PICK[@]}" -ge 5 ] && break; done
+for page in "${PICK[@]}"; do
+  if [ "$page" = "/" ]; then plain="${SOURCE_BASE}/index.plain.html"; else plain="${SOURCE_BASE}${page%/}.plain.html"; fi
+  echo "=== $page"; curl -s --max-time 20 "$plain" | head -c 20000; echo
+done
+```
+
+(For a non-EDS live site in pipeline mode, `.plain.html` won't exist — fetch the page itself with WebFetch.)
 
 For each page, analyze:
 - TONE: Formal/informal, technical/accessible, playful/serious?
@@ -144,9 +191,9 @@ node "$DA_WRITE" doc --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
 
 It prints `✓ of1/brand-voice previewed` on success. On `FAIL <step> <path> HTTP <status>` (non-zero exit) **stop** and report the failure — do not mark the skill done.
 
-## Completion (pipeline mode)
+## Completion (both modes)
 
-This skill runs alongside `of1-extract-content`. Both must complete before the content track is treated as done.
+Write the status file in **both** standalone and pipeline mode — `of1-publish`'s demo hub reads every `of1-*-status.json` for its "What worked" panel. In pipeline mode this skill runs alongside `of1-extract-content`. Both must complete before the content track is treated as done.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-brand-voice-status.json" <<EOF

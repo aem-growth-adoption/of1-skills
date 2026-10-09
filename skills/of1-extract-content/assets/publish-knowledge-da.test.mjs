@@ -21,6 +21,13 @@ test('resolveSlug prefers slug, else derives from url last segment', () => {
   assert.equal(resolveSlug({ url: 'https://site.com/accounting/multi-entity' }), 'multi-entity');
 });
 
+test('resolveSlug maps the site root URL to "home", not "page"', () => {
+  assert.equal(resolveSlug({ url: 'https://site.com/' }), 'home');
+  assert.equal(resolveSlug({ url: 'https://site.com' }), 'home');
+  assert.equal(resolveSlug({ url: 'https://main--r--o.aem.page/?x=1#top' }), 'home');
+  assert.equal(resolveSlug({ url: '/' }), 'home');
+});
+
 test('renderKnowledgeDoc emits bare h1 + blocks, escaped, no block tables', () => {
   const html = renderKnowledgeDoc({
     title: 'Returns & Refunds',

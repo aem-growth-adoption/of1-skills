@@ -175,6 +175,8 @@ if [ "${#P[@]}" -gt 0 ]; then
   # Diff + commit scoped to these paths, so unrelated staged changes are never swept in.
   if ! git diff --cached --quiet -- "${P[@]}"; then
     git commit -m "chore: reset OF1 artefacts for ${BRANCH}" -- "${P[@]}"
+    # Rebase onto the remote first so a concurrent push never rejects ours.
+    git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
     git push origin "$BRANCH"
     echo "✓ OF1 artefacts (${P[*]}) removed + pushed"
   fi
@@ -234,12 +236,13 @@ later steps write. Only `of1/config/config.json` (plus
 
 ```bash
 # (cwd is $REPO_DIR — set in the Part 2 preamble.)
-ALLOWED="of1/config/config.json"
-[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED="$ALLOWED of1/config/cta-template.json"
+ALLOWED=(of1/config/config.json)
+[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED+=(of1/config/cta-template.json)
 LEGACY=()
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  case " $ALLOWED " in *" $f "*) ;; *) LEGACY+=("$f") ;; esac
+  ok=0; for a in "${ALLOWED[@]}"; do [ "$f" = "$a" ] && ok=1; done
+  [ "$ok" = 1 ] || LEGACY+=("$f")
 done < <(git ls-files of1/config)
 if [ "${#LEGACY[@]}" -gt 0 ]; then
   echo "Legacy OF1 config files tracked in git (would shadow DA config / no longer read):"
@@ -272,6 +275,8 @@ if [ "${#LEGACY[@]}" -gt 0 ]; then
   for f in "${LEGACY[@]}"; do git cat-file -e "HEAD:$f" 2>/dev/null && C+=("$f"); done
   if [ "${#C[@]}" -gt 0 ]; then
     git commit -m "chore: remove legacy OF1 config JSON" -- "${C[@]}"
+    # Rebase onto the remote first so a concurrent push never rejects ours.
+    git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
     git push origin "$BRANCH"
   fi
   echo "✓ Removed legacy OF1 config JSON: ${LEGACY[*]}"
@@ -351,6 +356,8 @@ if [ -f .hlxignore ] && grep -Eq '^of1/?$|^of1/config' .hlxignore; then
   # An uncommitted edit never reaches EDS — commit (scoped to .hlxignore) + push.
   git add -- .hlxignore
   git commit -m "chore: allow of1/config on the code bus" -- .hlxignore
+  # Rebase onto the remote first so a concurrent push never rejects ours.
+  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
   git push origin "$BRANCH"
   echo "✓ Removed the of1/config exclusion from .hlxignore (committed + pushed)"
 else
@@ -366,7 +373,9 @@ the CDN.
 `config.json` is the only committed OF1 config file this skill writes. It carries just
 the target `domain` (which can differ from the EDS host). Nothing else goes in it —
 content ingestion uses the worker default `/of1/knowledge/**`; add `contentIngestion`
-here only to override.
+here only to override. (`of1-publish` step 2b may later merge `templates.names` /
+`contentIngestion.indexPath` into it for sites whose index is managed by the AEM
+config service — see step 8.)
 
 ```bash
 mkdir -p of1/config
@@ -377,29 +386,49 @@ git add -- of1/config/config.json
 # Commit ONLY config.json, even if something else happens to be staged.
 if ! git diff --cached --quiet -- of1/config/config.json; then
   git commit -m "feat: OF1 config.json for ${DOMAIN}" -- of1/config/config.json
+  # Rebase onto the remote first so a concurrent push never rejects ours.
+  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
   git push origin "$BRANCH"
   echo "✓ of1/config/config.json committed + pushed"
 fi
 ```
 
-### 8. Ensure a query-index covers `/of1/knowledge/**` (author `helix-query.yaml`)
+### 8. Ensure a query-index covers `/of1/knowledge/**` and `/templates/**` (author `helix-query.yaml`)
 
-The worker discovers knowledge pages from the **site-root `query-index.json`**,
-which EDS builds from `helix-query.yaml`. OF1 demo repos ship WITHOUT one — the
-root `query-index.json` 404s — so the published `/of1/knowledge/**` pages are
-undiscoverable and ingestion indexes nothing. Author an index that targets the
-root `/query-index.json` and includes `/of1/knowledge/**` — **create it only if
-absent**. If the site already has a `helix-query.yaml`, it is the customer's:
-warn only — never edit a customer's helix-query.yaml.
+The worker discovers knowledge pages **and** DA template docs from the
+**site-root `query-index.json`**, which EDS builds from `helix-query.yaml`. OF1
+demo repos ship WITHOUT one — the root `query-index.json` 404s — so the
+published `/of1/knowledge/**` pages and `/templates/**` docs are undiscoverable:
+ingestion indexes nothing and the tenant syncs zero templates. Author an index
+that targets the root `/query-index.json` and includes **both**
+`/of1/knowledge/**` and `/templates/**` — **create it only if absent**. If the
+site already has a `helix-query.yaml`, it is the customer's: warn only — never
+edit a customer's helix-query.yaml.
+
+**Sites whose index lives in the AEM configuration service** (not
+`helix-query.yaml`): some sites configure their query index in the AEM config
+service, where a repo `helix-query.yaml` is **not honoured** — this is often
+stated in the site's own `AGENTS.md`/README, and the root `/query-index.json`
+typically 404s or doesn't list `/of1/knowledge/` / `/templates/` paths even
+though the site has an index (e.g. `/sitemap.json`). **Do not create a
+`helix-query.yaml` for such a site** (it would be dead weight in the customer's
+repo). Skip this step; `of1-publish` step 2b detects the gap and points the
+worker at the right sources via `config.json` overrides
+(`templates.names`, `contentIngestion.indexPath`).
 
 ```bash
-if [ ! -f helix-query.yaml ]; then
+# Set SKIP_HELIX_QUERY=1 when the site's index is managed by the AEM config
+# service (see above) — of1-publish step 2b handles those sites.
+if [ "${SKIP_HELIX_QUERY:-0}" = "1" ]; then
+  echo "↷ index managed by the AEM config service — no helix-query.yaml; of1-publish step 2b sets config.json overrides"
+elif [ ! -f helix-query.yaml ]; then
   cat > helix-query.yaml <<'YAML'
 version: 1
 indices:
   of1-knowledge:
     include:
       - '/of1/knowledge/**'
+      - '/templates/**'
     target: /query-index.json
     properties:
       title:
@@ -407,15 +436,21 @@ indices:
         value: attribute(el, "content")
 YAML
   git add -- helix-query.yaml
-  git commit -m "chore: index /of1/knowledge into query-index for content-RAG" -- helix-query.yaml && git push origin "$BRANCH"
-  echo "✓ created helix-query.yaml (indexes /of1/knowledge/** → /query-index.json)"
-elif ! grep -q "of1/knowledge" helix-query.yaml; then
-  # Warn only — never edit a customer's helix-query.yaml.
-  echo "⚠ helix-query.yaml exists but doesn't mention /of1/knowledge — left untouched." >&2
-  echo "  Ask the site owner to include /of1/knowledge/** in an index targeting /query-index.json;" >&2
-  echo "  until then of1-publish's content.indexed > 0 check will fail." >&2
+  git commit -m "chore: index /of1/knowledge and /templates into query-index for OF1" -- helix-query.yaml
+  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
+  git push origin "$BRANCH"
+  echo "✓ created helix-query.yaml (indexes /of1/knowledge/** + /templates/** → /query-index.json)"
 else
-  echo "✓ helix-query.yaml already covers /of1/knowledge"
+  # Warn only — never edit a customer's helix-query.yaml.
+  # Match a quoted include path ('/templates/… or "/of1/knowledge/…), not any substring.
+  for want in /of1/knowledge/ /templates/; do
+    grep -qE "[\"']${want}" helix-query.yaml || {
+      echo "⚠ helix-query.yaml exists but doesn't include ${want}** — left untouched." >&2
+      echo "  Ask the site owner to include ${want}** in an index targeting /query-index.json;" >&2
+      echo "  of1-publish step 2b will try config.json overrides, otherwise its checks 2/3 will fail." >&2
+    }
+  done
+  echo "✓ helix-query.yaml present (customer-owned, not edited)"
 fi
 ```
 
@@ -423,7 +458,13 @@ These are two different layers, not a duplicated scope: `helix-query.yaml`
 controls what EDS puts *into* `query-index.json` (index membership, a build
 concern), while the worker's content-ingestion filter (default `/of1/knowledge/**`,
 overridable via `contentIngestion` in `config.json`, Step 7) decides what gets
-embedded. The worker needs both. After the knowledge
+embedded. The worker needs both. `/templates/**` is in the same index because the
+worker lists DA template docs from `query-index.json` too (unless `config.json`
+sets `templates.names`). **But a doc only appears in an EDS index once it is
+*published* (live)** — `of1-build-templates` only *previews* template docs, so
+`/templates/**` is usually absent from the index and `of1-publish` step 2b ends
+up setting `templates.names` from the DA listing; that is the normal path, not
+an error. After the knowledge
 pages are published (`of1-extract-content` Step 8), EDS rebuilds
 `/query-index.json` to include them; `of1-publish`'s `content.indexed > 0` gate
 is the coverage proof.
@@ -467,7 +508,7 @@ Optional (for humans): `repoUrl`, `previewUrl`, `daSource`.
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_DEMO_REPO` | **required** — absolute path to a local clone of an EDS repo (any org/repo — validated structurally, not by identity) |
+| `OF1_DEMO_REPO` | **required** — absolute path to the local EDS site repo (any org/repo — validated structurally, not by identity) |
 | `OF1_STATE_DIR` | shared IPC + state dir. SLICC: `/shared/of1-demo-orchestrator`. CC: `$PWD/.of1/state` (default). |
 | `DOMAIN` | the target domain for this demo (e.g. `frescopa.coffee`) — recorded in `repo-config.json` |
 | `ADOBE_IMS_TOKEN` | raw token value (preferred — highest priority) |

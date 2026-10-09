@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderConfigLinks, renderStatusPanel, buildHub } from './fill-demo-hub.mjs';
+import { renderConfigLinks, renderStatusPanel, buildHub, formatSyncError } from './fill-demo-hub.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./fill-demo-hub.mjs', import.meta.url));
 const TEMPLATE = fs.readFileSync(new URL('./demo-hub.html', import.meta.url), 'utf8');
@@ -38,6 +38,97 @@ test('renderStatusPanel shows skill status, sync errors, indexed count and faili
   for (const s of ['of1-extract-content', 'failed', 'empty document', 'indexed: 0', 'hasContent']) {
     assert.ok(html.includes(s), `missing ${s}`);
   }
+});
+
+test('renderStatusPanel renders worker error shapes {content,status} / {content,error} / {file,status}', () => {
+  const html = renderStatusPanel({
+    sync: {
+      ok: true,
+      synced: ['config'],
+      errors: [
+        { content: '/of1/knowledge/faq', status: 404 },
+        { content: '/of1/knowledge/about', error: 'empty body' },
+        { file: 'templates', status: 500 },
+      ],
+      content: { indexed: 3 },
+    },
+  });
+  assert.ok(html.includes('/of1/knowledge/faq: HTTP 404'), html);
+  assert.ok(html.includes('/of1/knowledge/about: empty body'), html);
+  assert.ok(html.includes('templates: HTTP 500'), html);
+  assert.ok(!html.includes('✗ ?'), 'unlabelled error row');
+  assert.ok(!html.includes('{&quot;'), 'raw JSON dumped');
+});
+
+test('formatSyncError renders templateErrors, named errors and content truncation readably', () => {
+  assert.deepEqual(
+    formatSyncError({ file: 'templates', templateErrors: [{ template: 'rec-a', error: 'no section-metadata' }, { template: 'cmp', error: 'empty' }] }),
+    { label: 'templates', msg: '2 template error(s): rec-a: no section-metadata; cmp: empty' },
+  );
+  assert.deepEqual(formatSyncError({ file: 'templates', name: 'rec-a', error: 'bad slot' }), { label: 'templates (rec-a)', msg: 'bad slot' });
+  assert.deepEqual(formatSyncError({ template: 'rec-a', error: 'boom' }), { label: 'template rec-a', msg: 'boom' });
+  assert.deepEqual(
+    formatSyncError({ content: 'truncated', total: 80, indexed: 50 }),
+    { label: 'content', msg: 'truncated — indexed 50 of 80 page(s)' },
+  );
+  const html = renderStatusPanel({ sync: { ok: true, synced: [], errors: [{ content: 'truncated', total: 80, indexed: 50 }] } });
+  assert.ok(html.includes('content: truncated — indexed 50 of 80 page(s)'), html);
+  assert.ok(!html.includes('{&quot;'));
+});
+
+test('formatSyncError renders warnings, non-string names and vectors purge errors', () => {
+  const w = formatSyncError({ file: 'templates', warning: 'more than 30 templates found — sync truncated' });
+  assert.deepEqual(w, { label: 'templates', msg: 'more than 30 templates found — sync truncated', warning: true });
+  assert.deepEqual(formatSyncError({ file: 'templates', name: { id: 1 }, error: 'x' }), { label: 'templates ({"id":1})', msg: 'x' });
+  assert.deepEqual(formatSyncError({ file: 'templates', name: null, error: 'x' }), { label: 'templates', msg: 'x' });
+  assert.deepEqual(formatSyncError({ vectors: 'purge', error: 'timeout' }), { label: 'vectors purge', msg: 'timeout' });
+  const html = renderStatusPanel({ sync: { ok: true, synced: [], errors: [{ file: 'templates', warning: 'more than 30 templates found' }] } });
+  assert.ok(html.includes('⚠ templates: more than 30 templates found'), html);
+  assert.ok(!html.includes('✗ templates'));
+});
+
+test('renderStatusPanel renders an in-progress status as "in progress", neutral colour', () => {
+  for (const st of ['running', 'in-progress', 'in_progress']) {
+    const html = renderStatusPanel({ statuses: [{ skill: 'of1-publish', status: st, summary: 'Publishing — checks pending' }] });
+    assert.ok(html.includes('>in progress<'), html);
+    assert.ok(html.includes('color:var(--dim);">in progress'), html);
+    assert.ok(!html.includes('var(--orange);">in progress'));
+  }
+});
+
+test('renderStatusPanel shows the phase on repeated skill rows', () => {
+  const html = renderStatusPanel({
+    statuses: [
+      { skill: 'of1-build-templates', phase: 'base', status: 'done', summary: 'plan' },
+      { skill: 'of1-build-templates', phase: 'intent-budget', status: 'done', summary: 'b' },
+      { skill: 'of1-publish', status: 'done', summary: 'p' },
+    ],
+  });
+  assert.ok(html.includes('of1-build-templates · base'));
+  assert.ok(html.includes('of1-build-templates · intent-budget'));
+  assert.ok(html.includes('>of1-publish<'));
+});
+
+test('buildHub carries the status-file phase into the panel', () => {
+  const stateDir = tmpdir();
+  const repoDir = tmpdir();
+  fs.writeFileSync(path.join(stateDir, 'of1-build-templates-base-status.json'), JSON.stringify({ skill: 'of1-build-templates', phase: 'base', status: 'done', summary: 's' }));
+  const html = buildHub({ repoConfig: { owner: 'o', repo: 'r', branch: 'b' }, domain: 'd', stateDir, repoDir, template: TEMPLATE });
+  assert.ok(html.includes('of1-build-templates · base'));
+});
+
+test('CLI does not warn about missing discovery output when there are no prototypes', () => {
+  const stateDir = tmpdir();
+  const repoDir = tmpdir();
+  fs.writeFileSync(path.join(stateDir, 'repo-config.json'), JSON.stringify({ owner: 'o', repo: 'r', branch: 'b' }));
+  let r = spawnSync(process.execPath, [SCRIPT, repoDir, 'example.com'], { env: { ...process.env, OF1_STATE_DIR: stateDir }, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /of1-discovery-output\.md/);
+  // With a prototype (full pipeline) the missing discovery output is worth a warning.
+  fs.mkdirSync(path.join(repoDir, 'deliverables'), { recursive: true });
+  fs.writeFileSync(path.join(repoDir, 'deliverables', 'prototype-home.html'), '<html></html>');
+  r = spawnSync(process.execPath, [SCRIPT, repoDir, 'example.com'], { env: { ...process.env, OF1_STATE_DIR: stateDir }, encoding: 'utf8' });
+  assert.match(r.stderr, /of1-discovery-output\.md/);
 });
 
 test('renderStatusPanel escapes HTML and tolerates missing inputs', () => {
