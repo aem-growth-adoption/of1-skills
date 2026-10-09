@@ -243,6 +243,8 @@ Common failures at this gate:
 cd "$OF1_DEMO_REPO"
 git add blocks/of1/
 git commit -m "feat: OF1 page + brand-aligned block styling for ${DOMAIN}"
+# Rebase onto the remote first so a concurrent push never rejects ours.
+git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
 git push origin "$BRANCH"
 ```
 

@@ -132,6 +132,8 @@ This reads `stardust/current/DESIGN.json` + screenshots + logo and writes `deliv
 cd "$OF1_DEMO_REPO"
 git add PRODUCT.md stardust/ deliverables/
 git commit -m "feat: extraction - design tokens and brand identity for ${DOMAIN}"
+# Rebase onto the remote first so a concurrent push never rejects ours.
+git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
 git push origin "$BRANCH"
 ```
 

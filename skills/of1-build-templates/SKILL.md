@@ -225,6 +225,8 @@ skill writes no engine/template config file.
      ```bash
      git add blocks/<name>/
      git commit -m "feat: add general-purpose <name> block for OF1 templates"
+     # Rebase onto the remote first so a concurrent push never rejects ours.
+     git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
      git push origin "$BRANCH"
      # Wait for code sync — poll the block JS on the code bus until 200:
      for i in $(seq 1 30); do

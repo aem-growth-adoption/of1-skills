@@ -226,6 +226,8 @@ if [ "$(jq -S . <<<"$CFG_NEW")" != "$(jq -S . "$CFG")" ]; then
   jq . <<<"$CFG_NEW" > "$CFG"
   git add -- "$CFG"
   git commit -m "feat: OF1 index overrides for ${DOMAIN}" -- "$CFG"
+  # Rebase onto the remote first so a concurrent push never rejects ours.
+  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
   git push origin "$BRANCH"
   echo "✓ $CFG updated + pushed"
 else
@@ -246,6 +248,8 @@ for f in "${ALLOWED[@]}"; do [ -f "$f" ] && PUSH+=("$f"); done
 git add -- "${PUSH[@]}"
 if ! git diff --cached --quiet -- "${PUSH[@]}"; then
   git commit -m "feat: OF1 config for ${DOMAIN}" -- "${PUSH[@]}"
+  # Rebase onto the remote first so a concurrent push never rejects ours.
+  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
   git push origin "$BRANCH"
 fi
 ```
@@ -321,6 +325,8 @@ git add -- deliverables/index.html
 # and an unguarded `git commit` would exit 1.
 if ! git diff --cached --quiet -- deliverables/index.html; then
   git commit -m "feat: OF1 demo hub for ${DOMAIN}" -- deliverables/index.html
+  # Rebase onto the remote first so a concurrent push never rejects ours.
+  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
   git push origin "$BRANCH"
 fi
 ```

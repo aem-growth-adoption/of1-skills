@@ -175,6 +175,8 @@ if [ "${#P[@]}" -gt 0 ]; then
   # Diff + commit scoped to these paths, so unrelated staged changes are never swept in.
   if ! git diff --cached --quiet -- "${P[@]}"; then
     git commit -m "chore: reset OF1 artefacts for ${BRANCH}" -- "${P[@]}"
+    # Rebase onto the remote first so a concurrent push never rejects ours.
+    git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
     git push origin "$BRANCH"
     echo "✓ OF1 artefacts (${P[*]}) removed + pushed"
   fi
@@ -273,6 +275,8 @@ if [ "${#LEGACY[@]}" -gt 0 ]; then
   for f in "${LEGACY[@]}"; do git cat-file -e "HEAD:$f" 2>/dev/null && C+=("$f"); done
   if [ "${#C[@]}" -gt 0 ]; then
     git commit -m "chore: remove legacy OF1 config JSON" -- "${C[@]}"
+    # Rebase onto the remote first so a concurrent push never rejects ours.
+    git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
     git push origin "$BRANCH"
   fi
   echo "✓ Removed legacy OF1 config JSON: ${LEGACY[*]}"
@@ -352,6 +356,8 @@ if [ -f .hlxignore ] && grep -Eq '^of1/?$|^of1/config' .hlxignore; then
   # An uncommitted edit never reaches EDS — commit (scoped to .hlxignore) + push.
   git add -- .hlxignore
   git commit -m "chore: allow of1/config on the code bus" -- .hlxignore
+  # Rebase onto the remote first so a concurrent push never rejects ours.
+  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
   git push origin "$BRANCH"
   echo "✓ Removed the of1/config exclusion from .hlxignore (committed + pushed)"
 else
@@ -380,6 +386,8 @@ git add -- of1/config/config.json
 # Commit ONLY config.json, even if something else happens to be staged.
 if ! git diff --cached --quiet -- of1/config/config.json; then
   git commit -m "feat: OF1 config.json for ${DOMAIN}" -- of1/config/config.json
+  # Rebase onto the remote first so a concurrent push never rejects ours.
+  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
   git push origin "$BRANCH"
   echo "✓ of1/config/config.json committed + pushed"
 fi
@@ -428,7 +436,9 @@ indices:
         value: attribute(el, "content")
 YAML
   git add -- helix-query.yaml
-  git commit -m "chore: index /of1/knowledge and /templates into query-index for OF1" -- helix-query.yaml && git push origin "$BRANCH"
+  git commit -m "chore: index /of1/knowledge and /templates into query-index for OF1" -- helix-query.yaml
+  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
+  git push origin "$BRANCH"
   echo "✓ created helix-query.yaml (indexes /of1/knowledge/** + /templates/** → /query-index.json)"
 else
   # Warn only — never edit a customer's helix-query.yaml.
