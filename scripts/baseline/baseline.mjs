@@ -110,7 +110,7 @@ export function shapeOfGenerate(ndjson) {
     if (ev.type === 'section') sections += 1;
     if (ev.type === 'error') errors += 1;
   }
-  return { eventTypes: sorted(types), sections, errors };
+  return { eventTypes: sorted(types), hasSections: sections >= 2, errors };
 }
 
 function flatten(v, prefix, out) {
@@ -125,10 +125,6 @@ function flatten(v, prefix, out) {
 }
 
 export const OWNED_PATHSPECS = ['blocks/of1', 'of1', 'deliverables', 'helix-query.yaml', '.hlxignore'];
-
-export function filterOwnedPaths(files) {
-  return files.filter((f) => OWNED_PATHSPECS.some((p) => f === p || f.startsWith(`${p}/`)));
-}
 
 export function diffShapes(a, b) {
   const fa = flatten(a, '', {});
@@ -178,7 +174,7 @@ export async function captureShape({ base, worker, tenantId, gitFiles, fetchImpl
     personas: shapeOfSheet(await getJson(`${base}/of1/config/personas.json`)),
     suggestions: shapeOfSheet(await getJson(`${base}/of1/config/suggestions.json`)),
     templates,
-    knowledgePages: paths.filter((p) => p.startsWith('/of1/knowledge/')).length,
+    hasKnowledgePages: paths.some((p) => p.startsWith('/of1/knowledge/')),
     status,
     generate,
     gitFiles: sorted(gitFiles || []),

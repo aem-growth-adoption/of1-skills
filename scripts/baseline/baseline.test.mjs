@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   shapeOfConfig, shapeOfSheet, shapeOfTemplate, shapeOfOf1Page, shapeOfBrandVoice,
-  shapeOfStatus, shapeOfGenerate, diffShapes, captureShape, DEFAULT_WORKER, parseArgs, OWNED_PATHSPECS, filterOwnedPaths,
+  shapeOfStatus, shapeOfGenerate, diffShapes, captureShape, DEFAULT_WORKER, parseArgs, OWNED_PATHSPECS,
 } from './baseline.mjs';
 
 test('shapeOfConfig', () => {
@@ -55,7 +55,7 @@ test('shapeOfStatus', () => {
 
 test('shapeOfGenerate', () => {
   const nd = ['{"type":"section"}', 'garbage', '{"type":"section"}', '{"type":"suggestions"}', '{"type":"done"}'].join('\n');
-  assert.deepEqual(shapeOfGenerate(nd), { eventTypes: ['done', 'section', 'suggestions'], sections: 2, errors: 0 });
+  assert.deepEqual(shapeOfGenerate(nd), { eventTypes: ['done', 'section', 'suggestions'], hasSections: true, errors: 0 });
   assert.equal(shapeOfGenerate('{"type":"error"}\n').errors, 1);
 });
 
@@ -80,9 +80,9 @@ test('captureShape tolerates 404s', async () => {
   assert.equal(out.brandVoice, null);
   assert.equal(out.personas, null);
   assert.deepEqual(out.gitFiles, ['a', 'b']);
-  assert.equal(out.knowledgePages, 1);
+  assert.equal(out.hasKnowledgePages, true);
   assert.deepEqual(out.templates.home.blocks, ['hero']);
-  assert.equal(out.generate.sections, 1);
+  assert.equal(out.generate.hasSections, false);
   assert.equal(out.status.ready, true);
 });
 
@@ -117,10 +117,19 @@ test('parseArgs rejects flags without a value', () => {
   assert.deepEqual(parseArgs(['capture', '--tenant', 't']), { _: ['capture'], tenant: 't' });
 });
 
-test('filterOwnedPaths keeps only OF1-owned paths', () => {
-  const files = ['blocks/of1/of1.js', 'of1/config/config.json', 'deliverables/index.html', 'helix-query.yaml', '.hlxignore',
-    'scripts/aem.js', 'styles/styles.css', 'stardust/current/DESIGN.json', 'blocks/of1x/a.js', 'of1.txt'];
-  assert.deepEqual(filterOwnedPaths(files),
-    ['blocks/of1/of1.js', 'of1/config/config.json', 'deliverables/index.html', 'helix-query.yaml', '.hlxignore']);
+test('OWNED_PATHSPECS is pinned', () => {
   assert.deepEqual(OWNED_PATHSPECS, ['blocks/of1', 'of1', 'deliverables', 'helix-query.yaml', '.hlxignore']);
+});
+
+test('shapeOfGenerate hasSections needs >=2 section events', () => {
+  const s = '{"type":"section"}\n';
+  assert.equal(shapeOfGenerate(s).hasSections, false);
+  assert.equal(shapeOfGenerate(s + s).hasSections, true);
+  assert.equal(shapeOfGenerate('').hasSections, false);
+});
+
+test('captureShape hasKnowledgePages is false with no knowledge paths', async () => {
+  const res = (body) => ({ ok: true, json: async () => body, text: async () => '' });
+  const out = await captureShape({ base: 'https://t', tenantId: 't', gitFiles: [], fetchImpl: async () => res({ data: [{ path: '/x' }] }) });
+  assert.equal(out.hasKnowledgePages, false);
 });

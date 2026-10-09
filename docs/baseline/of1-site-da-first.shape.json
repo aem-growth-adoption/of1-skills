@@ -147,7 +147,7 @@
       "maxItems": 6
     }
   },
-  "knowledgePages": 8,
+  "hasKnowledgePages": true,
   "status": {
     "ready": true,
     "flags": {
@@ -167,7 +167,7 @@
       "section",
       "suggestions"
     ],
-    "sections": 4,
+    "hasSections": true,
     "errors": 0
   },
   "gitFiles": [
