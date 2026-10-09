@@ -58,14 +58,13 @@ From the 2026-10-09 audit of `of1-skills` main (`f11d738`) and `of1-demo-skills`
 
 ### Inputs (replace `OF1_PIPELINE_MODE`)
 
-Passed as arguments to `/of1-integration`; the driver exports them once as env vars so
+Three arguments to `/of1-integration`; the driver exports them once as env vars so
 no other skill parses arguments.
 
 | Argument | Env var | Default | Effect |
 |---|---|---|---|
 | `content-source=<domain>` | `OF1_CONTENT_SOURCE` | unset | `of1-extract-brand-voice` / `of1-extract-content` crawl `https://<domain>`. Unset: crawl the site's own preview URL. |
 | `non-interactive` | `OF1_NON_INTERACTIVE` | off | No skill asks questions: overwrite `/of1/brand-voice`, remove legacy `of1/config/*.json`, skip confirmation steps. |
-| `restart` | `OF1_RESTART` | off | Run the OF1 reset (today's check-dependencies step 3) before integrating. Replaces the Continue/Restart prompt; in interactive mode without `restart` the skill still asks. |
 | `cta-template` | `OF1_CTA_TEMPLATE` | off | Run `of1-build-cta-template`, commit `of1/config/cta-template.json`, enable publish check 7. |
 
 Always required, not new: `OF1_DEMO_REPO` (absolute path to the EDS repo, derived from
@@ -100,7 +99,9 @@ Each stage is its own PR, verified against the stage 1 baseline.
 1. **Baseline.** Run `/of1-integration` on a throwaway test site; store the DA docs,
    git file list, `/status` JSON and a `/api/generate` sample under `docs/baseline/`
    (text only). Add a script that diffs a new run against it.
-2. **Hygiene.** Delete dead `download-images.mjs` product logic; remove stale stage
+2. **Hygiene.** Remove the Restart feature (check-dependencies step 3: DA/git wipe, the
+   Continue/Restart prompt and in-progress detection); every run is idempotent and only
+   overwrites OF1-owned paths. Delete dead `download-images.mjs` product logic; remove stale stage
    wording and the `step-3-output.md` reference; fix or remove the `of1-demo/` path;
    correct the `cta-template` consumer docs. Remove local worktrees and merged
    branches (list approved first). Add `Status:` headers to old specs/plans. Add
@@ -132,8 +133,8 @@ Each stage is its own PR, verified against the stage 1 baseline.
   after every stage.
 - Stage 5 is a breaking change for `of1-demo-skills`. Mitigation: ship both PRs together
   and test the demo flow once before merge.
-- Restart deletes DA `/of1/**` and `/templates/**` for every branch of the repo.
-  Behaviour unchanged; it becomes an explicit `restart` input and the warning stays.
+- Removing Restart drops the only way to wipe OF1 DA content from this plugin. A
+  full wipe of throwaway demo repos stays the job of `of1-demo-skills`.
 - Branch and worktree removal is destructive; the list is shown and approved first.
 
 ## Open questions
