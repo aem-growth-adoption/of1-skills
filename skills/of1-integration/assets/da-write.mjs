@@ -11,7 +11,8 @@
 // sheet → POST multipart admin.da.live/source/O/R/<path>.json, then
 //         POST admin.hlx.page/preview/O/R/B/<path>.json
 //
-// Non-2xx on upload or preview → stderr `FAIL <step> <path> HTTP <status>`, exit 1.
+// Non-2xx on upload or preview → stderr `FAIL <step> <path> HTTP <status>`, exit 1
+// (upload 401/403 adds a "DA token expired or invalid" hint).
 // Success → stdout `✓ <path> previewed`.
 //
 // Token resolution order: $DA_TOKEN, $ADOBE_IMS_TOKEN, $OF1_TOKEN_FILE,
@@ -91,10 +92,16 @@ function normalizePath(p) {
   return String(p).replace(/^\/+/, '').replace(/\.(html|json)$/, '');
 }
 
+export const TOKEN_HINT = 'DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE';
+
 async function step(name, label, fetchImpl, url, opts) {
   try {
     const resp = await fetchImpl(url, opts);
-    return resp.ok ? null : `FAIL ${name} ${label} HTTP ${resp.status}`;
+    if (resp.ok) return null;
+    // A DA (admin.da.live) 401/403 means the token itself is bad; a preview 403 is
+    // a separate AEM-rights grant, so only the upload step gets the token hint.
+    const hint = name === 'upload' && (resp.status === 401 || resp.status === 403) ? ` — ${TOKEN_HINT}` : '';
+    return `FAIL ${name} ${label} HTTP ${resp.status}${hint}`;
   } catch (e) {
     return `FAIL ${name} ${label} ERROR ${e.message}`;
   }

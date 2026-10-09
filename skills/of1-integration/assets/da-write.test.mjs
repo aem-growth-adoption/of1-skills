@@ -98,8 +98,16 @@ test('writeDa reports preview 403 on a sheet write', async () => {
 test('writeDa reports upload 401 and skips preview', async () => {
   const { impl, calls } = fakeFetch(() => 401);
   const res = await writeDa({ ...base, kind: 'doc', path: 'of1/brand-voice', content: 'x', fetchImpl: impl });
-  assert.deepEqual(res, { ok: false, message: 'FAIL upload of1/brand-voice.html HTTP 401' });
+  assert.equal(res.ok, false);
+  assert.match(res.message, /^FAIL upload of1\/brand-voice\.html HTTP 401 — DA token expired or invalid \(IMS tokens last ~3h\) — refresh ADOBE_IMS_TOKEN \/ OF1_TOKEN_FILE$/);
   assert.equal(calls.length, 1);
+});
+
+test('writeDa: upload 403 carries the token hint; preview 403 does not (AEM rights, not the token)', async () => {
+  const up = await writeDa({ ...base, kind: 'doc', path: 'of1/x', content: 'x', fetchImpl: fakeFetch(() => 403).impl });
+  assert.match(up.message, /HTTP 403 — DA token expired or invalid/);
+  const pv = await writeDa({ ...base, kind: 'doc', path: 'of1/x', content: 'x', fetchImpl: fakeFetch((u) => (u.includes('/preview/') ? 403 : 200)).impl });
+  assert.equal(pv.message, 'FAIL preview of1/x HTTP 403');
 });
 
 test('writeDa reports network errors as failures', async () => {
