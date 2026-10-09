@@ -3,7 +3,7 @@
 //
 // Why: EDS header/footer blocks fetch `/nav` and `/footer` fragments on every
 // page. If those documents don't exist, every page — /of1 included — renders
-// chromeless (no nav, no footer). the site (or the migration step before integration) normally provides
+// chromeless (no nav, no footer). The site (or the migration step before integration) normally provides
 // them; a bot-blocked source is caught upstream by of1-extract-design,
 // which fails loud rather than letting an unmeasurable capture flow downstream to
 // an empty <header></header> page. The of1-integration flow runs against a site

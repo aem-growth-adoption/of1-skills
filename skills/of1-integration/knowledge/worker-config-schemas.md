@@ -64,8 +64,8 @@ Example with both overrides (config-service site):
 
 ## `cta-template.json` (git, pipeline mode only)
 
-Produced only when `OF1_PIPELINE_MODE=1`. The extension / edge proxy inject it into customer pages
-via `/api/personalize` (`inject_cta` event). The gen-web worker reads it (synced as `cta-template`); personas are read by the preview extension / edge proxy, not the worker. Optional for the worker — not part of the ready gate.
+Produced only when `OF1_PIPELINE_MODE=1`. The gen-web worker reads it (synced as `cta-template`) and serves it
+to customer pages via `/api/personalize` (`inject_cta` event); personas are read by the preview extension / edge proxy, not the worker. Optional for the worker — not part of the ready gate.
 
 Mustache-style template with placeholders `{{title}}`, `{{description}}`, `{{buttonText}}`, `{{href}}`.
 

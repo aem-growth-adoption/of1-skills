@@ -445,7 +445,7 @@ function renderDiscovery(repoDir, previewBase) {
   return html || '  <span style="color:var(--dim)">No discovery report for this flow</span>';
 }
 
-// Prototypes are the standalone HTML redesign pages. the migration step that precedes
+// Prototypes are the standalone HTML redesign pages. The migration step that precedes
 // integration (if any) copies them into `deliverables/prototype-<slug>.html` and commits them;
 // EDS serves that dir. This renderer links those deployed copies directly. We read from
 // `deliverables/` (the committed, served location) rather than `stardust/prototypes/`, which may

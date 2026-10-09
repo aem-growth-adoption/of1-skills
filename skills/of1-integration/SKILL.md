@@ -32,7 +32,7 @@ Two modes, decided by `OF1_PIPELINE_MODE`:
      (`of1-extract-brand-voice`/`of1-extract-content` → `of1-build-quick-suggestions`) runs
      immediately, in parallel with the still-running Stage 2 chain.
   3. `of1-build-cta-template` runs (**pipeline mode only** — it writes the git
-     `of1/config/cta-template.json` that the extension / edge proxy inject). Standalone runs
+     `of1/config/cta-template.json` that the gen-web worker serves via `/api/personalize` `inject_cta`). Standalone runs
      never dispatch it.
 
 ## Verify dependencies + repo state (inline)
