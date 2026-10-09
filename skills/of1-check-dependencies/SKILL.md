@@ -251,7 +251,7 @@ fi
 **Do NOT add `of1/` to `.hlxignore`** — `of1/config/config.json` must be served on
 the CDN.
 
-### 7. Write `config.json` + push (skip if continuing and the file is already committed)
+### 7. Write `config.json` + push (skip if the file is already committed)
 
 `config.json` is the only committed OF1 config file this skill writes. It carries just
 the target `domain` (which can differ from the EDS host). Nothing else goes in it —
@@ -412,4 +412,4 @@ Token resolution order: `$ADOBE_IMS_TOKEN` → `$OF1_TOKEN_FILE` → `$PWD/.hlx/
 ## Install behavior
 
 - **SLICC:** the script auto-installs missing Adobe EDS skills (`stardust`, `impeccable`) via `upskill` — SLICC can activate skills mid-session. If auto-install fails, it reports the error and exits.
-- **Claude Code:** cannot activate plugins installed mid-session (`/plugin install` only picks up disk changes between turns). Missing items are reported with the exact fix command for the user to run, then restart Claude Code.
+- **Claude Code:** cannot activate plugins installed mid-session (`/plugin install` only picks up disk changes between turns). Missing items are reported with the exact fix command for the user to run, then relaunch Claude Code.
