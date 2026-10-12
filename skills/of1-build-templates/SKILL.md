@@ -20,7 +20,7 @@ At request time the worker (`da-blocks-slots` engine) selects one template by in
 | `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | DA token (`AEM_TOKEN` defaults to the same token) |
 | `OF1_TG_MODE` / `OF1_TG_INTENT` | phase / intent (see Phases) |
 
-Scripts in `$SKILL_DIR/scripts/` (run `bash "$SKILL_DIR/scripts/<name>"`) resolve repo config, the DA token (probed before any write) and source `assets/da-api.sh`. To use the DA helpers by hand in the intent phase, source it with `ORG`, `REPO`, `DA_TOKEN`, `AEM_TOKEN`, `BRANCH` exported (`ORG` = DA org = `owner` in `repo-config.json`).
+Scripts in `$SKILL_DIR/scripts/` (run `bash "$SKILL_DIR/scripts/<name>"`) resolve repo config and the DA token (probed before any write) themselves. **Every phase starts with `. "$SKILL_DIR/scripts/env.sh"`** (source it, don't run it): it loads `repo-config.json` (`OWNER`, `REPO`, `BRANCH`, `DOMAIN`), resolves `DA_TOKEN`/`AEM_TOKEN`, exports `ORG` (= `$OWNER`, the DA org), sources `assets/da-api.sh` (`da_put`…), and `cd`s into `$OF1_DEMO_REPO`. With `OF1_TG_MODE=intent` it also validates `OF1_TG_INTENT` (exit 2 otherwise) and sets `INTENT`. `write-status.sh base [n] | intent | final` writes the phase status files.
 
 ## Block Strategy — the core methodology (read before authoring anything)
 
@@ -81,23 +81,21 @@ Selected by `OF1_TG_MODE`; the driver runs `base` → `intent × 5` (parallel) �
 
 ### Phase: `base`
 
+Start with `. "$SKILL_DIR/scripts/env.sh"` (defines `${OWNER}`, `${REPO}`, `${BRANCH}`; the preview host is `https://${BRANCH}--${REPO}--${OWNER}.aem.page`).
+
 1. **Use cases → intents → block plan.** Read discovery + `knowledge-pages.json`; decide per intent the template shapes and block palette (reuse vs new). Size each template to its purpose (RULE 6) and list its ordered block sequence (lead → primary → supporting → CTA) so exploratory intents compose rich pages. Fix the **alignment intent** (usually `center`, RULE 5) and record it; where a reused block's CSS won't honor it, note the matching variant or flag that a centered new block is needed.
 2. **Inventory reusable blocks:** `export TENANT_REPO_DIR="$OF1_DEMO_REPO"; "$SKILL_DIR/assets/inventory.sh" "$TENANT_REPO_DIR"`. Read each `blocks/<name>/<name>.js` to confirm it is **positional** (reads `block.children` by index); exclude label/value-convention blocks.
 3. **Harvest known-good compositions.** For each usable block fetch the live pages' `.plain.html` (`https://{BRANCH}--{REPO}--{OWNER}.aem.page/{path}.plain.html`) and record a per-block fingerprint (row count, per-row cell count) — stronger evidence than the `.js` alone.
 4. **Adapt the count to the vocabulary.** A 16-block site supports ~5 intents × ~3 variations; a 3-block site fewer, leaning on variants + `no-static-labels`/`key-value`. Don't blindly target 15.
 5. **Author planned NEW general blocks** (skip when reuse covers everything): positional `blocks/<name>/<name>.{js,css}`, brand tokens from `styles/styles.css` + `DESIGN.json` (path via `of1-integration/knowledge/design-tokens-resolution.md`). Then commit, push, and wait until the code bus serves them **before** any template previews them:
    ```bash
-   bash "$SKILL_DIR/scripts/commit-block-code.sh" <name> [<name>...]
+   bash "$SKILL_DIR/scripts/commit-block-code.sh" <name> [<name>...]   # one commit per block; code-sync timeout only warns
    ```
-6. **Persist the block plan** (usable blocks, fingerprints, per-intent template list) to `$OF1_STATE_DIR/of1-build-templates-plan.json`, then write the progress file:
-   ```bash
-   echo '{"stage":3,"skill":"of1-build-templates","phase":"base","status":"done","summary":"Block plan ready; N new general block(s) authored + deployed."}' \
-     > "$OF1_STATE_DIR/of1-build-templates-base-status.json"
-   ```
+6. **Persist the block plan** (usable blocks, fingerprints, per-intent template list) to `$OF1_STATE_DIR/of1-build-templates-plan.json`, then write the progress file: `bash "$SKILL_DIR/scripts/write-status.sh" base <N-new-blocks>`.
 
 ### Phase: `intent`
 
-Precondition: `$OF1_TG_INTENT` ∈ {`comparison`, `recommendation`, `deep-dive`, `budget`, `discovery`} (else exit 2) and `base` has finished (`of1-build-templates-plan.json` exists, new blocks deployed). For each template variation the plan calls for:
+First `. "$SKILL_DIR/scripts/env.sh"` (validates intent, sets `${INTENT}`, `${OWNER}`, `${REPO}`, `da_put`). Precondition: `$OF1_TG_INTENT` ∈ {`comparison`, `recommendation`, `deep-dive`, `budget`, `discovery`} (else exit 2) and `base` has finished (`of1-build-templates-plan.json` exists, new blocks deployed). For each template variation the plan calls for:
 
 1. **Compose the document** from the planned blocks with realistic example content per the contract above: image-role cells where a real image should be swapped, label/value rows for spec/price tables, single-hyphen variants. Honor the plan's alignment intent (RULE 5), size to purpose (RULE 6), point any search input at `/of1` (RULE 7).
 2. **Add the `section-metadata` block**: `Template Intent = <intent>`, a short structurally-distinct `Template Description`, `Template Min Items` / `Template Max Items`. No commas in values.
@@ -106,15 +104,11 @@ Precondition: `$OF1_TG_INTENT` ∈ {`comparison`, `recommendation`, `deep-dive`,
    da_put "./<intent>-<variation>.html" "templates/<intent>-<variation>.html"
    ```
    `da_put` returns the `editUrl` (`da.live/edit#/…`) — capture it; `of1-publish` surfaces it in the demo hub.
-4. Do **not** preview or commit here. Then write one status file per intent:
-   ```bash
-   echo "{\"stage\":3,\"skill\":\"of1-build-templates\",\"phase\":\"intent-${INTENT}\",\"status\":\"done\",\"summary\":\"Composed ${INTENT} template docs to DA.\"}" \
-     > "$OF1_STATE_DIR/of1-build-templates-intent-${INTENT}-status.json"
-   ```
+4. Do **not** preview or commit here. Then write this intent's status file: `bash "$SKILL_DIR/scripts/write-status.sh" intent`.
 
 ### Phase: `assemble`
 
-Run once after all 5 intent agents complete.
+Run once after all 5 intent agents complete; first `. "$SKILL_DIR/scripts/env.sh"`.
 
 1. **Preview every composed doc (MANDATORY)** — an unpreviewed DA doc has no `.plain.html`, so the worker syncs nothing:
    ```bash
@@ -127,15 +121,7 @@ Run once after all 5 intent agents complete.
    bash "$SKILL_DIR/scripts/verify-richness.sh"
    ```
    Counts content blocks per `.plain.html` (`<div class="NAME">` section children minus `section-metadata`/`metadata`, via `assets/template-richness.mjs`). **Aborts** on an empty template (0 blocks); **warns** when an exploratory one (`Max Items ≥ 3`) has < 3; quick-answer templates (`Max Items ≤ 2`) are never warned.
-4. **Final status file** (the deliverable status the driver reports):
-   ```bash
-   EDIT_BASE="https://da.live/edit#/${OWNER}/${REPO}/templates"   # owner/repo from repo-config.json
-   cat > "$OF1_STATE_DIR/of1-build-templates-status.json" <<EOF
-   { "stage": 3, "skill": "of1-build-templates", "status": "review",
-     "deliverables": [ { "url": "${EDIT_BASE}", "label": "Edit templates in DA" } ],
-     "summary": "Authored, previewed, and verified DA block templates in /templates." }
-   EOF
-   ```
+4. **Final status file** (the deliverable status the driver reports; links to `https://da.live/edit#/${OWNER}/${REPO}/templates`): `bash "$SKILL_DIR/scripts/write-status.sh" final`.
 
 ## Deliverables & notes
 
