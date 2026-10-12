@@ -17,6 +17,7 @@ if [ "$hasO" = 1 ]; then printf 200; exit 0; fi
 case "$url" in
   */list/o/r/templates) printf '%s\\n%s' "$(cat "$d/da-list.json")" "$(cat "$d/da-code")";;
   */query-index.json) cat "$d/qi.json" 2>/dev/null || exit 22;;
+  */api/generate) cat "$d/gen.ndjson" 2>/dev/null || exit 22;;
   */sitemap.json) cat "$d/sitemap.json" 2>/dev/null || exit 22;;
   *) exit 22;;
 esac
@@ -126,6 +127,57 @@ test('checks 3: not ready names gated flag; ready passes', () => {
   hub(f, 'status.json', { ready: true, config: { hasTemplates: true, hasContent: true, hasBrandVoice: false } });
   r = f.run('checks.sh', ['3']);
   assert.equal(r.status, 0); assert.match(r.stdout, /tenant ready/);
+});
+
+const PW = `#!/bin/bash
+printf '### Result\\nstub\\n### Ran\\n'
+`;
+test('checks 4: ends with REVIEW line; all does not claim check 4 passed', () => {
+  const f = fixture();
+  writeFileSync(join(f.base, 'bin', 'playwright-cli'), PW); chmodSync(join(f.base, 'bin', 'playwright-cli'), 0o755);
+  let r = f.run('checks.sh', ['4'], { OF1_STATE_DIR: f.state });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim().split('\n').pop(), 'REVIEW check 4 output above: any HEADER/FOOTER/OF1 BLOCK MISSING, TITLE MISSING or chips: 0 is a failure');
+  hub(f, 'sync.json', { ok: true, errors: [], content: { indexed: 3 } });
+  hub(f, 'status.json', { ready: true, config: {} });
+  writeFileSync(join(f.fake, 'gen.ndjson'), '{"type":"section"}\n{"type":"section"}\n');
+  r = f.run('checks.sh', ['all']);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /checks 1-3,5-6 passed; check 4 needs your review/);
+  assert.doesNotMatch(r.stdout, /all \d checks passed/);
+  writeFileSync(join(f.fake, 'gen.ndjson'), '');
+  assert.equal(f.run('checks.sh', ['all']).status, 1);
+});
+const withHub = (f) => {
+  hub(f, 'sync.json', { ok: true, errors: [], content: { indexed: 3 } });
+  hub(f, 'status.json', { ready: true, config: {} });
+};
+test('08-publish-hub: hub committed and pushed before checks; second run no-op', () => {
+  const f = fixture(); withHub(f);
+  assert.equal(f.run('07-hub.sh').status, 0);
+  assert.ok(existsSync(join(f.repo, 'deliverables/index.html')));
+  let r = f.run('08-publish-hub.sh');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const remote = (c) => sh(`git --git-dir=${f.base}/origin.git ${c}`, f.repo).stdout.trim();
+  assert.equal(remote('ls-tree -r --name-only main | grep deliverables/index.html'), 'deliverables/index.html');
+  assert.match(remote('log -1 --format=%s main'), /OF1 demo hub for x\.com/);
+  const head = remote('rev-parse main');
+  r = f.run('08-publish-hub.sh');
+  assert.equal(r.status, 0); assert.match(r.stdout, /hub unchanged/);
+  assert.equal(remote('rev-parse main'), head);
+});
+test('finish.sh: final status, hub re-committed, prints values to copy', () => {
+  const f = fixture(); withHub(f);
+  assert.equal(f.run('08-publish-hub.sh').status, 0);
+  const r = f.run('finish.sh', ['done']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /DOMAIN: x\.com/);
+  assert.match(r.stdout, /Demo hub: https:\/\/main--r--o\.aem\.page\/deliverables\/index\.html/);
+  assert.match(r.stdout, /OF1 page: https:\/\/main--r--o\.aem\.page\/of1/);
+  assert.match(r.stdout, /DA config: https:\/\/da\.live\/#\/o\/r\/of1/);
+  assert.match(r.stdout, /Tenant: main--r--o/);
+  const remote = sh(`git --git-dir=${f.base}/origin.git log --format=%s main`, f.repo).stdout;
+  assert.ok((remote.match(/demo hub/g) || []).length >= 1);
 });
 
 test('bash -n on every script', () => {

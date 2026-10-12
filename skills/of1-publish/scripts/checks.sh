@@ -35,6 +35,8 @@ check_4() {
   pw eval "() => ('chips: ' + document.querySelectorAll('.of1 .of1-chip').length)" | pw_result
   pw close >/dev/null 2>&1 || true
   jq -r '.title // "(no of1-landing.json title — SDK default expected)"' "$OF1_STATE_DIR/of1-landing.json" 2>/dev/null
+  # Not machine-judged: the reviewer reads the output above.
+  echo "REVIEW check 4 output above: any HEADER/FOOTER/OF1 BLOCK MISSING, TITLE MISSING or chips: 0 is a failure"
 }
 
 check_5() {
@@ -101,4 +103,5 @@ for n in 1 2 3 4 5 6 7; do
   if ( "check_$n" ); then :; else FAILED="$FAILED $n"; fi
 done
 if [ -n "$FAILED" ]; then echo "✗ checks failed:$FAILED (of $N_CHECKS)" >&2; exit 1; fi
-echo "✓ all $N_CHECKS checks passed"
+if [ "${OF1_CTA_TEMPLATE:-}" = "1" ]; then RANGE="1-3,5-7"; else RANGE="1-3,5-6"; fi
+echo "✓ checks $RANGE passed; check 4 needs your review"

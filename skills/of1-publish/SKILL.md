@@ -39,18 +39,19 @@ The worker pulls each source from `https://{branch}--{repo}--{owner}.aem.page` o
 | 5 | `05-status.sh` | Tenant status, writes `hub/status.json`; gated flags `hasTemplates`/`hasContent` |
 | 6 | `06-da-listings.sh` | `hub/da-{pages,templates,knowledge}.txt` from DA |
 | 7 | `07-hub.sh` | Generates `deliverables/index.html` via `assets/fill-demo-hub.mjs` (never hand-write the hub) |
-| 8 | `finish.sh done\|failed "<summary>"` | Writes the final status, regenerates the hub, commits only if changed, rebases, pushes |
+| 8 | `08-publish-hub.sh` | Regenerates the hub, commits only if changed, rebases, pushes — **before the checks** (check 5 needs the hub live at `${PREVIEW_BASE}/deliverables/index.html`) |
+| after checks | `finish.sh done\|failed "<summary>"` | Writes the final status, regenerates the hub, commits only if changed, rebases, pushes; prints the Completion values |
 
 ## Failure flow
 
 - Steps 1, 2, 2b, 3 failing: stop and report; fix and re-run from that step.
-- Steps 4-6 may report a bad sync or status: do NOT stop. Finish 7 and 8 so the hub's "What worked" panel shows what failed, then let the checks fail.
+- Steps 4-6 may report a bad sync or status: do NOT stop. Finish 7 and 8 so the hub's "What worked" panel shows what failed and is live for check 5, then let the checks fail.
 - `checks.sh all` runs every applicable check, prints each result and exits 1 if any failed. Fix the cause (usually: preview the DA item, re-run the producing skill) and re-run from step 4.
-- On any failed check call `finish.sh failed "Check <N> failed: <reason>"`, then stop. On success call `finish.sh done` (default summary names the indexed chunk count and the check count). Run `finish.sh` after the checks so the committed hub reflects this run, never the previous one.
+- On any failed check call `finish.sh failed "Check <N> failed: <reason>"`, then stop. On success call `finish.sh done` (default summary names the indexed chunk count and the check count). `finish.sh` re-generates and re-commits the hub after the checks so the committed hub reflects the final status of this run, never the previous one.
 
 ## Pre-Launch Checklist (MANDATORY)
 
-`bash "$SKILL_DIR/scripts/checks.sh" <N|all>`. Check 7 runs only with `OF1_CTA_TEMPLATE=1` (7 checks, otherwise 6).
+`bash "$SKILL_DIR/scripts/checks.sh" <N|all>`. Check 7 runs only with `OF1_CTA_TEMPLATE=1` (7 checks, otherwise 6). Check 4 is not machine-judged: it ends with a `REVIEW check 4 output above: …` line — read the output; any `HEADER/FOOTER/OF1 BLOCK MISSING`, `TITLE MISSING` or `chips: 0` is a failure. `all` therefore ends `checks 1-3,5-6(,7) passed; check 4 needs your review` (exit codes cover only the machine-checkable checks).
 
 | # | Check | Hint when it fails |
 |---|-------|--------------------|
@@ -64,4 +65,4 @@ The worker pulls each source from `https://{branch}--{repo}--{owner}.aem.page` o
 
 ## Completion
 
-Report: `## Demo Ready: ${DOMAIN}` with the Demo Hub (`${PREVIEW_BASE}/deliverables/index.html`), the OF1 page (`${PREVIEW_BASE}/of1`), the DA config link (`https://da.live/#/${OWNER}/${REPO}/of1`), the worker tenant, and `Pre-launch checklist: N/N passed`. `playwright-cli` is driven through `lib/pw.sh` (run from the state dir, never the repo).
+`finish.sh` prints the values (`DOMAIN`, hub URL, OF1 URL, DA config link, tenant id) — they come from `$OF1_STATE_DIR/repo-config.json` (`DOMAIN`, `PREVIEW_BASE`, `TENANT_ID`, `OWNER`/`REPO`); copy them. Report: `## Demo Ready: ${DOMAIN}` with the Demo Hub (`${PREVIEW_BASE}/deliverables/index.html`), the OF1 page (`${PREVIEW_BASE}/of1`), the DA config link (`https://da.live/#/${OWNER}/${REPO}/of1`), the worker tenant, and `Pre-launch checklist: N/N passed` (count check 4 only after your review). `playwright-cli` is driven through `lib/pw.sh` (run from the state dir, never the repo).
