@@ -12,34 +12,14 @@
 //        [--token-file path] [--concurrency 8]
 //
 // Token resolution order: --token-file, $DA_TOKEN, $ADOBE_IMS_TOKEN,
-// $OF1_TOKEN_FILE, `oauth-token adobe`, ./.hlx/.da-token.json.
+// $OF1_TOKEN_FILE, ./.hlx/.da-token.json.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { exec as execCb } from 'node:child_process';
-import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
+import { resolveToken, daUpload, aemAction, briefError } from '../../../lib/da-client.mjs';
 
-const exec = promisify(execCb);
-
-function readTokenFile(p) {
-  const raw = fs.readFileSync(p, 'utf8').trim();
-  try { return JSON.parse(raw).access_token || raw; } catch { return raw; }
-}
-
-async function resolveToken(tokenFileArg) {
-  if (tokenFileArg) return readTokenFile(tokenFileArg);
-  if (process.env.DA_TOKEN) return process.env.DA_TOKEN;
-  if (process.env.ADOBE_IMS_TOKEN) return process.env.ADOBE_IMS_TOKEN;
-  if (process.env.OF1_TOKEN_FILE) return readTokenFile(process.env.OF1_TOKEN_FILE);
-  try {
-    const { stdout } = await exec('oauth-token adobe');
-    if (stdout.trim()) return stdout.trim();
-  } catch { /* SLICC shim absent */ }
-  if (fs.existsSync('.hlx/.da-token.json')) return readTokenFile('.hlx/.da-token.json');
-  throw new Error('Could not resolve DA token. Pass --token-file, set $DA_TOKEN/$ADOBE_IMS_TOKEN, or place .hlx/.da-token.json.');
-}
 
 function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -104,36 +84,18 @@ export function renderKnowledgeDoc(entry) {
 }
 
 async function uploadDoc(html, token, owner, repo, docPath) {
-  const boundary = '----DABoundary' + crypto.randomBytes(8).toString('hex');
-  const header = `--${boundary}\r\nContent-Disposition: form-data; name="data"; filename="${path.basename(docPath)}"\r\nContent-Type: text/html\r\n\r\n`;
-  const body = `${header}${html}\r\n--${boundary}--\r\n`;
-  const resp = await fetch(`https://admin.da.live/source/${owner}/${repo}/${docPath}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/form-data; boundary=${boundary}` },
-    body,
-  });
-  return resp.ok ? null : `upload HTTP ${resp.status}`;
+  return briefError(await daUpload({ owner, repo, path: docPath, content: html, contentType: 'text/html', token }), 'upload');
 }
 
 async function triggerPreview(token, owner, repo, branch, resourcePath) {
-  try {
-    const resp = await fetch(`https://admin.hlx.page/preview/${owner}/${repo}/${branch}/${resourcePath}`, {
-      method: 'POST', headers: { Authorization: `Bearer ${token}` },
-    });
-    return resp.ok ? null : `preview HTTP ${resp.status}`;
-  } catch (e) { return `preview error: ${e.message}`; }
+  return briefError(await aemAction({ action: 'preview', owner, repo, branch, path: resourcePath, token }), 'preview');
 }
 
+// Publish to LIVE — the EDS query-index indexer builds only from published
+// pages, so preview alone leaves /of1/knowledge out of query-index.json and
+// the worker's content-RAG discovers nothing.
 async function triggerLive(token, owner, repo, branch, resourcePath) {
-  // Publish to LIVE — the EDS query-index indexer builds only from published
-  // pages, so preview alone leaves /of1/knowledge out of query-index.json and
-  // the worker's content-RAG discovers nothing.
-  try {
-    const resp = await fetch(`https://admin.hlx.page/live/${owner}/${repo}/${branch}/${resourcePath}`, {
-      method: 'POST', headers: { Authorization: `Bearer ${token}` },
-    });
-    return resp.ok ? null : `live HTTP ${resp.status}`;
-  } catch (e) { return `live error: ${e.message}`; }
+  return briefError(await aemAction({ action: 'live', owner, repo, branch, path: resourcePath, token }), 'live');
 }
 
 export function parseArgs(argv) {
@@ -179,7 +141,7 @@ async function publishEntry(entry, token, args, seen, imageMap) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.owner || !args.repo || !args.branch) throw new Error('Missing required --owner / --repo / --branch');
-  const token = await resolveToken(args.tokenFile);
+  const token = await resolveToken({ tokenFile: args.tokenFile });
   const manifestPath = args.pages;
   if (!fs.existsSync(manifestPath)) throw new Error(`${manifestPath} not found — capture step must run first`);
   const entries = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));

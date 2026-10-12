@@ -1,6 +1,6 @@
 {
   "name": "of1-skills",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Integrate OF1 (generative-search) into an existing Adobe Edge Delivery Services project: verify prerequisites, extract/reuse design tokens, generate templates and CTA config, style the generative block, and publish. Runs standalone against any EDS/Stardust repo — no demo-building or site-crawling steps.",
   "skills": "./skills/",
   "entrypoints": {
@@ -23,6 +23,6 @@
     "impeccable@impeccable"
   ],
   "_notes": {
-    "entrypoints": "of1-integration is the standalone entry point — invoke it directly against an existing EDS repo. It dispatches every other skill in this plugin per its own step graph (see of1-integration/SKILL.md). of1-check-dependencies is of1-integration's own step 1; it also supports a demo-track check (of1-demo-orchestrator/of1-discovery/of1-prototype/of1-snowflake) used only when invoked from the of1-demo-skills plugin in pipeline mode."
+    "entrypoints": "of1-integration is the standalone entry point — invoke it directly against an existing EDS repo. It is a driver (run from a top-level context) that dispatches every other skill in this plugin per its own step graph (see of1-integration/SKILL.md) and writes of1-integration-result.json. of1-check-dependencies is its own step 1."
   }
 }
