@@ -10,7 +10,8 @@ The skills name no specific caller. Callers use the stable interface in
 
 ## Layout
 
-- `skills/<name>/SKILL.md`: one skill each; `skills/*/assets/*.mjs`: Node helpers + tests
+- `skills/<name>/SKILL.md`: one skill each; `skills/*/assets/*.mjs`: Node helpers + tests;
+  `skills/*/scripts/`: step bash (SKILL.md <= 200 lines, bash blocks <= 25); `lib/`: shared helpers (`env.sh`, `da-client.mjs`, ...)
 - `skills/of1-integration/knowledge/`: shared references (config schemas, DA sync)
 - `scripts/baseline/`: structural regression baseline tooling
 - `docs/baseline/`: golden shape of a known-good integration
@@ -26,7 +27,7 @@ The skills name no specific caller. Callers use the stable interface in
 ## Commands
 
 ```
-node --test skills/*/assets/*.test.mjs scripts/baseline/*.test.mjs lib/*.test.mjs skills/of1-check-dependencies/scripts/*.test.mjs
+node --test skills/*/assets/*.test.mjs scripts/baseline/*.test.mjs lib/*.test.mjs skills/*/scripts/*.test.mjs
 bash -n <script>.sh        # syntax-check every shell script you touch
 ```
 

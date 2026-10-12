@@ -6,6 +6,7 @@
 - `of1-integration` is now a driver: three arguments (`content-source=<domain>`, `non-interactive`, `cta-template`) exported as `OF1_CONTENT_SOURCE`, `OF1_NON_INTERACTIVE`, `OF1_CTA_TEMPLATE`; must run from a top-level context; always writes `$OF1_STATE_DIR/of1-integration-result.json` (`assets/write-result.mjs`).
 - `of1-check-dependencies` resolves `DOMAIN` (env, `repo-config.json`, content source, `fstab.yaml`/README, ask or fail) and requires exactly the ten plugin skills.
 - Added `docs/contract.md` (progress contract) and `lib/contract.test.mjs`.
+- SKILL.md files slimmed (each <= 200 lines, no bash block > 25 lines; enforced by `lib/size.test.mjs`); step bash lives in `skills/*/scripts/`; new `lib/env.sh`.
 - Breaking for callers: `OF1_PIPELINE_MODE` and `OF1_STAGE2_DONE_FILE` are removed. Invoke `of1-integration content-source=<domain> non-interactive cta-template` after your own site-build stage finishes and read `of1-integration-result.json`. The demo-track checks in `of1-check-dependencies` are gone.
 
 ## 0.2.0
