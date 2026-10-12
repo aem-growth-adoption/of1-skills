@@ -11,10 +11,7 @@ user-invocable: true
 **Run this exact command. Do NOT substitute with ad-hoc checks.**
 
 ```bash
-OF1_DEMO_REPO="${OF1_DEMO_REPO:-/workspace/of1-demo-orchestrator}" \
-OF1_STATE_DIR="${OF1_STATE_DIR:-/shared/of1-demo-orchestrator}" \
-ADOBE_IMS_TOKEN="${ADOBE_IMS_TOKEN:-$(oauth-token adobe 2>/dev/null || true)}" \
-bash "${SKILL_DIR:-/workspace/skills/of1-check-dependencies}/scripts/verify.sh"
+bash "${SKILL_DIR:?set SKILL_DIR to this skill's directory}/scripts/verify.sh"
 ```
 
 Do NOT:
@@ -34,7 +31,7 @@ existing** — it is not written by `verify.sh`; Part 2 writes it.
 
 ### What verify.sh checks
 
-1. The pipeline's OF1 skills are installed — the orchestrator (`of1-demo-orchestrator`) plus every step skill it dispatches (`of1-discovery`, `of1-extract-design`, `of1-prototype`, `of1-snowflake`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`, `of1-style-generative-block`, `of1-integration`). `of1-build-cta-template` ships here too, though `of1-integration` dispatches it in pipeline mode only. The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
+1. The plugin's OF1 skills are installed (`of1-integration`, `of1-extract-design`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`, `of1-style-generative-block`). `of1-build-cta-template` ships here too, though `of1-integration` dispatches it in pipeline mode only. The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
 2. The Adobe EDS skills `stardust` (incl. `stardust:extract` and `stardust:prototype`), `impeccable`, and the `snowflake` skill (`aem-edge-delivery-services` plugin) are installed — the three Stage-2 skills `of1-extract-design`/`of1-prototype`/`of1-snowflake` depend on these directly
 3. Shell tools: `node`, `python3`, `jq`, `git`, `curl`
 4. `playwright-cli` — probed for the modern `open` subcommand (warns if the binary is present but missing it)
@@ -52,8 +49,7 @@ HEAD) or `main`.
 ## Part 2 — repo state (interactive, after verify.sh succeeds)
 
 Read `setup.json` for `owner`, `repo`, `branch`, `of1Repo`, and resolve
-`DA_TOKEN` (a shell local — the canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`; see
-`of1-demo-orchestrator/knowledge/pipeline-contract.md` § "Environment variables") from whichever
+`DA_TOKEN` (a shell local — the canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`) from whichever
 token source `verify.sh` already found (do not re-derive it — `verify.sh` already validated it exists):
 
 ```bash
@@ -387,17 +383,16 @@ Every downstream step reads this file. Required fields:
 
 Optional (for humans): `repoUrl`, `previewUrl`, `daSource`.
 
-## Env vars — the orchestrator sets these before invoking
+## Env vars — optional unless noted
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_DEMO_REPO` | **required** — absolute path to the local EDS site repo (any org/repo — validated structurally, not by identity) |
-| `OF1_STATE_DIR` | shared IPC + state dir. SLICC: `/shared/of1-demo-orchestrator`. CC: `$PWD/.of1/state` (default). |
+| `OF1_DEMO_REPO` | absolute path to the local EDS site repo (any org/repo — validated structurally, not by identity). Default: `git rev-parse --show-toplevel` of `$PWD`; error if not a git repo. |
+| `OF1_STATE_DIR` | state dir for progress/state files. Default: `$PWD/.of1/state`. |
 | `DOMAIN` | the target domain for this demo (e.g. `frescopa.coffee`) — recorded in `repo-config.json` |
 | `ADOBE_IMS_TOKEN` | raw token value (preferred — highest priority) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (alternative to the env value) |
 | `STRICT` | `1` makes warnings fail. Default `0`. |
-| `OF1_RUNTIME` | `cc` or `slicc`. Optional — the verifier auto-detects from its install path (`/workspace/skills/*` → slicc, else cc). |
 
 Token resolution order: `$ADOBE_IMS_TOKEN` → `$OF1_TOKEN_FILE` → `$PWD/.hlx/.da-token.json` → `$OF1_DEMO_REPO/.hlx/.da-token.json`.
 
@@ -407,9 +402,8 @@ Token resolution order: `$ADOBE_IMS_TOKEN` → `$OF1_TOKEN_FILE` → `$PWD/.hlx/
 |------|---------|
 | `$OF1_STATE_DIR/setup.json` | resolved paths + owner/repo/branch + token source (from `verify.sh`) |
 | `$OF1_STATE_DIR/repo-config.json` | owner/repo/branch/contentPrefix/repoDir/domain/repoUrl/previewUrl/daSource — written interactively in Part 2 |
-| `$OF1_STATE_DIR/of1-check-dependencies-status.json` | `{"stage":0,"skill":"of1-check-dependencies","status":"done"\|"failed",…}`. SLICC's sprinkle polls it; CC ignores it. |
+| `$OF1_STATE_DIR/of1-check-dependencies-status.json` | `{"stage":0,"skill":"of1-check-dependencies","status":"done"\|"failed",…}`. |
 
 ## Install behavior
 
-- **SLICC:** the script auto-installs missing Adobe EDS skills (`stardust`, `impeccable`) via `upskill` — SLICC can activate skills mid-session. If auto-install fails, it reports the error and exits.
 - **Claude Code:** cannot activate plugins installed mid-session (`/plugin install` only picks up disk changes between turns). Missing items are reported with the exact fix command for the user to run, then relaunch Claude Code.

@@ -16,16 +16,13 @@
 // Success → stdout `✓ <path> previewed`.
 //
 // Token resolution order: $DA_TOKEN, $ADOBE_IMS_TOKEN, $OF1_TOKEN_FILE,
-// `oauth-token adobe`, ./.hlx/.da-token.json, $OF1_DEMO_REPO/.hlx/.da-token.json.
+// ./.hlx/.da-token.json, $OF1_DEMO_REPO/.hlx/.da-token.json.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { exec as execCb } from 'node:child_process';
-import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
-const exec = promisify(execCb);
 
 function readTokenFile(p) {
   const raw = fs.readFileSync(p, 'utf8').trim();
@@ -42,10 +39,6 @@ export async function resolveToken() {
   if (process.env.DA_TOKEN) return process.env.DA_TOKEN;
   if (process.env.ADOBE_IMS_TOKEN) return process.env.ADOBE_IMS_TOKEN;
   if (process.env.OF1_TOKEN_FILE) return readTokenFile(process.env.OF1_TOKEN_FILE);
-  try {
-    const { stdout } = await exec('oauth-token adobe', { timeout: 15000 });
-    if (stdout.trim()) return stdout.trim();
-  } catch { /* SLICC shim absent */ }
   if (fs.existsSync('.hlx/.da-token.json')) return readTokenFile('.hlx/.da-token.json');
   if (process.env.OF1_DEMO_REPO) {
     const p = path.join(process.env.OF1_DEMO_REPO, '.hlx', '.da-token.json');

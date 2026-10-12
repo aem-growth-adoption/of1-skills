@@ -45,7 +45,7 @@ case "$DA_PROBE" in
   *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
 esac
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
-SKILL_DIR="${SKILL_DIR:-/workspace/skills/of1-extract-content}"
+SKILL_DIR="${SKILL_DIR:?set SKILL_DIR to this skill's directory}"
 DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
 PAGES="$OF1_STATE_DIR/knowledge-pages.json"
 

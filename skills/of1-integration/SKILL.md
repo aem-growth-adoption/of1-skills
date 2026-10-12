@@ -1,12 +1,12 @@
 ---
 name: of1-integration
-description: "Introduce OF1 onto an existing EDS/Stardust site — reuses whatever design tokens/blocks/pages already exist instead of crawling an external domain or pixel-cloning. Works on both Claude Code and SLICC; no sprinkle/scoop UI."
+description: "Introduce OF1 onto an existing EDS/Stardust site — reuses whatever design tokens/blocks/pages already exist instead of crawling an external domain or pixel-cloning. Claude Code only."
 user-invocable: true
 ---
 
 # OF1 Integration — Introduce OF1 on an Existing EDS/Stardust Site
 
-For sites that already have EDS blocks, content pages, and (usually) Stardust design tokens. Produces only the OF1-specific layer: templates, the `/of1` page, and tenant config. Runs identically in spirit on Claude Code and SLICC — the dispatch mechanism differs (see "## Dispatch" below), but there is **no sprinkle UI and no `sprinkle_send` call on either runtime.**
+For sites that already have EDS blocks, content pages, and (usually) Stardust design tokens. Produces only the OF1-specific layer: templates, the `/of1` page, and tenant config.
 
 ## Entry
 
@@ -37,7 +37,7 @@ Two modes, decided by `OF1_PIPELINE_MODE`:
 
 ## Verify dependencies + repo state (inline)
 
-Invoke the `of1-check-dependencies` skill exactly as `of1-demo-orchestrator` does (Skill tool on Claude Code; read + follow inline on SLICC — not Agent/scoop dispatch, this step is light and must run in your own context to read the verified state). If it fails, surface the exact error and stop.
+Invoke the `of1-check-dependencies` skill exactly as `of1-demo-orchestrator` does (Skill tool, not Agent dispatch — this step is light and must run in your own context to read the verified state). If it fails, surface the exact error and stop.
 
 After it succeeds, read `<STATE_DIR>/setup.json` for `stateDir`/`of1Repo` and `<STATE_DIR>/repo-config.json` for `owner`/`repo`/`branch`/`domain`. Use these for all subsequent steps.
 
@@ -64,7 +64,7 @@ way.
 This is the single ordering authority for the whole skill. Three steps run **inline** in the
 orchestrator's own context — `of1-check-dependencies`, artifact detection, and `of1-publish`
 (each documented in its own section below); every other step is **dispatched** as an
-Agent/scoop (see "## Dispatch"). The graph nodes and the Trigger table are authoritative — the prose
+Agent (see "## Dispatch"). The graph nodes and the Trigger table are authoritative — the prose
 sections describe *what each step does*, not a competing order.
 
 ```
@@ -129,8 +129,7 @@ pipeline-only node `of1-build-cta-template` is added:
 # Site-integration gate (pipeline mode only)
 if [ "${OF1_PIPELINE_MODE:-}" = "1" ]; then
   echo "Waiting for Stage 2 (extract->prototype->snowflake) to finish: $OF1_STAGE2_DONE_FILE"
-  # Event-driven on SLICC (scoop-notify) / sequential await on CC. Do NOT sleep-poll on SLICC.
-  until [ -f "$OF1_STAGE2_DONE_FILE" ]; do :; done   # CC inline fallback only
+  until [ -f "$OF1_STAGE2_DONE_FILE" ]; do :; done
 fi
 ```
 
@@ -146,11 +145,7 @@ siblings (`of1-build-templates`(base), `of1-style-generative-block`, `of1-extrac
 
 ## Dispatch
 
-Same step-graph, same dependency rules on both runtimes. Only the invocation mechanism differs. **Neither runtime ever calls a sprinkle/scoop UI push (`sprinkle_send`) — there is no sprinkle for this skill.**
-
-### Claude Code
-
-**Who dispatches (both runtimes).** On **neither** runtime is this skill run as a single Stage-3 sub-dispatch that then fans out the Integrate skills — because on **both**, the nesting is capped: a Claude Code subagent has no Agent tool, and a SLICC scoop cannot spawn sub-scoops. So the **top-level `of1-demo-orchestrator`** (which detects its runtime and follows `knowledge/dispatch-cc.md` or `knowledge/dispatch-slicc.md`) dispatches the Integrate skills itself, reading this section as the **skill-definition + dependency reference**. Everything below describes *what each skill needs and how they're ordered* — the orchestrator is the dispatcher in both cases.
+**Who dispatches.** This skill is not run as a single sub-dispatch that then fans out the Integrate skills — a Claude Code subagent has no Agent tool. So the **top-level orchestrator** dispatches the Integrate skills itself, reading this section as the **skill-definition + dependency reference**. Everything below describes *what each skill needs and how they're ordered*.
 
 - The orchestrator uses **TaskCreate** with one task per skill/phase (`of1-check-dependencies`, extraction, `of1-build-templates`(base), `of1-build-templates`(intent-*), `of1-build-templates`(assemble), `of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template` (pipeline mode only), `of1-publish`). Mark the `of1-check-dependencies` task completed immediately; mark each task `in_progress`/`completed`/`failed` around its dispatch.
 - Each skill (except artifact detection and `of1-publish`, which are inline) is a single `Agent` dispatch. Sub-agents see none of this conversation — the prompt must be self-contained: read the target skill's `SKILL.md`, export the same env vars the orchestrator exports (`OF1_STATE_DIR`, `OF1_DEMO_REPO`, `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`, `SKILL_DIR`), state the branch/owner/repo, list which prior-skill output files it needs, and require the same JSON status block: `{"stage":3,"skill":"<skill>","status":"done"|"review"|"failed","summary":"...","deliverables":[...]}`.
@@ -160,17 +155,6 @@ Same step-graph, same dependency rules on both runtimes. Only the invocation mec
 - **Parallelism is mandatory** at each fan-out point — the top-level orchestrator dispatches all eligible skills in a single message with multiple Agent tool-use blocks. (This is possible precisely because the *top level* is dispatching; a Stage-3 subagent could not, hence the "who dispatches on CC" note above.)
 - Model assignment: same rule of thumb the orchestrator uses — Opus only where output quality cascades downstream. Since this pipeline skips discovery/prototype entirely, the only Opus-worthy skills are `of1-style-generative-block` (OF1 styling — multi-step DA authoring) and `of1-extract-design` when it actually runs (design-token quality cascades). Everything else (`sonnet`): `of1-build-templates`(base), `of1-build-templates`(intent-*), `of1-build-templates`(assemble), `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`.
 - Auto-approve by default (mirrors the orchestrator's one-shot mode) — mark each `review`-status task completed and continue immediately, unless the user explicitly asked to pause between steps.
-
-### SLICC
-
-**Same as CC, the top-level orchestrator (`of1-demo-orchestrator`) dispatches these skills** — a scoop cannot spawn sub-scoops, so this skill is the skill-definition reference, not a self-dispatching scoop. The orchestrator dispatches from its own cone.
-
-- Dispatch each skill as a `scoop_scoop()` call with `writablePaths` covering `/scoops/<name>/`, `/shared/`, and the project repo path. **The extraction step's scoop runs the `of1-extract-design` skill against the site's own EDS preview URL** — same reason as the Claude Code column: point it at the wrong target and extraction crawls an external domain instead of the site itself.
-- In pipeline mode also export `OF1_CONTENT_SOURCE` (to `of1-extract-brand-voice`/`of1-extract-content`/`of1-build-quick-suggestions` dispatches) and pass
-  `OF1_STAGE2_DONE_FILE` to the orchestrator's own site-track gate (not to the skill agents).
-- Each scoop writes its own `/shared/of1-demo-orchestrator/of1-<skill>-status.json` on completion (phase scoops of `of1-build-templates` write `of1-build-templates-<phase>-status.json`), exactly like every skill already documents in its own "Completion" section — **do not** additionally push to a sprinkle. There is nothing listening for `sprinkle_send` on this skill.
-- Handle completions event-driven, not via polling: end your turn after dispatching, and react when a scoop-completion notification arrives — read its status file, check if it unblocks the next dispatch per the table above, and dispatch the next batch.
-- Model assignment: same as the Claude Code column above, using `claude-opus-4-8`/`claude-sonnet-5` model strings per `of1-demo-orchestrator`'s own convention.
 
 ## Deploy — `of1-publish` (inline)
 

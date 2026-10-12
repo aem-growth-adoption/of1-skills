@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# of1-check-dependencies verifier — checks all prerequisites for the OF1 demo pipeline,
-# including that OF1_DEMO_REPO is a valid EDS repo (structural check, not
-# identity — any org/repo works). Runtime-agnostic: works in both Claude
-# Code and SLICC. The orchestrator exports OF1_STATE_DIR / OF1_DEMO_REPO /
-# token env vars before invoking. Contract documented in ../SKILL.md.
+# of1-check-dependencies verifier — checks all prerequisites for an OF1
+# integration, including that OF1_DEMO_REPO is a valid EDS repo (structural
+# check, not identity — any org/repo works). Claude Code only. OF1_STATE_DIR
+# defaults to $PWD/.of1/state; OF1_DEMO_REPO defaults to the git toplevel of
+# $PWD. Contract documented in ../SKILL.md.
 #
 # Exit 0 = all good; exit 1 = something blocking is missing.
 # Side effect on success:
 #   <stateDir>/setup.json          — resolved paths + owner/repo/branch + token source
-#   <stateDir>/of1-check-dependencies-status.json — SLICC sprinkle IPC ack (harmless in CC)
+#   <stateDir>/of1-check-dependencies-status.json — progress file
 #
 # repo-config.json (owner/repo/branch/domain/repoDir) is NOT written by this
 # script — it's written interactively by of1-check-dependencies/SKILL.md's "Repo state"
@@ -30,61 +30,26 @@ ok()   { LOG+=("✓ $1"); }
 warn() { LOG+=("⚠ $1"); WARN=$((WARN+1)); [ "${STRICT:-0}" = "1" ] && FAIL=$((FAIL+1)); }
 fail() { LOG+=("✗ $1"); FAIL=$((FAIL+1)); }
 
-# ---------- 0. Detect runtime (cc | slicc) ----------
-# Honor explicit OF1_RUNTIME from the orchestrator; otherwise infer from the
-# path this script was loaded from. SLICC installs skills under /workspace.
-
-if [ -n "${OF1_RUNTIME:-}" ]; then
-  RUNTIME="$OF1_RUNTIME"
-else
-  case "${BASH_SOURCE[0]:-$0}" in
-    /workspace/skills/*) RUNTIME="slicc" ;;
-    *)                   RUNTIME="cc" ;;
-  esac
-fi
-ok "Runtime: $RUNTIME"
-
-# fix_cmd <cc-command> <slicc-command>
-# Returns the install command appropriate for the detected runtime.
-fix_cmd() {
-  if [ "$RUNTIME" = "slicc" ]; then echo "$2"; else echo "$1"; fi
-}
-
 # ---------- 1. OF1 step skills (project- or user-scoped) ----------
 
-# Base set: the of1-skills plugin's own skills, required for every invocation
-# (standalone of1-integration, or dispatched from of1-demo-skills).
-BASE_REQUIRED_SKILLS=(
+# The of1-skills plugin's own skills. of1-check-dependencies is omitted
+# because it's the skill running this check.
+REQUIRED_SKILLS=(
   of1-integration of1-extract-design
   of1-build-templates of1-style-generative-block
   of1-extract-brand-voice of1-extract-content of1-build-quick-suggestions
   of1-build-cta-template of1-publish
 )
-# Demo-track set: only required when the caller is of1-demo-orchestrator
-# (signaled by OF1_PIPELINE_MODE) — these skills live in the separate
-# of1-demo-skills plugin and are never installed for a standalone
-# of1-integration run.
-DEMO_TRACK_REQUIRED_SKILLS=(
-  of1-demo-orchestrator of1-discovery of1-prototype of1-snowflake
-)
-if [ -n "${OF1_PIPELINE_MODE:-}" ]; then
-  REQUIRED_SKILLS=("${BASE_REQUIRED_SKILLS[@]}" "${DEMO_TRACK_REQUIRED_SKILLS[@]}")
-else
-  REQUIRED_SKILLS=("${BASE_REQUIRED_SKILLS[@]}")
-fi
 # of1-signals is intentionally omitted — it's a standalone operator tool, not a pipeline step (see its SKILL.md).
-# of1-check-dependencies is omitted because it's the skill running this check.
 
-# Search locations: CC plugin/user/project scopes plus SLICC's /workspace/skills.
-# Each runtime only has its own; the other paths quietly miss.
+# Search locations: plugin, user and project scopes.
 SKILL_ROOTS=(
   "$HOME/.claude/plugins"
   "$HOME/.claude/skills"
   "$PWD/.claude/skills"
-  "/workspace/skills"
 )
 
-# CC also supports marketplaces sourced from a local directory (`/plugin
+# Claude Code also supports marketplaces sourced from a local directory (`/plugin
 # marketplace add <path>`), whose installLocation lives outside the roots above
 # — e.g. a local dev checkout of this very plugin. Add those too.
 if [ -r "$HOME/.claude/plugins/known_marketplaces.json" ] && command -v jq >/dev/null 2>&1; then
@@ -113,50 +78,27 @@ if [ ${#MISSING[@]} -eq 0 ]; then
   ok "All $TOTAL OF1 skills present"
 elif [ ${#MISSING[@]} -eq "$TOTAL" ]; then
   # None found at all — almost always a detector/path problem, not a real absence.
-  fail "found 0 of $TOTAL OF1 skills — is this a local checkout with the plugin not installed to a searched root? fix: $(fix_cmd '/plugin install of1-skills@<marketplace>' 'upskill aem-growth-adoption/of1-skills --all')"
+  fail "found 0 of $TOTAL OF1 skills — is this a local checkout with the plugin not installed to a searched root? fix: /plugin install of1-skills@<marketplace>"
 else
-  fail "Missing $((${#MISSING[@]})) of $TOTAL OF1 skills: ${MISSING[*]} — fix: $(fix_cmd '/plugin install of1-skills@<marketplace>' 'upskill aem-growth-adoption/of1-skills --all')"
+  fail "Missing $((${#MISSING[@]})) of $TOTAL OF1 skills: ${MISSING[*]} — fix: /plugin install of1-skills@<marketplace>"
 fi
 
 # ---------- 2. Adobe EDS skills: stardust + impeccable ----------
-# In SLICC, auto-install missing skills via `upskill`. In CC, report the fix command.
-# Also check stardust sub-skills (extract, prototype) needed by Steps 4 & 5.
+# Also check stardust sub-skills (extract, prototype) needed by the design steps.
 
 ADOBE_EDS_SKILLS=(stardust impeccable)
-
-install_skill_slicc() {
-  local name="$1"
-  case "$name" in
-    stardust)
-      # Install ALL stardust skills (extract, prototype, direct, deploy, etc.)
-      upskill adobe/skills --path plugins/stardust --all 2>&1 | tail -1 ;;
-    impeccable)
-      upskill pbakaus/impeccable --all 2>&1 | tail -1 ;;
-  esac
-}
 
 for S in "${ADOBE_EDS_SKILLS[@]}"; do
   p=$(find_skill "$S" || true)
   if [ -n "${p:-}" ]; then
     ok "$S → $p"
   else
-    if [ "$RUNTIME" = "slicc" ]; then
-      echo "  Installing $S..."
-      RESULT=$(install_skill_slicc "$S")
-      p=$(find_skill "$S" || true)
-      if [ -n "${p:-}" ]; then
-        ok "$S → $p (auto-installed)"
-      else
-        fail "Adobe EDS skill '$S' failed to install: $RESULT"
-      fi
-    else
-      case "$S" in
-        stardust)
-          fail "Adobe EDS skill 'stardust' not installed — fix: /plugin install stardust@adobe-skills" ;;
-        impeccable)
-          fail "Adobe EDS skill 'impeccable' not installed — fix: /plugin install impeccable@impeccable" ;;
-      esac
-    fi
+    case "$S" in
+      stardust)
+        fail "Adobe EDS skill 'stardust' not installed — fix: /plugin install stardust@adobe-skills" ;;
+      impeccable)
+        fail "Adobe EDS skill 'impeccable' not installed — fix: /plugin install impeccable@impeccable" ;;
+    esac
   fi
 done
 
@@ -164,19 +106,19 @@ done
 if find "${SKILL_ROOTS[@]}" -path "*/skills/extract/SKILL.md" 2>/dev/null | grep -q .; then
   ok "stardust:extract present"
 else
-  fail "stardust:extract skill not found — Stage 2a (of1-extract-design) requires it. Update the stardust plugin: $(fix_cmd '/plugin update stardust' 'upskill adobe/skills --path plugins/stardust --all')"
+  fail "stardust:extract skill not found — Stage 2a (of1-extract-design) requires it. Update the stardust plugin: /plugin update stardust"
 fi
 
 if find "${SKILL_ROOTS[@]}" -path "*/skills/prototype/SKILL.md" 2>/dev/null | grep -q .; then
   ok "stardust:prototype present"
 else
-  fail "stardust:prototype skill not found — Stage 2b (of1-prototype) requires it. Update the stardust plugin: $(fix_cmd '/plugin update stardust' 'upskill adobe/skills --path plugins/stardust --all')"
+  fail "stardust:prototype skill not found — Stage 2b (of1-prototype) requires it. Update the stardust plugin: /plugin update stardust"
 fi
 
 if find "${SKILL_ROOTS[@]}" -path "*/skills/snowflake/SKILL.md" 2>/dev/null | grep -q .; then
   ok "snowflake present"
 else
-  fail "snowflake skill not found — Stage 2c (of1-snowflake) requires it. Update the aem-edge-delivery-services plugin: $(fix_cmd '/plugin update aem-edge-delivery-services' 'upskill aem-growth-adoption/aem-edge-delivery-services --path plugins/snowflake --all')"
+  fail "snowflake skill not found — Stage 2c (of1-snowflake) requires it. Update the aem-edge-delivery-services plugin: /plugin update aem-edge-delivery-services"
 fi
 
 # ---------- 3. Shell tools ----------
@@ -208,16 +150,18 @@ else
 fi
 
 # ---------- 4. EDS repo verification (any org/repo — structural, not identity) ----------
-# No auto-discovery — the orchestrator sets OF1_DEMO_REPO to the repo cwd.
+# OF1_DEMO_REPO defaults to the git toplevel of $PWD.
 # Verifies EDS structural files exist and resolves owner/repo/branch from git.
 
 OF1_REPO=""
+if [ -z "${OF1_DEMO_REPO:-}" ]; then
+  OF1_DEMO_REPO=$(git rev-parse --show-toplevel 2>/dev/null || true)
+fi
 OWNER=""
 REPO=""
 BRANCH=""
 
 if [ -n "${OF1_DEMO_REPO:-}" ] && [ -e "${OF1_DEMO_REPO}/.git" ]; then  # -e: worktrees have a .git file
-  # Use subshell + cd — SLICC's git shim doesn't support `-C` or `remote get-url`.
   REMOTE=$(cd "$OF1_DEMO_REPO" && git config remote.origin.url 2>/dev/null || true)
   # Last two path segments of any remote form (https://github.com/o/r.git,
   # git@github.com:o/r.git, ssh host aliases like git@github-perso:o/r.git).
@@ -238,7 +182,7 @@ if [ -n "${OF1_DEMO_REPO:-}" ] && [ -e "${OF1_DEMO_REPO}/.git" ]; then  # -e: wo
     warn "Currently on ${BRANCH:-a detached HEAD} — demo artifacts and DA content will be affected on this branch/state"
   fi
 else
-  fail "OF1_DEMO_REPO env var not set or not a git checkout — set it to the absolute path of a cloned EDS repo"
+  fail "OF1_DEMO_REPO not set and $PWD is not inside a git checkout — cd into a cloned EDS repo or set OF1_DEMO_REPO to its absolute path"
 fi
 
 # ---------- 5. Adobe IMS / DA token ----------
@@ -285,11 +229,9 @@ echo ""
 
 if [ $FAIL -gt 0 ]; then
   echo "RESULT: FAIL ($FAIL blocker(s), $WARN warning(s))"
-  # SLICC sprinkle IPC ack (CC ignores)
   if [ -d "$STATE_DIR" ]; then
     REASONS=$(printf '%s\n' "${LOG[@]}" | grep '^✗' | sed 's/^✗ //' | head -3 | paste -sd '; ' -)
-    # Use python3 for JSON escaping (jq -Rs not available in SLICC)
-    ESCAPED=$(printf '%s' "$REASONS" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))")
+    ESCAPED=$(printf '%s' "$REASONS" | jq -Rs .)
     printf '{"stage":0,"skill":"of1-check-dependencies","status":"failed","error":%s}\n' "$ESCAPED" \
       > "$STATE_DIR/of1-check-dependencies-status.json"
   fi
@@ -316,7 +258,7 @@ cat > "$STATE_DIR/setup.json" <<EOF
 }
 EOF
 
-# SLICC sprinkle IPC ack (CC ignores)
+# progress file
 echo '{"stage":0,"skill":"of1-check-dependencies","status":"done","summary":"prerequisites verified"}' \
   > "$STATE_DIR/of1-check-dependencies-status.json"
 

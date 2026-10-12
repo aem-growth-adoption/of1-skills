@@ -56,7 +56,7 @@ TENANT_ID="${BRANCH}--${REPO}--${OWNER}"
 WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.dev}"
 ```
 
-`playwright-cli` calls follow `of1-demo-orchestrator/knowledge/common-pitfalls.md` § 9 "playwright-cli syntax" (`open`, `--full-page` bare, `--filename`, `eval` as a function form). Works on both SLICC-native and CC binaries.
+`playwright-cli` calls follow `of1-demo-orchestrator/knowledge/common-pitfalls.md` § 9 "playwright-cli syntax" (`open`, `--full-page` bare, `--filename`, `eval` as a function form).
 
 ## How config sync works
 

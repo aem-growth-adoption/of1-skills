@@ -176,7 +176,7 @@ enumerates usable positional blocks in `$TENANT_REPO_DIR/blocks/*`.
 ## Phases
 
 Selected by `OF1_TG_MODE`. The orchestrator runs them in order: `base` → `intent × 5` (parallel) →
-`assemble`. Same three-phase interface as before, so orchestrator/SLICC dispatch is unchanged.
+`assemble`. Same three-phase interface as before, so caller dispatch is unchanged.
 
 | Mode | What it does | Dispatched by |
 |---|---|---|
@@ -240,7 +240,7 @@ skill writes no engine/template config file.
    # Write the plan (usable blocks, fingerprints, per-intent template list) where intent agents read it.
    printf '%s' "$BLOCK_PLAN_JSON" > "$OF1_STATE_DIR/of1-build-templates-plan.json"
    ```
-7. **Status file** (SLICC IPC; CC ignores):
+7. **Status file** (progress file):
    ```bash
    echo '{"stage":3,"skill":"of1-build-templates","phase":"base","status":"done","summary":"Block plan ready; N new general block(s) authored + deployed."}' \
      > "$OF1_STATE_DIR/of1-build-templates-base-status.json"

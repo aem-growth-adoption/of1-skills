@@ -12,16 +12,13 @@
 //        [--token-file path] [--concurrency 8]
 //
 // Token resolution order: --token-file, $DA_TOKEN, $ADOBE_IMS_TOKEN,
-// $OF1_TOKEN_FILE, `oauth-token adobe`, ./.hlx/.da-token.json.
+// $OF1_TOKEN_FILE, ./.hlx/.da-token.json.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { exec as execCb } from 'node:child_process';
-import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
-const exec = promisify(execCb);
 
 function readTokenFile(p) {
   const raw = fs.readFileSync(p, 'utf8').trim();
@@ -33,10 +30,6 @@ async function resolveToken(tokenFileArg) {
   if (process.env.DA_TOKEN) return process.env.DA_TOKEN;
   if (process.env.ADOBE_IMS_TOKEN) return process.env.ADOBE_IMS_TOKEN;
   if (process.env.OF1_TOKEN_FILE) return readTokenFile(process.env.OF1_TOKEN_FILE);
-  try {
-    const { stdout } = await exec('oauth-token adobe');
-    if (stdout.trim()) return stdout.trim();
-  } catch { /* SLICC shim absent */ }
   if (fs.existsSync('.hlx/.da-token.json')) return readTokenFile('.hlx/.da-token.json');
   throw new Error('Could not resolve DA token. Pass --token-file, set $DA_TOKEN/$ADOBE_IMS_TOKEN, or place .hlx/.da-token.json.');
 }

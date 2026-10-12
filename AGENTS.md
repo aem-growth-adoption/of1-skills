@@ -6,8 +6,8 @@ step graph (see `skills/of1-integration/SKILL.md`). No crawling or site building
 
 `of1-demo-skills` (sibling repo) builds full demos and is a *caller* of this
 plugin. It currently still dispatches individual skills with
-`OF1_PIPELINE_MODE=1`. Pipeline mode and the SLICC runtime still exist here;
-both are slated for removal per
+`OF1_PIPELINE_MODE=1`. Pipeline mode still exists here;
+it is slated for removal per
 `docs/superpowers/specs/2026-10-09-of1-skills-cleanup-design.md`.
 
 ## Layout

@@ -27,17 +27,13 @@
 //   2. $DA_TOKEN env var (raw token)
 //   3. $ADOBE_IMS_TOKEN env var (raw token, Claude Code convention)
 //   4. $OF1_TOKEN_FILE env var (path to token JSON)
-//   5. `oauth-token adobe` (SLICC shim)
-//   6. ./.hlx/.da-token.json (project default)
+//   5. ./.hlx/.da-token.json (project default)
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import dns from 'node:dns/promises';
-import { exec as execCb } from 'node:child_process';
-import { promisify } from 'node:util';
 
-const exec = promisify(execCb);
 
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 const MIN_BYTES = 10000;
@@ -160,11 +156,6 @@ async function resolveToken(tokenFileArg) {
   if (process.env.DA_TOKEN) return process.env.DA_TOKEN;
   if (process.env.ADOBE_IMS_TOKEN) return process.env.ADOBE_IMS_TOKEN;
   if (process.env.OF1_TOKEN_FILE) return readTokenFile(process.env.OF1_TOKEN_FILE);
-  try {
-    const { stdout } = await exec('oauth-token adobe');
-    const trimmed = stdout.trim();
-    if (trimmed) return trimmed;
-  } catch (e) { /* ignore — SLICC shim not available */ }
   for (const candidate of ['.hlx/.da-token.json']) {
     if (fs.existsSync(candidate)) return readTokenFile(candidate);
   }

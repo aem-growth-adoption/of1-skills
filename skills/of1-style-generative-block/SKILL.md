@@ -348,7 +348,7 @@ The user will:
 
 ## Common mistakes that waste time
 
-Cross-cutting rules (SLICC Node.js shim, EDS class collisions) live in `of1-demo-orchestrator/knowledge/common-pitfalls.md`. The pitfalls below are specific to OF1-block styling — read all before writing CSS.
+Cross-cutting rules (EDS class collisions) live in `of1-demo-orchestrator/knowledge/common-pitfalls.md`. The pitfalls below are specific to OF1-block styling — read all before writing CSS.
 
 | Mistake | Time cost | Fix |
 |---|---|---|

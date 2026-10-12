@@ -52,21 +52,12 @@ This step's whole job is to delegate to `stardust:extract`. **Do NOT use `playwr
 
 Invoke the `stardust:extract` skill. The argument is the target URL plus a page cap of 3 (homepage + 2 key category/product pages from discovery, when discovery output is available). More pages are slower without meaningfully better tokens.
 
-**How to invoke in each runtime:**
+**How to invoke:**
 
 - **Claude Code:** use the `Skill` tool:
   ```
   Skill: stardust:extract
   Args:  <target URL> --cap 3
-  ```
-
-- **SLICC:** read the skill and execute it inline:
-  ```bash
-  # 1. Read the skill instructions
-  read_file /workspace/skills/extract/SKILL.md
-  # 2. Follow those instructions directly — the skill IS the procedure.
-  #    It will use playwright-cli to crawl, extract tokens, capture screenshots,
-  #    and write all outputs under stardust/current/.
   ```
   Do NOT invent your own extraction approach. The stardust:extract skill already knows how to crawl, extract CSS tokens, capture screenshots, and write `pages/*.json` files with image URLs. Just read it and do what it says.
 
@@ -112,7 +103,7 @@ ls stardust/current/pages/*.json >/dev/null 2>&1 \
 echo "✓ Extraction outputs present"
 ```
 
-If `pages/*.json` is missing, it means `stardust:extract` was NOT actually invoked — the scoop improvised its own extraction. Go back and invoke the stardust skill properly.
+If `pages/*.json` is missing, it means `stardust:extract` was NOT actually invoked — the agent improvised its own extraction. Go back and invoke the stardust skill properly.
 
 If anything is missing, re-run `stardust:extract` with `--refresh` for the failing page.
 
@@ -187,4 +178,4 @@ cat > "$OF1_STATE_DIR/of1-extract-design-status.json" <<EOF
 EOF
 ```
 
-The orchestrator (CC: agent-return parsing; SLICC: sprinkle polling) handles the approve/done transition.
+The orchestrator handles the approve/done transition.

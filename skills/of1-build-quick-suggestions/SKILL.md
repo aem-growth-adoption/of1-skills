@@ -20,18 +20,17 @@ Generate domain-specific quick suggestion chips, placeholder text, and search UI
 Read repo config:
 
 ```bash
-SKILL_DIR="${SKILL_DIR:-/workspace/skills/of1-build-quick-suggestions}"
+SKILL_DIR="${SKILL_DIR:?set SKILL_DIR to this skill's directory}"
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
 # Resolve the token in the shell only to probe it (da-write.mjs resolves its own,
-# same order + `oauth-token adobe` on SLICC).
+# same order).
 DA_TOKEN="${DA_TOKEN:-${ADOBE_IMS_TOKEN:-}}"
 for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
   [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
   [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
 done
-[ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] || DA_TOKEN=$(oauth-token adobe 2>/dev/null || true)
 if [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ]; then
   # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
   DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
