@@ -28,7 +28,7 @@ DA reads a sheet named **`library`** from its config. Add one row via the **Conf
 - The **canvas editor** (`da.live/canvas#/…`) merges the **org** and **site** `library` sheets, so a single **org-level** row (`admin.da.live/config/<org>`) registers the app on every site in the org.
 - The **classic editor** reads the **site** sheet only — register per-site there.
 
-### of1-labs lab sites
+### Lab sites
 
 Nothing installs this row automatically — lab sites need the same manual `library` row as any other site (an org-level row covers every lab site in the org for the canvas editor).
 

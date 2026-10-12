@@ -17,23 +17,15 @@ Two callers, one procedure:
 
 Everything below is identical either way — only the target URL argument changes.
 
-## Env — orchestrator exports these (see `of1-setup`)
+## Env — the driver exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
-| `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-design-status.json` on completion (see "## Completion" below) |
+| `OF1_STATE_DIR` | state + IPC dir; receives `of1-extract-design-status.json` on completion  |
 | `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR`     | absolute path to this skill's directory (used to find `assets/fill-brand-review.mjs`) |
 
-Read `$OWNER`, `$REPO`, `$BRANCH`, `$DOMAIN` from `repo-config.json`:
-
-```bash
-REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
-OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
-REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
-BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
-DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
-```
+Scripts live in `$SKILL_DIR/scripts/` (run `bash "$SKILL_DIR/scripts/<name>"`); they read owner/repo/branch/domain from `repo-config.json`.
 
 ## Inputs
 
@@ -52,21 +44,12 @@ This step's whole job is to delegate to `stardust:extract`. **Do NOT use `playwr
 
 Invoke the `stardust:extract` skill. The argument is the target URL plus a page cap of 3 (homepage + 2 key category/product pages from discovery, when discovery output is available). More pages are slower without meaningfully better tokens.
 
-**How to invoke in each runtime:**
+**How to invoke:**
 
 - **Claude Code:** use the `Skill` tool:
   ```
   Skill: stardust:extract
   Args:  <target URL> --cap 3
-  ```
-
-- **SLICC:** read the skill and execute it inline:
-  ```bash
-  # 1. Read the skill instructions
-  read_file /workspace/skills/extract/SKILL.md
-  # 2. Follow those instructions directly — the skill IS the procedure.
-  #    It will use playwright-cli to crawl, extract tokens, capture screenshots,
-  #    and write all outputs under stardust/current/.
   ```
   Do NOT invent your own extraction approach. The stardust:extract skill already knows how to crawl, extract CSS tokens, capture screenshots, and write `pages/*.json` files with image URLs. Just read it and do what it says.
 
@@ -94,33 +77,21 @@ flow into downstream steps. After extraction, verify the capture is real:
 - If no machine-readable signal exists, inspect the captured screenshots / `stardust/current/pages/*.json`
   for placeholder or flat-gradient imagery; on detection, fail the same way.
 
-(Implementation note for the executor: confirm what `stardust:extract` actually emits on a blocked
-capture before finalizing the first bullet; if it only emits prose, keep only the second bullet's
-screenshot inspection.)
+(Confirm what `stardust:extract` actually emits on a blocked capture; if only prose, keep just the screenshot inspection.)
 
 ### 2. Verify extraction outputs
 
 ```bash
-cd "$OF1_DEMO_REPO"
-test -f stardust/current/DESIGN.json     || { echo "FAIL: DESIGN.json missing"; exit 1; }
-test -f stardust/current/DESIGN.md       || { echo "FAIL: DESIGN.md missing"; exit 1; }
-test -f stardust/current/assets/logo.svg || { echo "FAIL: logo.svg missing"; exit 1; }
-ls stardust/current/assets/screenshots/*.png >/dev/null 2>&1 \
-  || { echo "FAIL: no screenshots"; exit 1; }
-ls stardust/current/pages/*.json >/dev/null 2>&1 \
-  || { echo "FAIL: no pages/*.json — stardust:extract was not invoked correctly"; exit 1; }
-echo "✓ Extraction outputs present"
+bash "$SKILL_DIR/scripts/verify-outputs.sh"
 ```
 
-If `pages/*.json` is missing, it means `stardust:extract` was NOT actually invoked — the scoop improvised its own extraction. Go back and invoke the stardust skill properly.
-
-If anything is missing, re-run `stardust:extract` with `--refresh` for the failing page.
+Checks `DESIGN.json`, `DESIGN.md`, `assets/logo.svg`, screenshots and `pages/*.json` under `stardust/current/`. A missing `pages/*.json` means `stardust:extract` was NOT actually invoked (the agent improvised) — go back and invoke it properly. For anything else missing, re-run it with `--refresh` for the failing page.
 
 ### 3. Generate `deliverables/brand-review.html`
 
 ```bash
 cd "$OF1_DEMO_REPO"
-node "$SKILL_DIR/assets/fill-brand-review.mjs" . "$DOMAIN"
+node "$SKILL_DIR/assets/fill-brand-review.mjs" . "$(jq -r .domain "$OF1_STATE_DIR/repo-config.json")"
 ```
 
 This reads `stardust/current/DESIGN.json` + screenshots + logo and writes `deliverables/brand-review.html` with absolute paths that resolve on the EDS preview URL.
@@ -128,19 +99,10 @@ This reads `stardust/current/DESIGN.json` + screenshots + logo and writes `deliv
 ### 4. Commit and push (one operation)
 
 ```bash
-cd "$OF1_DEMO_REPO"
-git add PRODUCT.md stardust/ deliverables/
-git commit -m "feat: extraction - design tokens and brand identity for ${DOMAIN}"
-# Rebase onto the remote first so a concurrent push never rejects ours.
-git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
-git push origin "$BRANCH"
+bash "$SKILL_DIR/scripts/commit-design.sh"
 ```
 
-If `git add stardust/` shows nothing, the directory is in `.gitignore`. Force-add the deliverable files:
-
-```bash
-git add -f stardust/current/DESIGN.json stardust/current/DESIGN.md stardust/current/assets/
-```
+Adds `PRODUCT.md`, `stardust/`, `deliverables/` (force-adding the DESIGN files and assets if `stardust/` is gitignored), commits, rebases onto the remote and pushes.
 
 ## Notes
 
@@ -148,34 +110,14 @@ git add -f stardust/current/DESIGN.json stardust/current/DESIGN.md stardust/curr
 
 Logo SVG completeness, deliverable image paths, and image format rules follow three rules: the logo SVG must be complete (not truncated), image paths must resolve on the EDS preview URL, and use real image formats (no placeholder or mislabeled files).
 
-## Expected output structure
+## Expected output
 
-```
-$OF1_DEMO_REPO/
-├── PRODUCT.md                              ← Brand context (from stardust:extract)
-├── stardust/
-│   ├── state.json
-│   └── current/
-│       ├── DESIGN.md
-│       ├── DESIGN.json                     ← Colors, typography, spacing, shapes
-│       ├── brand-review.html
-│       └── assets/
-│           ├── logo.svg
-│           └── screenshots/
-│               ├── {page1}.png
-│               └── {page2}.png
-└── deliverables/
-    ├── brand-review.html                   ← Copy for EDS serving (paths rewritten)
-    └── assets/
-        └── screenshots/                    ← Copies for EDS serving
-            ├── {page1}.png
-            └── {page2}.png
-```
+`PRODUCT.md`, `stardust/{state.json,current/{DESIGN.md,DESIGN.json,brand-review.html,assets/{logo.svg,screenshots/*.png}}}`, and `deliverables/{brand-review.html,assets/screenshots/}` (EDS-serving copies with rewritten paths).
 
 ## Completion
 
 ```bash
-REPORT_URL="https://${BRANCH}--${REPO}--${OWNER}.aem.page/deliverables/brand-review.html"
+REPORT_URL="https://$(jq -r '"\(.branch)--\(.repo)--\(.owner)"' "$OF1_STATE_DIR/repo-config.json").aem.page/deliverables/brand-review.html"
 cat > "$OF1_STATE_DIR/of1-extract-design-status.json" <<EOF
 {
   "stage": 2,
@@ -187,4 +129,4 @@ cat > "$OF1_STATE_DIR/of1-extract-design-status.json" <<EOF
 EOF
 ```
 
-The orchestrator (CC: agent-return parsing; SLICC: sprinkle polling) handles the approve/done transition.
+The driver treats `review` as approved and continues.
