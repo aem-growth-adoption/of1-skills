@@ -6,17 +6,9 @@ user-invocable: true
 
 # OF1 Template Authoring (da-blocks-slots)
 
-Produce the OF1 worker's template library as **DA-authored block templates**: real EDS documents in
-a tenant's `/templates` DA folder, each composed of the site's **own** EDS blocks (`hero`, `cards`,
-`columns`, `spotlight`, …) filled with realistic example content, carrying a `section-metadata` block
-that describes the template's intent. DA is the source of truth — no git-committed template HTML, no
-`.metadata.json`, no `templates-catalog.json`, no gallery.
+Produce the worker's template library as **DA-authored block templates**: real EDS documents in a tenant's `/templates` DA folder, composed of the site's **own** blocks (`hero`, `cards`, `columns`, …) filled with realistic example content, each carrying a `section-metadata` block describing its intent. DA is the source of truth — no git-committed template HTML, `.metadata.json`, catalog, or gallery.
 
-At request time the worker (`da-blocks-slots` engine) selects one template by intent, asks the LLM for
-**content-only slot values** addressed by structural id, and splices them into the authored skeleton —
-the browser then runs the site's real `decorate()` pipeline, so generated pages look and behave exactly
-like authored ones. See `of1-gen-web-service/docs/superpowers/specs/2026-08-10-da-block-templates-design.md`
-and this repo's `docs/superpowers/specs/2026-08-31-of1-build-templates-da-blocks-slots-migration.md`.
+At request time the worker (`da-blocks-slots` engine) selects one template by intent, asks the LLM for **content-only slot values** addressed by structural id, and splices them into the authored skeleton; the browser then runs the site's real `decorate()` pipeline. See `of1-gen-web-service/docs/superpowers/specs/2026-08-10-da-block-templates-design.md` and this repo's `docs/superpowers/specs/2026-08-31-of1-build-templates-da-blocks-slots-migration.md`.
 
 ## Env — the driver exports these (see `of1-check-dependencies`)
 
@@ -24,49 +16,22 @@ and this repo's `docs/superpowers/specs/2026-08-31-of1-build-templates-da-blocks
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives status JSON |
 | `OF1_DEMO_REPO` | absolute path to the local EDS site repo (also `TENANT_REPO_DIR` for `inventory.sh`) |
-| `SKILL_DIR` | absolute path to this skill (finds `assets/da-api.sh`, `assets/inventory.sh`) |
-| `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | source of `DA_TOKEN` (see resolution below) |
+| `SKILL_DIR` | absolute path to this skill |
+| `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | DA token (`AEM_TOKEN` defaults to the same token) |
+| `OF1_TG_MODE` / `OF1_TG_INTENT` | phase / intent (see Phases) |
 
-Resolve tokens and repo config once at the top:
-
-```bash
-# DA_TOKEN resolution (same order every OF1 skill uses):
-# ADOBE_IMS_TOKEN -> OF1_TOKEN_FILE -> $PWD/.hlx/.da-token.json -> $OF1_DEMO_REPO/.hlx/.da-token.json
-LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/da-token.sh"
-DA_TOKEN=$(da_resolve_token) \
-  || { echo "FAIL: no DA token (set ADOBE_IMS_TOKEN or OF1_TOKEN_FILE)" >&2; exit 1; }
-
-# AEM preview uses the SAME IMS token — the design doc's 403 was an org-permission
-# gap, not a token-scope gap. of1-check-dependencies probes the org's preview
-# authorization up front; here we just pass the token through.
-AEM_TOKEN="${AEM_TOKEN:-$DA_TOKEN}"
-
-REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
-OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")   # DA org, e.g. acme
-REPO=$(jq -r .repo     <<<"$REPO_CONFIG")   # DA repo,  e.g. of1-af1bb1a3
-# Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
-da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
-BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
-DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
-export ORG="$OWNER" REPO DA_TOKEN AEM_TOKEN   # da-api.sh reads ORG/REPO/DA_TOKEN/AEM_TOKEN
-cd "$OF1_DEMO_REPO"
-```
+Scripts in `$SKILL_DIR/scripts/` (run `bash "$SKILL_DIR/scripts/<name>"`) resolve repo config, the DA token (probed before any write) and source `assets/da-api.sh`. To use the DA helpers by hand in the intent phase, source it with `ORG`, `REPO`, `DA_TOKEN`, `AEM_TOKEN`, `BRANCH` exported (`ORG` = DA org = `owner` in `repo-config.json`).
 
 ## Block Strategy — the core methodology (read before authoring anything)
 
 Reason in this order. **Reuse first; invent general blocks only when genuinely useful; never author a
 slot-specific, single-template block.**
 
-1. **Use cases first.** From `$OF1_STATE_DIR/of1-discovery-output.md` (discovery narrative — optional,
-   usually absent) +
-   `$OF1_STATE_DIR/knowledge-pages.json` (the site's captured pages — titles, headings, copy — from
-   `of1-extract-content`, when present) and `$OF1_STATE_DIR/personas-rows.json` determine what the
-   generative-search experience must actually answer.
+1. **Use cases first.** From `$OF1_STATE_DIR/of1-discovery-output.md` (optional, usually absent), `knowledge-pages.json` (captured pages, from `of1-extract-content`, when present) and `personas-rows.json`, determine what the generative-search experience must answer.
 2. **Derive intents** — `comparison`, `recommendation`, `deep-dive`, `budget`, `discovery`. Each maps
    to one or more template shapes.
 3. **Choose the block palette per template, in priority order:**
-   - **Reuse an existing block** from the tenant's `blocks/*` (existing site blocks) — first choice whenever
-     an existing block, optionally with a single-hyphen **variant** or a `no-static-labels` /
+   - **Reuse an existing block** from the tenant's `blocks/*` — first choice whenever it, optionally with a single-hyphen **variant** or a `no-static-labels` /
      `key-value` knob, can express the shape.
    - **Author a new *general-purpose* block** only when reuse genuinely can't express the shape AND the
      block is a broadly reusable pattern — e.g. `product-cards`, `comparison-grid`, `feature-list`,
@@ -76,161 +41,55 @@ slot-specific, single-template block.**
 
 ### CRITICAL RULES
 
-1. **General, never slot-specific.** `product-cards` is fine; `comparison-hero-with-three-fixed-tiers`
-   is not. The whole point of this engine is to kill the old bespoke-per-template markup. When in doubt,
-   reuse an existing block with a variant rather than invent one.
-2. **Never modify or restyle a reused (existing) block.** Its `blocks/<name>/<name>.css` already exists
-   and is owned upstream. New blocks you author get disjoint names.
-3. **Never touch `blocks/of1/of1.{js,css}`.** That is `of1-style-generative-block`'s (the OF1 shell UI).
-   You own section blocks only.
-4. **New blocks must be positional** (read `block.children` by index, like `cards.js`). Never author the
-   snowflake label/value convention (`cells[0]`=name, `cells[1]`=value) — it decorates into the wrong
-   shape here.
-5. **Keep alignment consistent within a template.** A generated page stacks several blocks in one
-   `<main>`; they must read as one designed layout, not a pile of mismatched sections. Decide a single
-   alignment intent per template (usually centered for these generative landing pages) and make **every**
-   block obey it — heading, body, media, and CTAs. Concretely: if most blocks in the template center their
-   content, do not leave one block left-aligned (the common offender is a `hero`/`featured` block whose
-   existing CSS defaults to a left image + left text while the `cards`/`columns` below it center). When a
-   reused block's own CSS fights the template's alignment, either pick a variant that matches, or add a new
-   general block that centers — **never** restyle the reused block (rule 2). New blocks you author must
-   center their content by default so they compose cleanly with the centered majority. The alignment
-   decision is per-template and must be recorded in the block plan so every intent agent composes the same
-   way.
-6. **Size the page to its purpose — richness is not fixed.** 1–6 content sections (excluding
-   `section-metadata`). Match the count to what the template is *for*, keyed off its `Template Max Items`:
-   - **Quick / direct answer** (`Max Items ≤ 2` — a single deep-dive, a focused two-item comparison): **1–2
-     blocks is fine.** Do not pad a direct answer into a full landing page; a bare spec sheet or a lead +
-     one content block is complete.
-   - **Exploratory / landing** (`Max Items ≥ 3` — recommendation, budget, discovery grids): **target 4–5**
-     (max 6). A grid of options that lands as *only* a lead + grid feels like a stub — build it out.
-   For an exploratory template, compose: a **lead** block (`hero`/`featured`), the **primary** content
-   block (`cards`/`comparison-grid`), then **supporting** sections that make it feel complete — an
-   intro/framing `columns`, a secondary `cards` or `stat-row`, a testimonial/quote, a closing CTA band.
-   Pull every extra section from **reused** blocks first (Block Strategy order); never invent a
-   slot-specific block just to pad. Per-intent starting recipes:
-   - **recommendation** (exploratory): `hero`/`featured` pick → framing `columns` → alternatives `cards` →
-     CTA band. (4)
-   - **comparison:** focused 2-item → `hero`/`featured` framing → `comparison-grid` (2 blocks, fine); or
-     build out with supporting `cards` of the options + CTA band. (2–4)
-   - **deep-dive** (quick answer): `hero`/`featured` → `comparison-grid.simple` spec sheet (2 blocks, fine);
-     add an intro `columns` / related `cards` only if it genuinely enriches the answer. (1–3)
-   - **budget** (exploratory): `featured` best-value → priced `cards` → one pick's price-breakdown
-     `comparison-grid` → CTA band. (4)
-   - **discovery** (exploratory): `hero`/`featured` → filter/framing `columns` → browse `cards` grid → CTA
-     band. (4)
-   Keep alignment consistent across all of them (rule 5). `assemble` **rejects** an empty template (0
-   content blocks) and **warns** when an exploratory template (`Max Items ≥ 3`) has fewer than 3 blocks;
-   quick-answer templates are never warned for being small.
-7. **Wire any search / query input to `/of1`.** If a template authors a search input, "ask a question"
-   field, or a search-styled CTA, its submit must navigate to the site's generative page at `/of1` (carry
-   the typed text as `?q=<encoded>` when there is one) — a raw `<input>` that goes nowhere is a dead end on
-   a generated page. Prefer a whole-cell `<a href="/of1">` CTA (a real link the worker keeps `static`), or
-   author the input inside a `<form action="/of1" method="get">` with the field named `q`. This is the one
-   correct destination for on-page search in an OF1 demo; never leave it unbound and never point it at the
-   brand's original search endpoint.
+1. **General, never slot-specific.** `product-cards` is fine; `comparison-hero-with-three-fixed-tiers` is not — the point of this engine is to kill bespoke-per-template markup. When in doubt, reuse an existing block with a variant.
+2. **Never modify or restyle a reused (existing) block** — its `blocks/<name>/<name>.css` is owned upstream. New blocks you author get disjoint names.
+3. **Never touch `blocks/of1/of1.{js,css}`** — that is `of1-style-generative-block`'s. You own section blocks only.
+4. **New blocks must be positional** (read `block.children` by index, like `cards.js`). Never author the snowflake label/value convention (`cells[0]`=name, `cells[1]`=value) — it decorates into the wrong shape here.
+5. **Keep alignment consistent within a template.** A generated page stacks several blocks in one `<main>`; they must read as one designed layout. Decide one alignment intent per template (usually centered) and make **every** block obey it — heading, body, media, CTAs. The common offender is a `hero`/`featured` whose CSS defaults to left image + left text above centered `cards`/`columns`. When a reused block's CSS fights the alignment, pick a matching variant or add a new general block that centers — **never** restyle the reused block (rule 2). New blocks center by default. Record the decision in the block plan so every intent agent composes the same way.
+6. **Size the page to its purpose — richness is not fixed.** 1–6 content sections (excluding `section-metadata`), keyed off `Template Max Items`:
+   - **Quick answer** (`Max Items ≤ 2` — single deep-dive, focused two-item comparison): **1–2 blocks is fine**; don't pad it into a landing page.
+   - **Exploratory** (`Max Items ≥ 3` — recommendation, budget, discovery): **target 4–5** (max 6); a lead + grid alone feels like a stub. Compose a **lead** (`hero`/`featured`), the **primary** block (`cards`/`comparison-grid`), then supporting sections — framing `columns`, a secondary `cards`/`stat-row`, a quote, a closing CTA band — from **reused** blocks first; never invent a slot-specific block to pad.
+   Starting recipes: **recommendation** `hero`/`featured` pick → framing `columns` → alternatives `cards` → CTA (4); **comparison** `hero`/`featured` → `comparison-grid` (2, fine) or + option `cards` + CTA (2–4); **deep-dive** `hero`/`featured` → `comparison-grid.simple` spec sheet (1–3); **budget** `featured` best-value → priced `cards` → price-breakdown `comparison-grid` → CTA (4); **discovery** `hero`/`featured` → filter/framing `columns` → browse `cards` → CTA (4). Keep alignment consistent (rule 5). `assemble` **rejects** an empty template and **warns** when an exploratory one has < 3 blocks.
+7. **Wire any search / query input to `/of1`.** A template's search input, "ask a question" field, or search-styled CTA must navigate to `/of1` (typed text as `?q=<encoded>`) — a raw `<input>` that goes nowhere is a dead end. Prefer a whole-cell `<a href="/of1">` CTA (a real link the worker keeps `static`), or a `<form action="/of1" method="get">` with the field named `q`. Never leave it unbound or point it at the brand's original search endpoint.
 
 ## The da-blocks-slots authored-template contract
 
-An authored template is a normal EDS document. What the worker requires
-(`materialize-da-templates.js`, `block-tree.js`, `slot-address.js`, `slot-splice.js`):
+An authored template is a normal EDS document. What the worker requires (`materialize-da-templates.js`, `block-tree.js`, `slot-address.js`, `slot-splice.js`):
 
-- **Body shape:** `<body><header></header><main><div>…sections…</div></main><footer></footer></body>`,
-  matching the tenant repo's own `content/*.html`.
-- **Composition:** positional rows of the tenant's own blocks, filled with realistic example content.
-- **No `data-slot` attributes, no slot schema.** Slots are addressed structurally
-  (`s{S}-b{B}-r{R}-c{C}`), derived by the worker at sync time. You only author example content; the
-  cell's **role is auto-detected** from it:
-  - `<picture>`/`<img>` → `image` · whole-cell `<a>…</a>` → `link` · a cell with **>1** block-level
-    element (e.g. an `<h2>` + `<p>` intro) → `html` · empty/icon-only → `static` (never filled) ·
-    otherwise → `text`.
-  - So: put an `<img>` where you want a fillable image, a whole-cell `<a>` for a fillable link, and keep
-    multi-element intros in one cell if you want them preserved as markup.
-- **Label/value rows** (spec/price tables) are auto-detected: 2–3 cells, cell 0 short plain text
-  (≤4 words, no image/link), pattern repeating across ≥2 rows. Cell 0 stays **static** (kept verbatim,
-  never sent to the LLM). Two variant knobs:
-  - add `no-static-labels` to a block's classes to force **every** cell dynamic;
-  - add `key-value` to lower the label-detection threshold to a single row.
-- **Section metadata** carries routing/selection data — author a `section-metadata` block in the
-  relevant section with keys **`Template Intent`**, **`Template Description`**, **`Template Min Items`**,
-  **`Template Max Items`**. **No commas in any value** (the markdown intermediate drops the following
-  space). `minItems`/`maxItems` gate template selection against available product count.
-- **Class-name caveats:** single-hyphen variant names only (`variant-double`, never `variant--double`
-  — double hyphens don't survive the markdown intermediate). Positional rows only.
-- **Naming:** EDS strips a leading underscore from a path (`templates/_foo` → `/templates/foo`). Use a
-  `templates/_drafts/` subfolder for scratch, not an underscore prefix.
+- **Body shape:** `<body><header></header><main><div>…sections…</div></main><footer></footer></body>`, like the tenant's own `content/*.html`; positional rows of the tenant's own blocks with realistic example content.
+- **No `data-slot` attributes, no slot schema.** Slots are addressed structurally (`s{S}-b{B}-r{R}-c{C}`) by the worker at sync time; a cell's **role is auto-detected**: `<picture>`/`<img>` → `image` · whole-cell `<a>` → `link` · >1 block-level element (e.g. `<h2>` + `<p>`) → `html` · empty/icon-only → `static` (never filled) · otherwise `text`. So put an `<img>` where you want a fillable image, a whole-cell `<a>` for a fillable link, and keep multi-element intros in one cell to preserve markup.
+- **Label/value rows** (spec/price tables) are auto-detected: 2–3 cells, cell 0 short plain text (≤4 words, no image/link), repeating across ≥2 rows. Cell 0 stays **static** (verbatim, never sent to the LLM). Knobs: `no-static-labels` forces **every** cell dynamic; `key-value` lowers the detection threshold to one row.
+- **Section metadata:** a `section-metadata` block with **`Template Intent`**, **`Template Description`**, **`Template Min Items`**, **`Template Max Items`**. **No commas in any value** (the markdown intermediate drops the following space). Min/max gate selection against available product count.
+- **Class names:** single-hyphen variants only (`variant-double`, never `variant--double`). Positional rows only.
+- **Naming:** EDS strips a leading underscore from a path (`templates/_foo` → `/templates/foo`); use a `templates/_drafts/` subfolder for scratch.
 
 `assets/da-api.sh` provides `da_put` / `da_delete` / `da_list` / `aem_preview` (source it; it sets no shell options, so it is safe to source in bash or zsh). `assets/template-richness.mjs` counts content blocks / reads `Template Max Items` from a `.plain.html`. `assets/inventory.sh`
 enumerates usable positional blocks in `$TENANT_REPO_DIR/blocks/*`.
 
 ## Phases
 
-Selected by `OF1_TG_MODE`. The driver runs them in order: `base` → `intent × 5` (parallel) →
-`assemble`. Same three-phase interface as before, so caller dispatch is unchanged.
+Selected by `OF1_TG_MODE`; the driver runs `base` → `intent × 5` (parallel) → `assemble`.
 
 | Mode | What it does | Dispatched by |
 |---|---|---|
-| `base` | Use-cases → intents → **block plan**; run `inventory.sh` + harvest live `.plain.html`; author any planned **new general blocks** (`blocks/<name>/*`), commit + push, and wait for code sync so their decorators are live before any template uses them. | Driver FIRST (1 agent) |
-| `intent` | Compose the DA template documents for ONE intent (`$OF1_TG_INTENT`) from the block plan, `da_put` each to `/templates/<name>`. Does NOT preview, does NOT commit. | Driver fan-out (5 agents) after `base` |
-| `assemble` | Run ONCE after all intents. `aem_preview` every composed doc (MANDATORY), verify the round-trip, check richness, write the final status. Writes nothing to git. | Driver after all intents return |
-| `all` (default) | Fallback — `base` → 5 intents serially → `assemble` inline in one agent. | Single agent when no fan-out |
+| `base` | Use-cases → intents → **block plan**; `inventory.sh` + harvest live `.plain.html`; author planned **new general blocks**, commit + push, wait for code sync. | Driver first (1 agent) |
+| `intent` | Compose DA template docs for ONE intent (`$OF1_TG_INTENT`) from the plan, `da_put` each to `/templates/<name>`. No preview, no commit. | Fan-out (5 agents) after `base` |
+| `assemble` | Once, after all intents: preview every doc (MANDATORY), verify round-trip + richness, write the final status. Writes nothing to git. | Driver after all intents |
+| `all` (default) | `base` → 5 intents serially → `assemble` inline (same artifacts, ~3× slower). | Single agent |
 
-**Race-safety:** intent agents write disjoint DA paths (`/templates/<intent>-*`). New-block code is
-owned by `base` and previewing by `assemble`, never by intent agents.
-
-**No routing config.** The worker always uses the `da-blocks-slots` engine and materializes templates
-from the DA folder `/templates` by default (override only via `config.json` `templates.daPath`) — this
-skill writes no engine/template config file.
+**Race-safety:** intent agents write disjoint DA paths (`/templates/<intent>-*`); new-block code is owned by `base`, previewing by `assemble`. **No routing config:** the worker always uses `da-blocks-slots` and `/templates` (override only via `config.json` `templates.daPath`).
 
 ### Phase: `base`
 
-1. **Determine use cases → intents → block plan.** Read discovery + `knowledge-pages.json`; decide, per intent, the
-   template shapes and the block palette (reuse vs new) per Block Strategy. For **each** template, size it
-   to its purpose (CRITICAL RULE 6): quick-answer templates 1–2 blocks, exploratory templates target 4–5 —
-   list the ordered block sequence (lead → primary → supporting → CTA) in the plan so exploratory intents
-   compose rich pages, not 2-block stubs.
-   Also fix the **alignment intent** here (usually `center`) and record it in the plan (CRITICAL RULE 5):
-   when a reused block's existing CSS won't honor it, note the matching variant to use or flag that a
-   centered new block is needed, so no template ships with one stray left-aligned block among centered ones.
-2. **Inventory the reusable blocks:**
+1. **Use cases → intents → block plan.** Read discovery + `knowledge-pages.json`; decide per intent the template shapes and block palette (reuse vs new). Size each template to its purpose (RULE 6) and list its ordered block sequence (lead → primary → supporting → CTA) so exploratory intents compose rich pages. Fix the **alignment intent** (usually `center`, RULE 5) and record it; where a reused block's CSS won't honor it, note the matching variant or flag that a centered new block is needed.
+2. **Inventory reusable blocks:** `export TENANT_REPO_DIR="$OF1_DEMO_REPO"; "$SKILL_DIR/assets/inventory.sh" "$TENANT_REPO_DIR"`. Read each `blocks/<name>/<name>.js` to confirm it is **positional** (reads `block.children` by index); exclude label/value-convention blocks.
+3. **Harvest known-good compositions.** For each usable block fetch the live pages' `.plain.html` (`https://{BRANCH}--{REPO}--{OWNER}.aem.page/{path}.plain.html`) and record a per-block fingerprint (row count, per-row cell count) — stronger evidence than the `.js` alone.
+4. **Adapt the count to the vocabulary.** A 16-block site supports ~5 intents × ~3 variations; a 3-block site fewer, leaning on variants + `no-static-labels`/`key-value`. Don't blindly target 15.
+5. **Author planned NEW general blocks** (skip when reuse covers everything): positional `blocks/<name>/<name>.{js,css}`, brand tokens from `styles/styles.css` + `DESIGN.json` (path via `of1-integration/knowledge/design-tokens-resolution.md`). Then commit, push, and wait until the code bus serves them **before** any template previews them:
    ```bash
-   export TENANT_REPO_DIR="$OF1_DEMO_REPO"
-   USABLE_BLOCKS=$("$SKILL_DIR/assets/inventory.sh" "$TENANT_REPO_DIR")
-   echo "$USABLE_BLOCKS"
+   bash "$SKILL_DIR/scripts/commit-block-code.sh" <name> [<name>...]
    ```
-   For each, read `blocks/<name>/<name>.js` to confirm it is **positional** (reads `block.children` by
-   index). Exclude any block using the label/value convention.
-3. **Harvest known-good compositions.** For each usable block, fetch the tenant's live pages'
-   `.plain.html` (`https://{BRANCH}--{REPO}--{OWNER}.aem.page/{path}.plain.html`) and extract that
-   block's real row/cell shape + example content — a composition *known to render* is stronger evidence
-   than the `.js` alone. Record a per-block fingerprint (row count, per-row cell count).
-4. **Adapt the template count to the vocabulary.** A rich site (e.g. 16 blocks) supports ~5 intents ×
-   ~3 variations; a 3-block site gets fewer, or leans on variants + the `no-static-labels`/`key-value`
-   knobs. Do **not** blindly target 15 — target what the block vocabulary can express well.
-5. **Author any planned NEW general blocks** (only if the plan calls for them):
-   - Write positional `blocks/<name>/<name>.js` + `blocks/<name>/<name>.css`. General, reusable, brand
-     tokens from `styles/styles.css` + `DESIGN.json` (resolve via
-     `of1-integration/knowledge/design-tokens-resolution.md`).
-   - Commit + push so the code bus picks them up **before** any template previews them:
-     ```bash
-     git add blocks/<name>/
-     git commit -m "feat: add general-purpose <name> block for OF1 templates"
-     # Rebase onto the remote first so a concurrent push never rejects ours.
-     LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/git-push.sh"
-     git_push_rebased "$BRANCH" || exit 1
-     # Wait for code sync — poll the block JS on the code bus until 200:
-     for i in $(seq 1 30); do
-       curl -sf -o /dev/null "https://${BRANCH}--${REPO}--${OWNER}.aem.page/blocks/<name>/<name>.js" && break
-       sleep 5
-     done
-     ```
-   - Skip this whole step when every intent is covered by reuse.
-6. **Persist the block plan** for the intent agents to read (so each composes consistently):
-   ```bash
-   # Write the plan (usable blocks, fingerprints, per-intent template list) where intent agents read it.
-   printf '%s' "$BLOCK_PLAN_JSON" > "$OF1_STATE_DIR/of1-build-templates-plan.json"
-   ```
-7. **Status file** (progress file):
+6. **Persist the block plan** (usable blocks, fingerprints, per-intent template list) to `$OF1_STATE_DIR/of1-build-templates-plan.json`, then write the progress file:
    ```bash
    echo '{"stage":3,"skill":"of1-build-templates","phase":"base","status":"done","summary":"Block plan ready; N new general block(s) authored + deployed."}' \
      > "$OF1_STATE_DIR/of1-build-templates-base-status.json"
@@ -238,113 +97,39 @@ skill writes no engine/template config file.
 
 ### Phase: `intent`
 
-Precondition: `$OF1_TG_INTENT` ∈ {`comparison`, `recommendation`, `deep-dive`, `budget`, `discovery`}
-and `base` has finished (`of1-build-templates-plan.json` exists, new blocks deployed).
+Precondition: `$OF1_TG_INTENT` ∈ {`comparison`, `recommendation`, `deep-dive`, `budget`, `discovery`} (else exit 2) and `base` has finished (`of1-build-templates-plan.json` exists, new blocks deployed). For each template variation the plan calls for:
 
-```bash
-INTENT="${OF1_TG_INTENT:?OF1_TG_INTENT required in intent mode}"
-case "$INTENT" in comparison|recommendation|deep-dive|budget|discovery) ;;
-  *) echo "OF1_TG_INTENT must be one of: comparison recommendation deep-dive budget discovery" >&2; exit 2;; esac
-PLAN=$(cat "$OF1_STATE_DIR/of1-build-templates-plan.json")
-```
-
-For each template variation this intent's plan calls for:
-
-1. **Compose the document** from the planned blocks (reused + any new ones, all now deployed), filled
-   with realistic example content per the contract above. Author image-role cells (`<img>`/`<picture>`)
-   where the worker+LLM should swap a real image; author label/value rows for spec/price tables; use
-   single-hyphen variants. Honor the plan's **alignment intent** across every block in the doc (CRITICAL
-   RULE 5), size the page to its purpose — quick-answer 1–2 blocks, exploratory target 4–5 (CRITICAL
-   RULE 6), and point any search / query input at `/of1` (CRITICAL RULE 7).
-2. **Add the `section-metadata` block** with `Template Intent = <intent>`, a short structurally-distinct
-   `Template Description`, and `Template Min Items` / `Template Max Items`. No commas in values.
-3. **Wrap** the body `<body><header></header><main><div>…</div></main><footer></footer></body>` and
-   `da_put` to DA:
+1. **Compose the document** from the planned blocks with realistic example content per the contract above: image-role cells where a real image should be swapped, label/value rows for spec/price tables, single-hyphen variants. Honor the plan's alignment intent (RULE 5), size to purpose (RULE 6), point any search input at `/of1` (RULE 7).
+2. **Add the `section-metadata` block**: `Template Intent = <intent>`, a short structurally-distinct `Template Description`, `Template Min Items` / `Template Max Items`. No commas in values.
+3. **Wrap** in `<body><header></header><main><div>…</div></main><footer></footer></body>` and `da_put` (source `assets/da-api.sh`):
    ```bash
-   source "$SKILL_DIR/assets/da-api.sh"
    da_put "./<intent>-<variation>.html" "templates/<intent>-<variation>.html"
    ```
-   `da_put` returns the `editUrl` (`da.live/edit#/…`) — capture it; `of1-publish` surfaces it in the
-   demo hub as the authoring showcase.
-4. Do **not** preview or commit here (assemble owns previewing; only `base` commits — new block code).
-
-Status file (one per intent):
-```bash
-echo "{\"stage\":3,\"skill\":\"of1-build-templates\",\"phase\":\"intent-${INTENT}\",\"status\":\"done\",\"summary\":\"Composed ${INTENT} template docs to DA.\"}" \
-  > "$OF1_STATE_DIR/of1-build-templates-intent-${INTENT}-status.json"
-```
+   `da_put` returns the `editUrl` (`da.live/edit#/…`) — capture it; `of1-publish` surfaces it in the demo hub.
+4. Do **not** preview or commit here. Then write one status file per intent:
+   ```bash
+   echo "{\"stage\":3,\"skill\":\"of1-build-templates\",\"phase\":\"intent-${INTENT}\",\"status\":\"done\",\"summary\":\"Composed ${INTENT} template docs to DA.\"}" \
+     > "$OF1_STATE_DIR/of1-build-templates-intent-${INTENT}-status.json"
+   ```
 
 ### Phase: `assemble`
 
 Run once after all 5 intent agents complete.
 
-1. **Preview every composed document (MANDATORY).** A DA doc that was never previewed has no
-   `.plain.html`, so the worker syncs nothing.
+1. **Preview every composed doc (MANDATORY)** — an unpreviewed DA doc has no `.plain.html`, so the worker syncs nothing:
    ```bash
-   source "$SKILL_DIR/assets/da-api.sh"
-   # da_list returns paths like "/<ORG>/<REPO>/templates/x.html"; aem_preview wants
-   # "templates/x". Never name the loop variable `path` — in zsh it is tied to $PATH.
-   # Template doc paths, one per line, relative + extensionless (e.g. templates/x).
-   # Fails (non-zero) when da_list fails, returns a non-list (401/404 error body), or
-   # lists no .html docs — an empty /templates must never pass as "all previewed".
-   template_docs() {
-     local listing docs
-     listing=$(da_list templates) \
-       || { echo "ABORT: da_list templates failed — check DA_TOKEN / path" >&2; return 1; }
-     docs=$(printf '%s' "$listing" \
-       | jq -r 'if type == "array" then .[] | select(.ext == "html") | .path else error("not a DA list") end' 2>/dev/null) \
-       || { echo "ABORT: /templates listing is not a DA list: $(printf '%s' "$listing" | head -c 200)" >&2; return 1; }
-     [ -n "$docs" ] \
-       || { echo "ABORT: no /templates docs listed — check DA_TOKEN / path (did the intent phase da_put any?)" >&2; return 1; }
-     printf '%s\n' "$docs" | while IFS= read -r p; do p="${p#/$ORG/$REPO/}"; printf '%s\n' "${p%.html}"; done
-   }
-   # Capture first (a failure inside `template_docs | while` would be masked by the
-   # pipeline's exit status), then iterate a here-string — no subshell in either shell.
-   DOCS=$(template_docs) || exit 1
-   while IFS= read -r doc; do
-     [ -n "$doc" ] || continue
-     aem_preview "$doc" || { echo "ABORT: preview failed for $doc (see the status above)" >&2; exit 1; }
-   done <<<"$DOCS"
+   bash "$SKILL_DIR/scripts/preview-all.sh"
    ```
-   `aem_preview` returns non-zero on any non-2xx. On 401/403 **stop and report the org-authorization
-   gap** (see `of1-check-dependencies` step 5); other statuses (404 bad path/ref, 5xx) are reported as-is.
-   Do NOT report templates as ready with unpublished docs. The preview ref is `${BRANCH:-main}`; DA
-   content is shared across branches, so a preview on any existing ref is visible on every branch's
-   preview host.
-2. **Verify the round-trip** for each template: fetch
-   `https://{BRANCH}--{REPO}--{OWNER}.aem.page/templates/{name}.plain.html` and confirm 200 + that each
-   block's row count and per-row cell count match what was authored (the harvested fingerprint). A 404
-   means preview didn't materialize; a shape mismatch means markdown-intermediate mangling — fix before
-   proceeding.
-3. **Check template richness against purpose (CRITICAL RULE 6).** Count the content blocks in each
-   template's `.plain.html` (every `<div class="NAME">` block wrapper directly inside a section,
-   excluding `section-metadata` and `metadata` — `.plain.html` carries no `block` class). **Reject**
-   only an empty template (0 blocks). For **exploratory** templates (`Template Max Items ≥ 3`), **warn**
-   when the count is below 3 (they should target 4–5). **Quick-answer** templates (`Max Items ≤ 2`) are
-   fine at 1–2 and are not warned.
+   Aborts (non-zero) if `/templates` lists no docs or any preview is non-2xx. On 401/403 **stop and report the org-authorization gap** (see `of1-check-dependencies` step 5); other statuses (404, 5xx) are reported as-is. Never report templates ready with unpublished docs. DA content is shared across branches, so a preview on any existing ref is visible on every branch's preview host.
+2. **Verify the round-trip** per template: `https://{BRANCH}--{REPO}--{OWNER}.aem.page/templates/{name}.plain.html` must be 200 and each block's row/per-row cell counts must match the harvested fingerprint. A 404 means preview didn't materialize; a shape mismatch means markdown-intermediate mangling — fix before proceeding.
+3. **Check richness against purpose (RULE 6):**
    ```bash
-   DOCS=$(template_docs) || exit 1
-   while IFS= read -r doc; do
-     [ -n "$doc" ] || continue
-     html=$(curl -sf "https://${BRANCH}--${REPO}--${OWNER}.aem.page/${doc}.plain.html") \
-       || { echo "ABORT: ${doc}.plain.html not served — preview didn't materialize" >&2; exit 1; }
-     # Real .plain.html has no "block" class: template-richness.mjs counts the
-     # <div class="NAME"> wrappers at section level (minus section-metadata / metadata)
-     # and reads `Template Max Items` across line breaks. Prints "<blocks> <maxItems>".
-     RICH=$(printf '%s' "$html" | node "$SKILL_DIR/assets/template-richness.mjs")
-     # No output = the helper itself failed (not "0 blocks") — never default it to 0.
-     [ -n "$RICH" ] || { echo "ABORT: template-richness.mjs printed nothing for $doc — check node / \$SKILL_DIR" >&2; exit 1; }
-     read -r n maxItems <<<"$RICH"
-     [ "$n" -eq 0 ] && { echo "ABORT: $doc has 0 content blocks — empty template, fix before assemble" >&2; exit 1; }
-     if [ -n "$maxItems" ] && [ "$maxItems" -ge 3 ] && [ "$n" -lt 3 ]; then
-       echo "WARN: exploratory $doc (Max Items $maxItems) has only $n content blocks (target 4–5)" >&2
-     fi
-     echo "✓ $doc: $n content block(s), Max Items ${maxItems:-?}"
-   done <<<"$DOCS"
+   bash "$SKILL_DIR/scripts/verify-richness.sh"
    ```
+   Counts content blocks per `.plain.html` (`<div class="NAME">` section children minus `section-metadata`/`metadata`, via `assets/template-richness.mjs`). **Aborts** on an empty template (0 blocks); **warns** when an exploratory one (`Max Items ≥ 3`) has < 3; quick-answer templates (`Max Items ≤ 2`) are never warned.
 4. **Final status file** (the deliverable status the driver reports):
    ```bash
-   EDIT_BASE="https://da.live/edit#/${OWNER}/${REPO}/templates"
+   EDIT_BASE="https://da.live/edit#/${OWNER}/${REPO}/templates"   # owner/repo from repo-config.json
    cat > "$OF1_STATE_DIR/of1-build-templates-status.json" <<EOF
    { "stage": 3, "skill": "of1-build-templates", "status": "review",
      "deliverables": [ { "url": "${EDIT_BASE}", "label": "Edit templates in DA" } ],
@@ -352,25 +137,9 @@ Run once after all 5 intent agents complete.
    EOF
    ```
 
-### Phase: `all` (fallback)
+## Deliverables & notes
 
-If `OF1_TG_MODE` is unset, run `base` → 5 intents serially → `assemble` inline. Same artifacts, ~3×
-slower wall-clock.
-
-## Deliverables
-
-- DA documents at `/templates/<intent>-<variation>` (source of truth; not git-committed). No template
-  config file — the worker defaults to `da-blocks-slots` + `/templates`.
-- Any **new general-purpose** `blocks/<name>/{<name>.js,<name>.css}` (committed) — reused blocks are
-  never modified.
-- Editable in DA at `da.live/edit#/{org}/{repo}/templates/*` (the authoring showcase `of1-publish`
-  surfaces).
-
-## Notes
-
-- **Preview is not optional.** The single most common failure is a DA write with no preview → worker
-  syncs zero templates → empty generative page.
-- **Reuse over invention, generality over convenience.** A new block must earn its place by being a
-  general pattern reused across templates — not a one-off.
-- **This skill does not author `blocks/of1/of1.css`, generative-images.json, or
-  generative-fragments.json** — those belong to other skills (the last two are a separate future PR).
+- DA documents at `/templates/<intent>-<variation>` (not git-committed; editable at `da.live/edit#/{org}/{repo}/templates/*`, the authoring showcase `of1-publish` surfaces) and any **new general-purpose** `blocks/<name>/{<name>.js,<name>.css}` (committed). No template config file; reused blocks are never modified.
+- **Preview is not optional** — a DA write with no preview means the worker syncs zero templates and the generative page is empty.
+- **Reuse over invention.** A new block must earn its place as a general pattern reused across templates.
+- Does not author `blocks/of1/of1.css`, generative-images.json, or generative-fragments.json (other skills).
