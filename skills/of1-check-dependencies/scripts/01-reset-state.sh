@@ -6,3 +6,4 @@ rm -f "$OF1_STATE_DIR/discovery.html"
 # could re-upload stale landing copy / personas / chips / knowledge pages.
 rm -f "$OF1_STATE_DIR"/{of1-landing.json,personas-rows.json,suggestions-rows.json,knowledge-pages.json,brand-voice.html}
 rm -rf "$OF1_STATE_DIR/hub"
+rm -f "$OF1_STATE_DIR/product-urls.txt"

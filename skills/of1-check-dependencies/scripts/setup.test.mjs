@@ -127,3 +127,25 @@ test('01: resets local state files', () => {
   for (const p of ['hub', 'of1-publish-status.json', 'brand-voice.html']) assert.equal(existsSync(join(f.state, p)), false);
   assert.equal(existsSync(join(f.state, 'setup.json')), true);
 });
+test('07/09: refuse empty domain (never write "domain": "")', () => {
+  for (const [s, p] of [['07-config-json.sh', 'of1/config/config.json'], ['09-repo-config.sh', null]]) {
+    const f = fixture();
+    const r = f.run(s, [], { DOMAIN: '' });
+    assert.equal(r.status, 1, s + r.stderr);
+    assert.match(r.stderr, /DOMAIN/);
+    assert.equal(existsSync(join(p ? f.repo : f.state, p || 'repo-config.json')), false);
+  }
+});
+test('07/09: resolve domain themselves (argument, no exported DOMAIN)', () => {
+  const f = fixture();
+  assert.equal(f.run('07-config-json.sh', ['arg.com']).status, 0);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.repo, 'of1/config/config.json'), 'utf8')), { domain: 'arg.com' });
+  assert.equal(f.run('09-repo-config.sh', ['arg.com']).status, 0);
+  assert.equal(JSON.parse(readFileSync(join(f.state, 'repo-config.json'), 'utf8')).domain, 'arg.com');
+});
+test('01: clears product-urls.txt', () => {
+  const f = fixture();
+  writeFileSync(join(f.state, 'product-urls.txt'), 'x');
+  f.run('01-reset-state.sh');
+  assert.equal(existsSync(join(f.state, 'product-urls.txt')), false);
+});
