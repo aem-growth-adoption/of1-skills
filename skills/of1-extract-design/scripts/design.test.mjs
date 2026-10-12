@@ -35,6 +35,13 @@ test('commit-design: commits and pushes, incl. gitignored stardust/', () => {
   assert.match(sh('git show --stat --format=%s HEAD', f.repo).stdout, /design tokens and brand identity for x\.com[\s\S]*DESIGN\.json/);
   assert.equal(sh('git status -sb', f.repo).stdout.includes('ahead'), false);
 });
+test('commit-design: nothing to commit still succeeds and pushes', () => {
+  const f = fixture(ALL);
+  assert.equal(f.run('commit-design.sh').status, 0);
+  const r = f.run('commit-design.sh');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /nothing to commit/);
+});
 test('bash -n', () => {
   for (const s of ['verify-outputs.sh', 'commit-design.sh']) assert.equal(spawnSync('bash', ['-n', join(here, s)]).status, 0, s);
 });
