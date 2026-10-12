@@ -1,0 +1,180 @@
+{
+  "config": {
+    "keys": [
+      "contentIngestion",
+      "domain",
+      "templates"
+    ],
+    "templateNames": 9,
+    "hasIndexPath": true
+  },
+  "of1Page": {
+    "rows": [
+      "api-endpoint",
+      "domain",
+      "engine",
+      "title",
+      "subtitle",
+      "placeholder"
+    ]
+  },
+  "brandVoice": {
+    "headings": [
+      "Personality",
+      "Tone",
+      "Words we use",
+      "Words we avoid"
+    ],
+    "listItems": 27
+  },
+  "personas": {
+    "columns": [
+      "compare",
+      "deals",
+      "description",
+      "explore",
+      "id",
+      "keywords",
+      "name",
+      "priorities",
+      "purchase",
+      "research",
+      "support"
+    ],
+    "rows": 5
+  },
+  "suggestions": {
+    "columns": [
+      "label",
+      "query"
+    ],
+    "rows": 12
+  },
+  "templates": {
+    "budget-value": {
+      "blocks": [
+        "hero",
+        "cards",
+        "comparison-grid",
+        "columns"
+      ],
+      "intent": "budget",
+      "minItems": 3,
+      "maxItems": 4
+    },
+    "comparison-head-to-head": {
+      "blocks": [
+        "hero",
+        "comparison-grid"
+      ],
+      "intent": "comparison",
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "comparison-matrix": {
+      "blocks": [
+        "hero",
+        "comparison-grid",
+        "cards",
+        "columns"
+      ],
+      "intent": "comparison",
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "deep-dive-explainer": {
+      "blocks": [
+        "hero",
+        "columns",
+        "accordion"
+      ],
+      "intent": "deep-dive",
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "deep-dive-spec": {
+      "blocks": [
+        "hero",
+        "comparison-grid"
+      ],
+      "intent": "deep-dive",
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "discovery-browse": {
+      "blocks": [
+        "hero",
+        "columns",
+        "cards",
+        "quote",
+        "columns"
+      ],
+      "intent": "discovery",
+      "minItems": 3,
+      "maxItems": 6
+    },
+    "discovery-paths": {
+      "blocks": [
+        "hero",
+        "cards",
+        "accordion",
+        "columns"
+      ],
+      "intent": "discovery",
+      "minItems": 3,
+      "maxItems": 4
+    },
+    "recommendation-pick": {
+      "blocks": [
+        "hero",
+        "columns",
+        "cards",
+        "columns"
+      ],
+      "intent": "recommendation",
+      "minItems": 2,
+      "maxItems": 4
+    },
+    "recommendation-shortlist": {
+      "blocks": [
+        "hero",
+        "cards",
+        "testimonials",
+        "columns"
+      ],
+      "intent": "recommendation",
+      "minItems": 3,
+      "maxItems": 6
+    }
+  },
+  "hasKnowledgePages": true,
+  "status": {
+    "ready": true,
+    "flags": {
+      "hasTemplates": true,
+      "hasContent": true,
+      "contentChunks": true,
+      "hasBrandVoice": true,
+      "hasSuggestions": true,
+      "hasCtaTemplate": false,
+      "hasStrategy": false
+    }
+  },
+  "generate": {
+    "eventTypes": [
+      "debug",
+      "done",
+      "section",
+      "suggestions"
+    ],
+    "hasSections": true,
+    "errors": 0
+  },
+  "gitFiles": [
+    ".hlxignore",
+    "blocks/of1/of1.css",
+    "blocks/of1/of1.js",
+    "deliverables/index.html",
+    "of1/config/config.json"
+  ]
+}

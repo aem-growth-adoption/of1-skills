@@ -1,6 +1,6 @@
 {
   "name": "of1-skills",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Integrate OF1 (generative-search) into an existing Adobe Edge Delivery Services project: verify prerequisites, extract/reuse design tokens, generate templates and CTA config, style the generative block, and publish. Runs standalone against any EDS/Stardust repo — no demo-building or site-crawling steps.",
   "skills": "./skills/",
   "entrypoints": {

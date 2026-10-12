@@ -1,5 +1,7 @@
 # DA-first config — Plan 3/4: of1-skills Implementation Plan
 
+Status: Implemented (PRs #11, #12)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The OF1 skills author config in DA (brand-voice doc, personas + suggestions sheets, `/of1` block rows), commit only the allowed paths, never delete non-OF1 content, and keep the demo hub.

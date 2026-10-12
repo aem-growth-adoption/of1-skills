@@ -20,7 +20,7 @@ cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
 
-Read existing design tokens (from the replica/extraction stage) — use for colors, fonts, button styles, border-radius. Only WebFetch the site if you need CTA-specific details not in the tokens. **Resolve the spec via the shared resolver** (`of1-integration/knowledge/design-tokens-resolution.md`) — `DESIGN.json` may live at `stardust/current/` OR project root (`./`), and `styles/styles.css` is a valid token source for a live site:
+Read existing design tokens (from the extraction step, `of1-extract-design` / `stardust:extract`) — use for colors, fonts, button styles, border-radius. Only WebFetch the site if you need CTA-specific details not in the tokens. **Resolve the spec via the shared resolver** (`of1-integration/knowledge/design-tokens-resolution.md`) — `DESIGN.json` may live at `stardust/current/` OR project root (`./`), and `styles/styles.css` is a valid token source for a live site:
 ```bash
 DESIGN_JSON=""
 if   [ -f stardust/current/DESIGN.json ]; then DESIGN_JSON="stardust/current/DESIGN.json"
@@ -55,7 +55,7 @@ Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `cta-t
 ### 1. Read the site's visual design from the resolved tokens
 
 `DESIGN.json` (resolved above) already carries everything the CTA needs — it was measured from the
-real site by `stardust:extract`/`replica`, so prefer it over re-deriving from HTML. Read:
+real site by `stardust:extract`, so prefer it over re-deriving from HTML. Read:
 - **Fonts** → `typography.heading.family` / `typography.body.family` (+ `weight`, `letterSpacing`, `lineHeight`)
 - **Colors** → `colors.{primary, secondary, accent, background, surface, text, muted}`
 - **Button style** → `components.button.{radius, padding, weight, textTransform}`

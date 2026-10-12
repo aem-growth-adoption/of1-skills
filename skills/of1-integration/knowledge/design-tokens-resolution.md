@@ -6,7 +6,7 @@ resolves them the **same way**.
 
 ## Where `DESIGN.json` actually lives
 
-Stage 2a (`of1-extract-design`, wrapping `stardust:extract`) always writes the design spec to
+The extraction step (`of1-extract-design`, wrapping `stardust:extract`) always writes the design spec to
 `stardust/current/DESIGN.json` — there is no bounded/synthesized-spec variant to account for; every
 demo run goes through 2a before anything downstream reads brand tokens.
 
@@ -16,7 +16,7 @@ The paths below are relative to the repo root — `cd "$OF1_DEMO_REPO"` first (o
 path with `$OF1_DEMO_REPO/`).
 
 ```bash
-# Resolve the brand design spec. Written by of1-extract-design (Stage 2a).
+# Resolve the brand design spec. Written by of1-extract-design (the extraction step).
 DESIGN_JSON=""
 if [ -f stardust/current/DESIGN.json ]; then DESIGN_JSON="stardust/current/DESIGN.json"; fi
 ```

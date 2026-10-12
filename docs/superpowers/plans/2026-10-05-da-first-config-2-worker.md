@@ -1,5 +1,7 @@
 # DA-first config — Plan 2/4: gen-web worker Implementation Plan
 
+Status: Implemented (PRs #11, #12)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** The worker syncs config from DA (brand-voice doc, suggestions sheet, strategy doc, `/templates`, `/of1/knowledge/**`) plus git `config.json`/`cta-template.json`, gates readiness on templates + indexed content, grounds personalize/generate-slots on content chunks, and drops every legacy engine and structured-RAG path.

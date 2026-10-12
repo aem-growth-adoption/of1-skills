@@ -1,7 +1,7 @@
 # DA-first OF1 config — stop committing generated JSON to customer repos
 
 Date: 2026-10-05
-Status: approved design, pending implementation plan
+Status: Implemented (PRs #11, #12)
 Repos: `of1-skills` (primary), `of1-gen-web-service`, `of1-preview-extension`, `of1-labs`, `of1-demo-skills`
 Unchanged: `of1-edge-proxy`, `of1-portal`
 

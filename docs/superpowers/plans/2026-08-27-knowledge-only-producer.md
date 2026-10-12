@@ -1,5 +1,7 @@
 # Knowledge-only Producer (of1-skills) Implementation Plan
 
+Status: Superseded by 2026-10-05-da-first-config-design
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the OF1 demo pipeline author a single `knowledge` document (generic entities with a `type`) instead of split products/features/faqs/testimonials, keep personas, drop use-cases, and publish + verify it end-to-end.

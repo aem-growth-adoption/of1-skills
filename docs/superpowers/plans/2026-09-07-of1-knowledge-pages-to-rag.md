@@ -1,5 +1,7 @@
 # OF1 Knowledge Pages → Content RAG Implementation Plan
 
+Status: Superseded by 2026-10-05-da-first-config-design
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** During the crawl `of1-extract-content` already runs, capture each page's text, publish it as a bare DA doc under `/of1/knowledge/**`, and wire the tenant config so the gen-web content-RAG ingests it.

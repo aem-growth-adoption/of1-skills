@@ -83,7 +83,7 @@ No runtime patching is needed. `/of1` is authored as an ordinary content page (S
 
 ### Step 1 — Read design context
 
-- `DESIGN.json` — design tokens (colors, fonts, spacing, radius). **Resolve its path via `of1-integration/knowledge/design-tokens-resolution.md`** — written by Stage 2a (`of1-extract-design`) to `stardust/current/DESIGN.json`.
+- `DESIGN.json` — design tokens (colors, fonts, spacing, radius). **Resolve its path via `of1-integration/knowledge/design-tokens-resolution.md`** — written by the extraction step (`of1-extract-design`) to `stardust/current/DESIGN.json`.
 - `stardust/current/DESIGN.md` — design direction
 - `styles/styles.css` — CSS custom properties (the actual deployed tokens; authoritative for a live site, not a guess). If neither `DESIGN.json` location nor `styles/styles.css` exists, stop and report — do not invent tokens.
 - `blocks/of1/of1.css` — the freshly-copied template you'll customize
@@ -130,8 +130,7 @@ Do NOT add rules that target generated-section internals (`.generated-section .h
 
 The header/footer blocks fetch `/nav` and `/footer` on every page; if either is missing, **every page
 renders chromeless** — no nav, no footer, including `/of1`. These docs are *supposed* to exist by now
-(Stage 2c, `of1-snowflake`, authors them for the e2e pipeline; the existing site already has them for
-`of1-integration`). A bot-blocked source is now caught upstream — Stage 2a (`of1-extract-design`)
+(the site, or the migration step before integration, normally provides them). A bot-blocked source is now caught upstream — `of1-extract-design`
 fails loud on a blocked capture rather than letting an unmeasurable site flow downstream to an empty
 `<header></header>` — but guarantee the fragments regardless of provenance rather than assume. This guard is
 idempotent — if both already return 200 it changes nothing, and it **never overwrites** an existing
@@ -147,7 +146,7 @@ live — a chromeless demo must not proceed silently.
 
 ### Step 5 — Upload OF1 DA content
 
-The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 4 above (whether from Stage 2c's `of1-snowflake`, the existing site, or the Step 4 fallback).
+The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Description) plus a section containing the `of1` block table. The site's existing `blocks/header`/`blocks/footer` pick up the real `/nav` and `/footer` documents automatically — guaranteed to exist by Step 4 above (whether from the migration step, the existing site, or the Step 4 fallback).
 
 ```bash
 # The api-endpoint baked here is the worker the *deployed* /of1 page calls at
@@ -306,10 +305,10 @@ Common failures:
 
 | Symptom | Likely cause |
 |---|---|
-| `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 4 (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when Stage 2c/the existing site didn't provide one |
+| `HEADER MISSING` / `FOOTER MISSING` | `/nav` or `/footer` doc is missing — re-run Step 4 (`ensure-nav-footer.mjs`); it authors a minimal branded fragment when the site/migration step didn't provide one |
 | `OF1 BLOCK MISSING` | `blocks/of1/of1.js` wasn't pushed, or the `of1` block table's `th` cell doesn't read exactly `of1` |
 | `SEARCH UI MISSING` (block present) | The client SDK didn't load/init — check the `api-endpoint` row points at a reachable worker (`${WORKER_URL}/sdk/of1-client.js` returns 200) and the browser console for import errors |
-| Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by Stage 2c's (`of1-snowflake`) deploy phase, or the preview hasn't picked up the latest push yet |
+| Screenshot shows unstyled links / system font | `styles/styles.css` (the site's own foundation CSS) didn't get pushed by the migration step's deploy phase, or the preview hasn't picked up the latest push yet |
 
 Fix any failures and re-push before Completion.
 

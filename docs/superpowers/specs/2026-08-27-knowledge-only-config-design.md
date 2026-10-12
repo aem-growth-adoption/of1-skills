@@ -1,7 +1,7 @@
 # Knowledge-only tenant config — design
 
 **Date:** 2026-08-27
-**Status:** Design (approved in brainstorming; pending spec review)
+**Status:** Superseded by 2026-10-05-da-first-config-design
 **Repos:** `of1-skills` (producer, primary), `of1-gen-web` (consumer)
 
 ## Summary

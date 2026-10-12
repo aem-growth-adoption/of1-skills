@@ -1,5 +1,7 @@
 # DA-first config — Plan 1/4: consumer adapters (extension + labs) Implementation Plan
 
+Status: Implemented (PRs #11, #12)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make every consumer of `/of1/config/personas.json` accept the DA-sheet shape (and still the legacy array) before the producers switch, so nothing breaks during rollout.

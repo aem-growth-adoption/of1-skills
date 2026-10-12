@@ -31,7 +31,7 @@ for the full dependency table), fanning out in parallel where possible.
 | `of1-extract-brand-voice` | Extract the brand voice into the DA document `/of1/brand-voice` |
 | `of1-extract-content` | Publish the site's page content to DA `/of1/knowledge/**` (RAG) and infer personas into the DA sheet `/of1/config/personas` |
 | `of1-build-quick-suggestions` | Generate suggestion chips (DA sheet `/of1/config/suggestions`) and the `/of1` landing copy |
-| `of1-build-cta-template` | Pipeline mode only (`OF1_PIPELINE_MODE=1`): generate a branded CTA template (git `of1/config/cta-template.json`) |
+| `of1-build-cta-template` | Pipeline mode only (`OF1_PIPELINE_MODE=1`): generate a branded CTA template (git `of1/config/cta-template.json`; read by the gen-web worker as `cta-template`, served via `/api/personalize` `inject_cta`; personas are read by the preview extension / edge proxy instead) |
 | `of1-publish` | Assert the git config set, sync the OF1 worker, generate the demo hub (DA edit links + status panel), and run the pre-launch checks |
 
 Author-tunable config lives in DA (edit, preview, then sync — see
