@@ -117,6 +117,18 @@ test('capture-pages: reads product-urls.txt when no args', () => {
   assert.equal(JSON.parse(readFileSync(join(f.state, 'knowledge-pages.json'), 'utf8')).length, 1);
 });
 
+test('capture-pages: --append keeps existing pages; default resets', () => {
+  const f = fixture();
+  const one = (u) => JSON.stringify({ url: u, title: '', blocks: [{ tag: 'p', text: 'x' }] });
+  writeFileSync(join(f.fake, 'captures.txt'), [one('n'), '', one('m'), ''].join('\n'));
+  writeFileSync(join(f.state, 'knowledge-pages.json'), JSON.stringify([{ url: 'old', title: '', blocks: [] }]));
+  const r = f.run('capture-pages.sh', ['--append', 'https://s/x']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.state, 'knowledge-pages.json'), 'utf8')).map((p) => p.url), ['old', 'n']);
+  assert.equal(f.run('capture-pages.sh', ['https://s/y']).status, 0);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.state, 'knowledge-pages.json'), 'utf8')).map((p) => p.url), ['m']);
+});
+
 test('publish-knowledge: manifest, skips download when empty, then publish', () => {
   const f = fixture();
   writeFileSync(join(f.bin, 'node'), FAKE_NODE); chmodSync(join(f.bin, 'node'), 0o755);

@@ -57,7 +57,7 @@ Hand-prune `product-urls.txt` to the 10–20 pages with real content (about, ser
 bash "$SKILL_DIR/scripts/capture-pages.sh"   # URLs from product-urls.txt, or pass them as arguments
 ```
 
-`capture-pages.sh` starts from a fresh `$OF1_STATE_DIR/knowledge-pages.json`, opens pages in parallel **batches of 5** (first URL `playwright-cli open`, the rest `tab-new`), waits 5 s, runs the capture eval in each tab (`main`/`article` content: h1–h3, p, li, img, minus nav/header/footer/aside), appends non-empty captures with `jq` (empty ones warn and are skipped), and closes the batch. `playwright-cli` runs from `$OF1_STATE_DIR` (via the `pw` helper) so `.playwright-cli/` never lands in the repo. Do NOT scrape pages serially. Close tabs individually only from the highest id down. Pages for Step 5/5b: capture them the same way (append to `knowledge-pages.json`; re-running the script resets it, so pass ALL URLs in one run).
+`capture-pages.sh [--append] [<url>...]` starts from a fresh `$OF1_STATE_DIR/knowledge-pages.json`, opens pages in parallel **batches of 5** (first URL `playwright-cli open`, the rest `tab-new`), waits 5 s, runs the capture eval in each tab (`main`/`article` content: h1–h3, p, li, img, minus nav/header/footer/aside), appends non-empty captures with `jq` (empty ones warn and are skipped), and closes the batch. `playwright-cli` runs from `$OF1_STATE_DIR` (via the `pw` helper) so `.playwright-cli/` never lands in the repo. Do NOT scrape pages serially. Close tabs individually only from the highest id down. Pages for Step 5/5b: capture them with `capture-pages.sh --append <url>...` (without `--append` the script starts a fresh `knowledge-pages.json`).
 
 For each product (cap at 20), note: name, price, category, features, description, use cases, target audience. These notes are working context for persona inference (Step 4) only — the knowledge the worker uses is the captured page content in `knowledge-pages.json`.
 
@@ -67,13 +67,13 @@ For each product (cap at 20), note: name, price, category, features, description
 
 ### 5. Capture features and FAQs
 
-**Features / FAQs:** if the site has dedicated feature, FAQ, help, or comparison pages that Step 3 did not visit, open them (same batch-of-5 pattern) and run the same capture eval, appending each to `knowledge-pages.json`. Their headings, paragraphs and list items become the knowledge docs — do not rewrite or summarise them.
+**Features / FAQs:** if the site has dedicated feature, FAQ, help, or comparison pages that Step 3 did not visit, capture them with `bash "$SKILL_DIR/scripts/capture-pages.sh" --append <url>...`. Their headings, paragraphs and list items become the knowledge docs — do not rewrite or summarise them.
 
 ### 5b. Capture testimonials
 
 Look for testimonials / social proof (quote cards, tweet embeds, review excerpts, attendee quotes).
 
-If they live on a page not yet captured, capture it into `knowledge-pages.json` the same way. If the site has NO real testimonials, capture none — never invent them.
+If they live on a page not yet captured, capture it with `capture-pages.sh --append <url>`. If the site has NO real testimonials, capture none — never invent them.
 
 ### 6. Present summary (interactive only)
 

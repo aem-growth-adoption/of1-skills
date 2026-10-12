@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Step 3: capture pages in batches of 5 into $OF1_STATE_DIR/knowledge-pages.json.
+# Usage: capture-pages.sh [--append] [<url>...]
 # URLs: arguments, else lines of $OF1_STATE_DIR/product-urls.txt (hand-prune it first).
+# Default starts a fresh knowledge-pages.json; --append adds to the existing one.
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+APPEND=0; [ "${1:-}" = "--append" ] && { APPEND=1; shift; }
 PRODUCT_URLS=()
 if [ "$#" -gt 0 ]; then PRODUCT_URLS=("$@")
 else
@@ -27,7 +30,7 @@ CAPTURE_JS="() => {
   });
   return { url: location.href, title, blocks };
 }"
-rm -f "$PAGES"
+[ "$APPEND" = 1 ] || rm -f "$PAGES"
 BATCH_SIZE=5
 for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
   # Open this batch: first URL starts the browser, the rest are new tabs.
