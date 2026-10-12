@@ -8,7 +8,7 @@
 //   repo-dir: Path to repo root (use "." when already cd'd in)
 //   domain:   The demo domain name
 //
-// Reads ($OF1_STATE_DIR, default /shared/of1-demo-orchestrator):
+// Reads ($OF1_STATE_DIR, default $PWD/.of1/state):
 //   repo-config.json                 owner/repo/branch (required)
 //   of1-discovery-output.md          demo focus + narrative (optional)
 //   pipeline-audit.json              audit panel (optional)
@@ -530,7 +530,7 @@ function main() {
   const repoDir = process.argv[2];
   const domain = process.argv[3];
 
-  const stateDir = process.env.OF1_STATE_DIR || '/shared/of1-demo-orchestrator';
+  const stateDir = process.env.OF1_STATE_DIR || path.join(process.cwd(), '.of1', 'state');
   const repoConfigPath = path.join(stateDir, 'repo-config.json');
   const repoConfig = loadJson(repoConfigPath);
   if (!repoConfig || Object.keys(repoConfig).length === 0) {

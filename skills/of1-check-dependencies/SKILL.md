@@ -1,6 +1,6 @@
 ---
 name: of1-check-dependencies
-description: Verify all OF1 demo pipeline dependencies are installed, check the local EDS repo is valid, and prepare repo-config.json. Use at the start of an OF1 demo (Step 1 / setup), before running any pipeline step, or whenever dependencies or repo config need a preflight check.
+description: Verify all OF1 dependencies are installed, check the local EDS repo is valid, and prepare repo-config.json. Use at the start of an OF1 integration (setup), before running any other OF1 step, or whenever dependencies or repo config need a preflight check.
 user-invocable: true
 ---
 
@@ -31,8 +31,8 @@ existing** — it is not written by `verify.sh`; Part 2 writes it.
 
 ### What verify.sh checks
 
-1. The plugin's OF1 skills are installed (`of1-integration`, `of1-extract-design`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`, `of1-style-generative-block`). `of1-build-cta-template` ships here too, though `of1-integration` dispatches it in pipeline mode only. The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded. (`of1-signals` is a standalone tool, not checked; `of1-check-dependencies` is running the check.)
-2. The Adobe EDS skills `stardust` (incl. `stardust:extract` and `stardust:prototype`), `impeccable`, and the `snowflake` skill (`aem-edge-delivery-services` plugin) are installed — the three Stage-2 skills `of1-extract-design`/`of1-prototype`/`of1-snowflake` depend on these directly
+1. The plugin's ten OF1 skills are installed (`of1-integration`, `of1-check-dependencies`, `of1-extract-design`, `of1-build-templates`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`, `of1-style-generative-block`). `of1-build-cta-template` ships here too, though `of1-integration` runs it only when `cta-template` is set. The exact set is the `REQUIRED_SKILLS` array in `scripts/verify.sh`; the count is derived from it, not hardcoded.
+2. The Adobe EDS skills `stardust` (incl. `stardust:extract`) and `impeccable` are installed — `of1-extract-design` depends on these directly
 3. Shell tools: `node`, `python3`, `jq`, `git`, `curl`
 4. `playwright-cli` — probed for the modern `open` subcommand (warns if the binary is present but missing it)
 5. `$OF1_DEMO_REPO` is a git checkout with EDS structural files
@@ -46,7 +46,7 @@ It also resolves `owner`/`repo` (from `git config remote.origin.url`) and
 `setup.json`. It **warns** (does not fail) if `branch` is empty (detached
 HEAD) or `main`.
 
-## Part 2 — repo state (interactive, after verify.sh succeeds)
+## Part 2 — repo state (after verify.sh succeeds)
 
 Read `setup.json` for `owner`, `repo`, `branch`, `of1Repo`, and resolve
 `DA_TOKEN` (a shell local — the canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`) from whichever
@@ -75,11 +75,34 @@ else
 fi
 ```
 
+### 0. Resolve `DOMAIN`
+
+First match wins: env `DOMAIN`; the `.domain` of an existing `$OF1_STATE_DIR/repo-config.json`
+(a caller may pre-write it); `OF1_CONTENT_SOURCE`; the production host found in the repo's
+`fstab.yaml` / `README.md` (first `https://` host that is not `aem.live|aem.page|hlx.*|github.com`);
+otherwise ask (interactive) or fail (non-interactive).
+
+```bash
+if [ -z "${DOMAIN:-}" ] && [ -f "$OF1_STATE_DIR/repo-config.json" ]; then
+  DOMAIN=$(jq -r '.domain // empty' "$OF1_STATE_DIR/repo-config.json")
+fi
+[ -z "${DOMAIN:-}" ] && DOMAIN="${OF1_CONTENT_SOURCE:-}"
+if [ -z "${DOMAIN:-}" ]; then
+  DOMAIN=$(cat fstab.yaml README.md 2>/dev/null | grep -Eo 'https://[A-Za-z0-9.-]+' | sed 's#https://##' \
+    | grep -Ev '(^|\.)(aem\.live|aem\.page|github\.com)$|^hlx\.|\.hlx\.' | head -1)
+fi
+```
+
+If `DOMAIN` is still empty: when `OF1_NON_INTERACTIVE=1` run
+`echo "FAIL: cannot determine DOMAIN — set DOMAIN or pass content-source=<domain>" >&2; exit 1`;
+otherwise ask the user for the production domain via `AskUserQuestion`, then
+`export DOMAIN`. Step 7 writes it to `config.json`.
+
 ### 1. Clear the previous run's local state
 
 Every run is idempotent and overwrites only OF1-owned paths; This skill never deletes DA or git content; removing a previous demo's artifacts is outside its scope.
 
-Local state (not customer content) — reset it so the pipeline starts cleanly:
+Local state (not customer content) — reset it so the run starts cleanly:
 
 ```bash
 rm -f "$OF1_STATE_DIR"/of1-*-status.json
@@ -111,12 +134,12 @@ longer produced or read (`knowledge.json`, `personas.json`, `suggestions.json`,
 the same URL on EDS, so e.g. a committed `personas.json` / `suggestions.json`
 **shadows** the DA sheet `/of1/config/personas` / `/of1/config/suggestions` the
 later steps write. Only `of1/config/config.json` (plus
-`of1/config/cta-template.json` in pipeline mode) may stay tracked.
+`of1/config/cta-template.json` when `OF1_CTA_TEMPLATE=1`) may stay tracked.
 
 ```bash
 # (cwd is $REPO_DIR — set in the Part 2 preamble.)
 ALLOWED=(of1/config/config.json)
-[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED+=(of1/config/cta-template.json)
+[ "${OF1_CTA_TEMPLATE:-}" = "1" ] && ALLOWED+=(of1/config/cta-template.json)
 LEGACY=()
 while IFS= read -r f; do
   [ -n "$f" ] || continue
@@ -136,11 +159,11 @@ from an earlier integration: they're no longer read by the worker, and any that
 share a URL with a DA sheet (`personas.json`, `suggestions.json`) would shadow the
 author-editable DA version. Then:
 
-- **Standalone mode** (`OF1_PIPELINE_MODE` unset): ask via `AskUserQuestion`
+- **Interactive** (`OF1_NON_INTERACTIVE` unset): ask via `AskUserQuestion`
   — **Remove them** (commit + push the deletion of exactly the listed files) /
   **Keep them**. On Keep, skip the removal and warn that `of1-publish` check 1
   will fail until they're gone.
-- **Pipeline mode** (`OF1_PIPELINE_MODE=1`): remove without asking.
+- **Non-interactive** (`OF1_NON_INTERACTIVE=1`): remove without asking.
 
 Removal — exactly the listed files, never the whole `of1/config/` tree (it holds
 `config.json`), never a bare `git add -A`/`.`:
@@ -195,8 +218,8 @@ fi
 `of1-build-templates` authors templates as DA documents that MUST be EDS-previewed before the OF1
 worker can sync them (a DA write with no preview is invisible to `materializeDaTemplates()`). AEM
 preview/publish authorization is a **separate grant from DA write access** — the design doc recorded a
-project-wide `403 [admin] not authorized` on `of1-labs` with a valid DA token. Probe it up front so the
-pipeline fails here with a clear provisioning message rather than deep inside `assemble`:
+project-wide `403 [admin] not authorized` on the DA org with a valid DA token. Probe it up front so the
+run fails here with a clear provisioning message rather than deep inside `assemble`:
 
 ```bash
 AEM_TOKEN="${AEM_TOKEN:-$DA_TOKEN}"
@@ -389,7 +412,7 @@ Optional (for humans): `repoUrl`, `previewUrl`, `daSource`.
 |-----|---------|
 | `OF1_DEMO_REPO` | absolute path to the local EDS site repo (any org/repo — validated structurally, not by identity). Default: `git rev-parse --show-toplevel` of `$PWD`; error if not a git repo. |
 | `OF1_STATE_DIR` | state dir for progress/state files. Default: `$PWD/.of1/state`. |
-| `DOMAIN` | the target domain for this demo (e.g. `frescopa.coffee`) — recorded in `repo-config.json` |
+| `DOMAIN` | the site's production domain (e.g. `frescopa.coffee`) — recorded in `repo-config.json`; resolved per step 0 when unset |
 | `ADOBE_IMS_TOKEN` | raw token value (preferred — highest priority) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (alternative to the env value) |
 | `STRICT` | `1` makes warnings fail. Default `0`. |

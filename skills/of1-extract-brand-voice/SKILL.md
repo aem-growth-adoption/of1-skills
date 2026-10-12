@@ -8,7 +8,7 @@ user-invocable: true
 
 Analyze a website to extract its brand voice, tone, and personality, then write it as the DA document `/of1/brand-voice` (authors can edit it in DA afterwards; the worker syncs it as `brand-voice`).
 
-## Env — orchestrator exports these (see `of1-check-dependencies`)
+## Env — the driver exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
@@ -16,7 +16,8 @@ Analyze a website to extract its brand voice, tone, and personality, then write 
 | `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill (used to find `../of1-integration/assets/da-write.mjs`) |
 | `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | DA token (resolved by `da-write.mjs`) |
-| `OF1_PIPELINE_MODE` | `1` in pipeline mode — overwrite `/of1/brand-voice` without asking |
+| `OF1_CONTENT_SOURCE` | optional content domain to crawl (see Source resolution) |
+| `OF1_NON_INTERACTIVE` | `1` — no questions: overwrite `/of1/brand-voice` without asking, skip the confirmation step |
 
 Read repo config:
 
@@ -50,24 +51,23 @@ This skill crawls real pages (Step 1), so it needs a base URL to crawl. There ar
 
 ```bash
 if [ -n "$OF1_CONTENT_SOURCE" ]; then
-  # Pipeline mode: extract from the REAL external site. The orchestrator sets
-  # OF1_CONTENT_SOURCE to the target domain (e.g. frescopa.coffee), so here
-  # SOURCE_BASE is just that domain as an https:// URL.
+  # Extract from the REAL external site. The driver sets OF1_CONTENT_SOURCE
+  # (content-source=<domain>, e.g. frescopa.coffee), so here SOURCE_BASE is
+  # just that domain as an https:// URL.
   SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
 else
-  # Standalone mode (default): there is no external domain to point at — crawl the
-  # built EDS replica preview instead. This is NOT the target domain.
+  # Default: no external domain given — crawl the site's own EDS preview.
   SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
 fi
 echo "Extracting from: $SOURCE_BASE"
 ```
 
 Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everything else
-(output files, JSON shapes) is identical in both modes.
+(output files, JSON shapes) is identical either way.
 
 ## Inputs
 
-- `$SOURCE_BASE` (resolved above) — the base URL to crawl. In pipeline mode this is the target domain; in standalone mode it's the replica preview.
+- `$SOURCE_BASE` (resolved above) — the base URL to crawl. With `OF1_CONTENT_SOURCE` set this is that domain; otherwise it's the site's own preview.
 - Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` — **optional** (only the full e2e pipeline produces it; standalone runs usually have none). Use it for page URLs when present; otherwise pick pages as in Step 1.
 
 ## Process
@@ -105,7 +105,7 @@ for page in "${PICK[@]}"; do
 done
 ```
 
-(For a non-EDS live site in pipeline mode, `.plain.html` won't exist — fetch the page itself with WebFetch.)
+(For a non-EDS live site via `OF1_CONTENT_SOURCE`, `.plain.html` won't exist — fetch the page itself with WebFetch.)
 
 For each page, analyze:
 - TONE: Formal/informal, technical/accessible, playful/serious?
@@ -123,11 +123,11 @@ Across all pages, identify:
 - Domain vocabulary (used without explanation)
 - Anti-patterns (words/phrases the brand avoids)
 
-### 3. Present findings (standalone mode only)
+### 3. Present findings (interactive only)
 
-**Skip this step in pipeline mode** — go directly to Step 4.
+**Skip this step when `OF1_NON_INTERACTIVE=1`** — go directly to Step 4.
 
-In standalone mode, present and wait for confirmation:
+Otherwise present and wait for confirmation:
 
 ```
 ## Brand Voice Analysis: [Brand Name]
@@ -149,17 +149,17 @@ Does this capture the brand correctly? Anything to adjust?
 
 The worker injects this doc into the LLM system prompt to shape how generated sections are written. The more specific and accurate, the more on-brand the output.
 
-**Existing doc check (standalone mode only).** An author may already have edited `/of1/brand-voice` in DA. Before writing, check whether it exists:
+**Existing doc check (interactive only).** An author may already have edited `/of1/brand-voice` in DA. Before writing, check whether it exists:
 
 ```bash
-if [ "${OF1_PIPELINE_MODE:-}" != "1" ] && \
+if [ "${OF1_NON_INTERACTIVE:-}" != "1" ] && \
    [ "$(curl -s -o /dev/null -w '%{http_code}' "https://${PREVIEW}/of1/brand-voice.plain.html")" = "200" ]; then
   echo "/of1/brand-voice already exists"
 fi
 ```
 
-- **Standalone mode** (`OF1_PIPELINE_MODE` unset) and the check returns 200: **ask the user before overwriting** ("`/of1/brand-voice` already exists in DA — overwrite it with the newly extracted voice? [y/N]"). On anything but an explicit yes, skip the write, keep the existing doc, and say so in the completion summary.
-- **Pipeline mode** (`OF1_PIPELINE_MODE=1`): overwrite without asking.
+- **Interactive** (`OF1_NON_INTERACTIVE` unset) and the check returns 200: **ask the user before overwriting** ("`/of1/brand-voice` already exists in DA — overwrite it with the newly extracted voice? [y/N]"). On anything but an explicit yes, skip the write, keep the existing doc, and say so in the completion summary.
+- **Non-interactive** (`OF1_NON_INTERACTIVE=1`): overwrite without asking.
 
 Write the doc to `$OF1_STATE_DIR/brand-voice.html` with exactly these four sections (escape `&`, `<`, `>` in text):
 
@@ -181,9 +181,9 @@ node "$DA_WRITE" doc --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
 
 It prints `✓ of1/brand-voice previewed` on success. On `FAIL <step> <path> HTTP <status>` (non-zero exit) **stop** and report the failure — do not mark the skill done.
 
-## Completion (both modes)
+## Completion
 
-Write the status file in **both** standalone and pipeline mode — `of1-publish`'s demo hub reads every `of1-*-status.json` for its "What worked" panel. In pipeline mode this skill runs alongside `of1-extract-content`. Both must complete before the content track is treated as done.
+`of1-publish`'s demo hub reads every `of1-*-status.json` for its "What worked" panel. This skill runs alongside `of1-extract-content`; both must complete before the content track is treated as done.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-extract-brand-voice-status.json" <<EOF
@@ -191,4 +191,4 @@ cat > "$OF1_STATE_DIR/of1-extract-brand-voice-status.json" <<EOF
 EOF
 ```
 
-The orchestrator waits for both `of1-extract-brand-voice-status.json` and `of1-extract-content-status.json` (the content track) before treating the content pair as complete.
+The driver waits for both `of1-extract-brand-voice-status.json` and `of1-extract-content-status.json` (the content track) before treating the content pair as complete.

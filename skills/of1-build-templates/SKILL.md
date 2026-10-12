@@ -18,7 +18,7 @@ the browser then runs the site's real `decorate()` pipeline, so generated pages 
 like authored ones. See `of1-gen-web-service/docs/superpowers/specs/2026-08-10-da-block-templates-design.md`
 and this repo's `docs/superpowers/specs/2026-08-31-of1-build-templates-da-blocks-slots-migration.md`.
 
-## Env — orchestrator exports these (see `of1-check-dependencies`)
+## Env — the driver exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
@@ -42,7 +42,7 @@ DA_TOKEN=$(da_resolve_token) \
 AEM_TOKEN="${AEM_TOKEN:-$DA_TOKEN}"
 
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
-OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")   # DA org, e.g. of1-labs
+OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")   # DA org, e.g. acme
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")   # DA repo,  e.g. of1-af1bb1a3
 # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
 da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
@@ -58,14 +58,14 @@ Reason in this order. **Reuse first; invent general blocks only when genuinely u
 slot-specific, single-template block.**
 
 1. **Use cases first.** From `$OF1_STATE_DIR/of1-discovery-output.md` (discovery narrative — optional,
-   standalone runs usually have none) +
+   usually absent) +
    `$OF1_STATE_DIR/knowledge-pages.json` (the site's captured pages — titles, headings, copy — from
    `of1-extract-content`, when present) and `$OF1_STATE_DIR/personas-rows.json` determine what the
    generative-search experience must actually answer.
 2. **Derive intents** — `comparison`, `recommendation`, `deep-dive`, `budget`, `discovery`. Each maps
    to one or more template shapes.
 3. **Choose the block palette per template, in priority order:**
-   - **Reuse an existing block** from the tenant's `blocks/*` (Stage-2 output) — first choice whenever
+   - **Reuse an existing block** from the tenant's `blocks/*` (existing site blocks) — first choice whenever
      an existing block, optionally with a single-hyphen **variant** or a `no-static-labels` /
      `key-value` knob, can express the shape.
    - **Author a new *general-purpose* block** only when reuse genuinely can't express the shape AND the
@@ -79,7 +79,7 @@ slot-specific, single-template block.**
 1. **General, never slot-specific.** `product-cards` is fine; `comparison-hero-with-three-fixed-tiers`
    is not. The whole point of this engine is to kill the old bespoke-per-template markup. When in doubt,
    reuse an existing block with a variant rather than invent one.
-2. **Never modify or restyle a reused (Stage-2) block.** Its `blocks/<name>/<name>.css` already exists
+2. **Never modify or restyle a reused (existing) block.** Its `blocks/<name>/<name>.css` already exists
    and is owned upstream. New blocks you author get disjoint names.
 3. **Never touch `blocks/of1/of1.{js,css}`.** That is `of1-style-generative-block`'s (the OF1 shell UI).
    You own section blocks only.
@@ -91,7 +91,7 @@ slot-specific, single-template block.**
    alignment intent per template (usually centered for these generative landing pages) and make **every**
    block obey it — heading, body, media, and CTAs. Concretely: if most blocks in the template center their
    content, do not leave one block left-aligned (the common offender is a `hero`/`featured` block whose
-   Stage-2 CSS defaults to a left image + left text while the `cards`/`columns` below it center). When a
+   existing CSS defaults to a left image + left text while the `cards`/`columns` below it center). When a
    reused block's own CSS fights the template's alignment, either pick a variant that matches, or add a new
    general block that centers — **never** restyle the reused block (rule 2). New blocks you author must
    center their content by default so they compose cleanly with the centered majority. The alignment
@@ -165,14 +165,14 @@ enumerates usable positional blocks in `$TENANT_REPO_DIR/blocks/*`.
 
 ## Phases
 
-Selected by `OF1_TG_MODE`. The orchestrator runs them in order: `base` → `intent × 5` (parallel) →
+Selected by `OF1_TG_MODE`. The driver runs them in order: `base` → `intent × 5` (parallel) →
 `assemble`. Same three-phase interface as before, so caller dispatch is unchanged.
 
 | Mode | What it does | Dispatched by |
 |---|---|---|
-| `base` | Use-cases → intents → **block plan**; run `inventory.sh` + harvest live `.plain.html`; author any planned **new general blocks** (`blocks/<name>/*`), commit + push, and wait for code sync so their decorators are live before any template uses them. | Orchestrator FIRST (1 agent) |
-| `intent` | Compose the DA template documents for ONE intent (`$OF1_TG_INTENT`) from the block plan, `da_put` each to `/templates/<name>`. Does NOT preview, does NOT commit. | Orchestrator fan-out (5 agents) after `base` |
-| `assemble` | Run ONCE after all intents. `aem_preview` every composed doc (MANDATORY), verify the round-trip, check richness, write the final status. Writes nothing to git. | Orchestrator after all intents return |
+| `base` | Use-cases → intents → **block plan**; run `inventory.sh` + harvest live `.plain.html`; author any planned **new general blocks** (`blocks/<name>/*`), commit + push, and wait for code sync so their decorators are live before any template uses them. | Driver FIRST (1 agent) |
+| `intent` | Compose the DA template documents for ONE intent (`$OF1_TG_INTENT`) from the block plan, `da_put` each to `/templates/<name>`. Does NOT preview, does NOT commit. | Driver fan-out (5 agents) after `base` |
+| `assemble` | Run ONCE after all intents. `aem_preview` every composed doc (MANDATORY), verify the round-trip, check richness, write the final status. Writes nothing to git. | Driver after all intents return |
 | `all` (default) | Fallback — `base` → 5 intents serially → `assemble` inline in one agent. | Single agent when no fan-out |
 
 **Race-safety:** intent agents write disjoint DA paths (`/templates/<intent>-*`). New-block code is
@@ -190,7 +190,7 @@ skill writes no engine/template config file.
    list the ordered block sequence (lead → primary → supporting → CTA) in the plan so exploratory intents
    compose rich pages, not 2-block stubs.
    Also fix the **alignment intent** here (usually `center`) and record it in the plan (CRITICAL RULE 5):
-   when a reused block's Stage-2 CSS won't honor it, note the matching variant to use or flag that a
+   when a reused block's existing CSS won't honor it, note the matching variant to use or flag that a
    centered new block is needed, so no template ships with one stray left-aligned block among centered ones.
 2. **Inventory the reusable blocks:**
    ```bash
@@ -342,7 +342,7 @@ Run once after all 5 intent agents complete.
      echo "✓ $doc: $n content block(s), Max Items ${maxItems:-?}"
    done <<<"$DOCS"
    ```
-4. **Final status file** (the deliverable status the orchestrator reports):
+4. **Final status file** (the deliverable status the driver reports):
    ```bash
    EDIT_BASE="https://da.live/edit#/${OWNER}/${REPO}/templates"
    cat > "$OF1_STATE_DIR/of1-build-templates-status.json" <<EOF

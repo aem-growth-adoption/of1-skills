@@ -1,29 +1,29 @@
 ---
 name: of1-publish
-description: Assert only config.json (+ cta-template.json in pipeline mode) is in git, refresh the /of1 page, sync the OF1 worker, generate the demo hub (DA edit links + "what worked" panel), and run the pre-launch checks.
+description: Assert only config.json (+ cta-template.json when OF1_CTA_TEMPLATE=1) is in git, refresh the /of1 page, sync the OF1 worker, generate the demo hub (DA edit links + "what worked" panel), and run the pre-launch checks.
 user-invocable: true
 ---
 
 # OF1 Deploy
 
-Assert the git config set, refresh the `/of1` page, sync the OF1 worker, generate the demo hub, commit, and run the pre-launch checklist. Author-tunable config (brand voice, personas, chips, landing copy, templates, knowledge pages) already lives in DA — the earlier skills wrote and previewed it; this skill commits only `of1/config/config.json` (+ `of1/config/cta-template.json` in pipeline mode) and `deliverables/index.html`.
+Assert the git config set, refresh the `/of1` page, sync the OF1 worker, generate the demo hub, commit, and run the pre-launch checklist. Author-tunable config (brand voice, personas, chips, landing copy, templates, knowledge pages) already lives in DA — the earlier skills wrote and previewed it; this skill commits only `of1/config/config.json` (+ `of1/config/cta-template.json` when `OF1_CTA_TEMPLATE=1`) and `deliverables/index.html`.
 
-## Env — orchestrator exports these (see `of1-check-dependencies`)
+## Env — the driver exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
 | `OF1_STATE_DIR` | state + IPC dir; receives `of1-publish-status.json` and the staged hub inputs under `hub/` |
-| `OF1_PIPELINE_MODE` | `1` in pipeline mode — `cta-template.json` is expected, committed and checked (check 7) |
+| `OF1_CTA_TEMPLATE` | `1` — `cta-template.json` is expected, committed and checked (check 7) |
 | `OF1_GENWEB_URL` | optional gen-web worker override (default prod) |
 | `OF1_DEMO_REPO` | absolute path to the local EDS site repo |
 | `SKILL_DIR` | absolute path to this skill (used to find `assets/fill-demo-hub.*` and the sibling `of1-style-generative-block` skill) |
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
 
-Resolve `DA_TOKEN` (a shell local, not an input — canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`; see `of1-demo-orchestrator/knowledge/pipeline-contract.md` § "Environment variables") and read repo config:
+Resolve `DA_TOKEN` (a shell local, not an input — canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`) and read repo config:
 
 ```bash
-# Full resolution order (see pipeline-contract.md): ADOBE_IMS_TOKEN → OF1_TOKEN_FILE
+# Full resolution order: ADOBE_IMS_TOKEN → OF1_TOKEN_FILE
 # → $PWD/.hlx/.da-token.json → $OF1_DEMO_REPO/.hlx/.da-token.json.
 LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/da-token.sh"
 DA_TOKEN=$(da_resolve_token) \
@@ -40,13 +40,13 @@ DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 cd "$OF1_DEMO_REPO"
 PREVIEW_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
 TENANT_ID="${BRANCH}--${REPO}--${OWNER}"
-# gen-web worker the pipeline syncs + generates against. Defaults to prod;
-# override per run with OF1_GENWEB_URL (of1-labs "gen-web worker URL" advanced
+# gen-web worker the run syncs + generates against. Defaults to prod;
+# override per run with OF1_GENWEB_URL ("gen-web worker URL" advanced
 # field) to point a branch/dev deploy at a dev worker without touching prod.
 WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.dev}"
 ```
 
-`playwright-cli` calls follow `of1-demo-orchestrator/knowledge/common-pitfalls.md` § 9 "playwright-cli syntax" (`open`, `--full-page` bare, `--filename`, `eval` as a function form).
+`playwright-cli` syntax: `open`, `--full-page` bare, `--filename`, `eval` as a function form (see `lib/pw.sh`).
 
 ## How config sync works
 
@@ -55,7 +55,7 @@ The worker pulls each tenant source from the preview host `${PREVIEW_BASE}` on `
 | Source | Where | Sync file |
 |---|---|---|
 | `of1/config/config.json` | git (code bus) | `config` |
-| `of1/config/cta-template.json` | git, pipeline mode only | `cta-template` |
+| `of1/config/cta-template.json` | git, only when `OF1_CTA_TEMPLATE=1` | `cta-template` |
 | `/of1/brand-voice` | DA doc | `brand-voice` |
 | `/of1/config/suggestions` | DA sheet | `suggestions` |
 | `/of1/strategy` | DA doc (optional, author-created) | `strategy` |
@@ -64,7 +64,7 @@ The worker pulls each tenant source from the preview host `${PREVIEW_BASE}` on `
 
 `/of1/config/personas` (DA sheet) and the `/of1` page are read by the extension / client SDK, not synced. The sync response is `{ok, id, domain, synced, errors, content: {indexed} | null}`. Shapes: `of1-integration/knowledge/worker-config-schemas.md`.
 
-**Tenant ID format:** `{branch}--{repo}--{owner}` (e.g. `frescopa--labs-abc123--of1-labs`)
+**Tenant ID format:** `{branch}--{repo}--{owner}` (e.g. `frescopa--labs-abc123--acme`)
 
 ## Process
 
@@ -73,7 +73,7 @@ HUB="$OF1_STATE_DIR/hub"
 mkdir -p "$HUB"
 # Bash array — never a space-joined string expanded unquoted (zsh doesn't word-split it).
 ALLOWED=(of1/config/config.json)
-[ "${OF1_PIPELINE_MODE:-}" = "1" ] && ALLOWED+=(of1/config/cta-template.json)
+[ "${OF1_CTA_TEMPLATE:-}" = "1" ] && ALLOWED+=(of1/config/cta-template.json)
 # The worker gates `ready` on these two flags only; every other /status flag is informational.
 GATED_FLAGS='["hasTemplates","hasContent"]'
 # playwright-cli writes a .playwright-cli/ folder into cwd — always run it from the
@@ -110,7 +110,7 @@ write_publish_status running "Publishing — sync and pre-launch checks in progr
 
 ### 1. Assert the git config set (check 1)
 
-Only `of1/config/config.json` (and `of1/config/cta-template.json` in pipeline mode) may be tracked under `of1/config/`. Any other tracked file — especially `personas.json` / `suggestions.json` — would shadow the DA sheet at the same URL (a git file beats a DA sheet on EDS). Fail and list the extras; do not delete them here — `of1-check-dependencies` step 3b ("Remove legacy `of1/config/*.json`") removes them on every run, so this check is the backstop for when that was declined or skipped.
+Only `of1/config/config.json` (and `of1/config/cta-template.json` when `OF1_CTA_TEMPLATE=1`) may be tracked under `of1/config/`. Any other tracked file — especially `personas.json` / `suggestions.json` — would shadow the DA sheet at the same URL (a git file beats a DA sheet on EDS). Fail and list the extras; do not delete them here — `of1-check-dependencies` step 3b ("Remove legacy `of1/config/*.json`") removes them on every run, so this check is the backstop for when that was declined or skipped.
 
 ```bash
 EXTRA=$(git ls-files of1/config | while IFS= read -r f; do
@@ -124,8 +124,8 @@ if [ -n "$EXTRA" ]; then
   exit 1
 fi
 [ -f of1/config/config.json ] || { echo "✗ FAIL: of1/config/config.json missing — run of1-check-dependencies" >&2; exit 1; }
-if [ "${OF1_PIPELINE_MODE:-}" = "1" ] && [ ! -f of1/config/cta-template.json ]; then
-  echo "✗ FAIL: pipeline mode but of1/config/cta-template.json missing — of1-build-cta-template did not run" >&2; exit 1
+if [ "${OF1_CTA_TEMPLATE:-}" = "1" ] && [ ! -f of1/config/cta-template.json ]; then
+  echo "✗ FAIL: OF1_CTA_TEMPLATE=1 but of1/config/cta-template.json missing — of1-build-cta-template did not run" >&2; exit 1
 fi
 echo "✓ git config set OK: $(git ls-files of1/config | tr '\n' ' ')"
 ```
@@ -251,14 +251,14 @@ else
 fi
 ```
 
-If `/query-index.json` lists both `/templates/` (or the configured `templates.daPath`) and `/of1/knowledge/` paths, no override is set — and a stale `templates.names` or a skill-written `contentIngestion.indexPath` (one of `INDEX_CANDIDATES`) is removed. A user-set `indexPath` (any other value, e.g. `/query-index.json?limit=2000`) is never deleted or overwritten. A `templates.daPath` without a leading `/` is reported, not normalised, and `templates.names` is left alone that run. Sync `errors` entries that are only `{file, warning}` (e.g. >30 templates, sync truncated) are warnings, not failures. Note template docs only appear in an index once **published**; `of1-build-templates` only previews them, so on most sites step 2b sets `templates.names`. If the knowledge pages were published moments ago and the repo's `helix-query.yaml` does include them, the index may just be lagging — wait a minute and re-run this step before concluding the site needs overrides. If no index lists `/of1/knowledge/`, ask the user whether the site has another index (append it to `INDEX_CANDIDATES` and re-run); otherwise continue — check 2 will report the gap. Field shapes: `of1-integration/knowledge/worker-config-schemas.md` § `config.json`.
+If `/query-index.json` lists both `/templates/` (or the configured `templates.daPath`) and `/of1/knowledge/` paths, no override is set — and a stale `templates.names` or a skill-written `contentIngestion.indexPath` (one of `INDEX_CANDIDATES`) is removed. A user-set `indexPath` (any other value, e.g. `/query-index.json?limit=2000`) is never deleted or overwritten. A `templates.daPath` without a leading `/` is reported, not normalised, and `templates.names` is left alone that run. Sync `errors` entries that are only `{file, warning}` (e.g. >30 templates, sync truncated) are warnings, not failures. Note template docs only appear in an index once **published**; `of1-build-templates` only previews them, so on most sites step 2b sets `templates.names`. If the knowledge pages were published moments ago and the repo's `helix-query.yaml` does include them, the index may just be lagging — wait a minute and re-run this step before concluding the site needs overrides. If no index lists `/of1/knowledge/`, ask the user whether the site has another index (append it to `INDEX_CANDIDATES` and re-run; with `OF1_NON_INTERACTIVE=1` don't ask, just continue); otherwise continue — check 2 will report the gap. Field shapes: `of1-integration/knowledge/worker-config-schemas.md` § `config.json`.
 
 ### 3. Push the git config
 
-`of1-check-dependencies` already committed `config.json`; in pipeline mode `of1-build-cta-template` leaves `cta-template.json` uncommitted. Push it before syncing so the worker can read it:
+`of1-check-dependencies` already committed `config.json`; with `OF1_CTA_TEMPLATE=1` `of1-build-cta-template` leaves `cta-template.json` uncommitted. Push it before syncing so the worker can read it:
 
 ```bash
-# Only paths that exist (cta-template.json is absent in standalone mode).
+# Only paths that exist (cta-template.json is absent when `OF1_CTA_TEMPLATE` is off).
 PUSH=()
 for f in "${ALLOWED[@]}"; do [ -f "$f" ] && PUSH+=("$f"); done
 git add -- "${PUSH[@]}"
@@ -353,7 +353,7 @@ Generated now (status file says "in progress" — set in the Process preamble) s
 node "$SKILL_DIR/assets/fill-demo-hub.mjs" . "${DOMAIN}"
 ```
 
-Reads `$OF1_STATE_DIR/repo-config.json`, `of1-discovery-output.md` (optional — absent in standalone runs; the hub falls back to defaults and only warns when prototypes exist), `pipeline-audit.json`, every `$OF1_STATE_DIR/of1-*-status.json`, and the `hub/` files staged above; links prototypes (`deliverables/prototype-*.html`, committed by the migration step before integration — a content-only demo has none) and `deliverables/discovery.html` when present. Writes `deliverables/index.html` with DA edit links for each authored item (brand voice, personas, suggestions, `/of1`, `/templates`, `/of1/knowledge`) and a **"What worked"** panel (per-skill status, sync `synced`/`errors`/`content.indexed`, `ready` + failing `/status` flags). Do NOT hand-write the hub HTML.
+Reads `$OF1_STATE_DIR/repo-config.json`, `of1-discovery-output.md` (optional — usually absent; the hub falls back to defaults and only warns when prototypes exist), `pipeline-audit.json`, every `$OF1_STATE_DIR/of1-*-status.json`, and the `hub/` files staged above; links prototypes (`deliverables/prototype-*.html`, committed by the migration step before integration — a content-only demo has none) and `deliverables/discovery.html` when present. Writes `deliverables/index.html` with DA edit links for each authored item (brand voice, personas, suggestions, `/of1`, `/templates`, `/of1/knowledge`) and a **"What worked"** panel (per-skill status, sync `synced`/`errors`/`content.indexed`, `ready` + failing `/status` flags). Do NOT hand-write the hub HTML.
 
 ### 8. Commit and push the hub
 
@@ -370,7 +370,7 @@ ALL applicable checks must pass before marking the demo done. If any fail, fix t
 
 ### Check 1: Git config set
 
-Step 1 passed: `git ls-files of1/config` ⊆ {`of1/config/config.json`} (+ `of1/config/cta-template.json` in pipeline mode).
+Step 1 passed: `git ls-files of1/config` ⊆ {`of1/config/config.json`} (+ `of1/config/cta-template.json` when `OF1_CTA_TEMPLATE=1`).
 
 ### Check 2: Sync ok and knowledge indexed
 
@@ -428,7 +428,7 @@ LINKS=(
   "${PREVIEW_BASE}/of1"
   "${PREVIEW_BASE}/deliverables/index.html"
 )
-# Full e2e pipeline only (discovery ran) — skipped automatically otherwise.
+# Only when a discovery deliverable exists — skipped automatically otherwise.
 [ -f "${OF1_STATE_DIR}/of1-discovery-output.md" ] && LINKS+=("${PREVIEW_BASE}/deliverables/discovery.html")
 
 ALL_OK=true
@@ -465,12 +465,12 @@ fi
 
 **If fails:** check `hasTemplates`/`hasContent` in `hub/status.json`; an error event like `template not selected` means no synced template matched (re-run sync after `of1-build-templates` assemble; for config-service sites see step 2b `templates.names`).
 
-### Check 7: CTA injection (pipeline mode only)
+### Check 7: CTA injection (only when `OF1_CTA_TEMPLATE=1`)
 
-Skip in standalone mode. In pipeline mode `of1/config/cta-template.json` must be present (step 1) and `/api/personalize` must stream an `inject_cta` event:
+Skipped when `OF1_CTA_TEMPLATE` is off. Otherwise `of1/config/cta-template.json` must be present (step 1) and `/api/personalize` must stream an `inject_cta` event:
 
 ```bash
-if [ "${OF1_PIPELINE_MODE:-}" = "1" ]; then
+if [ "${OF1_CTA_TEMPLATE:-}" = "1" ]; then
   [ -f of1/config/cta-template.json ] || { echo "✗ FAIL (check 7): of1/config/cta-template.json missing" >&2; exit 1; }
   curl -s -X POST "${WORKER_URL}/api/personalize" \
     -H "Content-Type: application/json" \
@@ -484,17 +484,17 @@ fi
 
 ### Checklist summary
 
-Mark `of1-publish` done only if ALL applicable checks pass (7 in pipeline mode, 6 in standalone):
+Mark `of1-publish` done only if ALL applicable checks pass (7 with `OF1_CTA_TEMPLATE=1`, 6 otherwise):
 
 | # | Check |
 |---|-------|
-| 1 | No `of1/config/*.json` in git other than `config.json` (and `cta-template.json` in pipeline mode) |
+| 1 | No `of1/config/*.json` in git other than `config.json` (and `cta-template.json` when `OF1_CTA_TEMPLATE=1`) |
 | 2 | Sync `ok: true`, `errors` empty; `content.indexed > 0` |
 | 3 | `/api/tenants/<id>/status` → `ready: true` (only `hasTemplates`/`hasContent` gate it; other flags are info) |
 | 4 | `/of1` renders header, footer and the `of1` block, with the authored title and ≥1 chip |
 | 5 | `nav.plain.html`, `footer.plain.html`, `/of1`, `deliverables/index.html` return 200 |
 | 6 | `/api/generate` streams ≥2 `type:"section"` events and no `type:"error"` |
-| 7 | Pipeline mode only: `cta-template.json` present and `/api/personalize` streams an `inject_cta` |
+| 7 | `OF1_CTA_TEMPLATE=1` only: `cta-template.json` present and `/api/personalize` streams an `inject_cta` |
 
 ## Completion
 
@@ -514,7 +514,7 @@ Pre-launch checklist: N/N passed ✓
 Write the final status, then **always** regenerate + commit the hub so it reflects this run (never the previous run's status):
 
 ```bash
-N_CHECKS=6; [ "${OF1_PIPELINE_MODE:-}" = "1" ] && N_CHECKS=7
+N_CHECKS=6; [ "${OF1_CTA_TEMPLATE:-}" = "1" ] && N_CHECKS=7
 write_publish_status done "Synced (${INDEXED} knowledge chunks) + all ${N_CHECKS} pre-launch checks passed."
 publish_hub
 ```

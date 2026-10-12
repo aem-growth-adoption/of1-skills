@@ -32,15 +32,13 @@ fail() { LOG+=("✗ $1"); FAIL=$((FAIL+1)); }
 
 # ---------- 1. OF1 step skills (project- or user-scoped) ----------
 
-# The of1-skills plugin's own skills. of1-check-dependencies is omitted
-# because it's the skill running this check.
+# The ten skills of the of1-skills plugin.
 REQUIRED_SKILLS=(
-  of1-integration of1-extract-design
+  of1-integration of1-check-dependencies of1-extract-design
   of1-build-templates of1-style-generative-block
   of1-extract-brand-voice of1-extract-content of1-build-quick-suggestions
   of1-build-cta-template of1-publish
 )
-# of1-signals is intentionally omitted — it's a standalone operator tool, not a pipeline step (see its SKILL.md).
 
 # Search locations: plugin, user and project scopes.
 SKILL_ROOTS=(
@@ -84,7 +82,6 @@ else
 fi
 
 # ---------- 2. Adobe EDS skills: stardust + impeccable ----------
-# Also check stardust sub-skills (extract, prototype) needed by the design steps.
 
 ADOBE_EDS_SKILLS=(stardust impeccable)
 
@@ -102,23 +99,11 @@ for S in "${ADOBE_EDS_SKILLS[@]}"; do
   fi
 done
 
-# ---------- stardust:extract / stardust:prototype / snowflake (Stage 2's three substeps depend on these) ----------
+# ---------- stardust:extract (of1-extract-design depends on it) ----------
 if find "${SKILL_ROOTS[@]}" -path "*/skills/extract/SKILL.md" 2>/dev/null | grep -q .; then
   ok "stardust:extract present"
 else
-  fail "stardust:extract skill not found — Stage 2a (of1-extract-design) requires it. Update the stardust plugin: /plugin update stardust"
-fi
-
-if find "${SKILL_ROOTS[@]}" -path "*/skills/prototype/SKILL.md" 2>/dev/null | grep -q .; then
-  ok "stardust:prototype present"
-else
-  fail "stardust:prototype skill not found — Stage 2b (of1-prototype) requires it. Update the stardust plugin: /plugin update stardust"
-fi
-
-if find "${SKILL_ROOTS[@]}" -path "*/skills/snowflake/SKILL.md" 2>/dev/null | grep -q .; then
-  ok "snowflake present"
-else
-  fail "snowflake skill not found — Stage 2c (of1-snowflake) requires it. Update the aem-edge-delivery-services plugin: /plugin update aem-edge-delivery-services"
+  fail "stardust:extract skill not found — of1-extract-design requires it. Update the stardust plugin: /plugin update stardust"
 fi
 
 # ---------- 3. Shell tools ----------

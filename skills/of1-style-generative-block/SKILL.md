@@ -8,7 +8,7 @@ user-invocable: true
 
 Own the `/of1` page top to bottom: install the block, generate brand-aligned CSS for it, and upload the DA content document that makes the page renderable. `/of1` is authored exactly like any other EDS content page — the site's existing header/footer blocks and `styles/styles.css` apply automatically; there is no page-template or overlay mechanism to work around.
 
-## Env — orchestrator exports these (see `of1-check-dependencies`)
+## Env — the driver exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
@@ -18,7 +18,7 @@ Own the `/of1` page top to bottom: install the block, generate brand-aligned CSS
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
 
-Resolve `DA_TOKEN` (a shell local, not an input — canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`; see `of1-demo-orchestrator/knowledge/pipeline-contract.md` § "Environment variables") and read repo config once at the top:
+Resolve `DA_TOKEN` (a shell local, not an input — canonical credential is `ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`) and read repo config once at the top:
 
 ```bash
 # Full resolution order: ADOBE_IMS_TOKEN → OF1_TOKEN_FILE → $PWD/.hlx/.da-token.json
@@ -45,7 +45,7 @@ DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 
 ## Why this skill exists
 
-The OF1 block renders its own interactive UI — a search landing (title, input, suggestion chips), a loading skeleton while generating, a container for the sections the worker streams in, and follow-up suggestion controls. This skill writes `blocks/of1/of1.css` so that UI feels native to the brand. The **per-section visual design** of generated content comes from each block's own code-bus stylesheet (`blocks/<name>/<name>.css`), loaded when the OF1 client SDK runs the site's real `decorate()` pipeline on the streamed sections (the worker emits `stylesheet: null` — there is no runtime-injected per-template stylesheet in the `da-blocks-slots` engine). Reused blocks bring their existing Stage-2 CSS; any new general block ships its CSS with the block, both authored by `of1-build-templates`. This skill does NOT style section internals (hero/cards/tables/columns). Page chrome (header/footer/site styles) is inherited automatically since `/of1` is an ordinary content page.
+The OF1 block renders its own interactive UI — a search landing (title, input, suggestion chips), a loading skeleton while generating, a container for the sections the worker streams in, and follow-up suggestion controls. This skill writes `blocks/of1/of1.css` so that UI feels native to the brand. The **per-section visual design** of generated content comes from each block's own code-bus stylesheet (`blocks/<name>/<name>.css`), loaded when the OF1 client SDK runs the site's real `decorate()` pipeline on the streamed sections (the worker emits `stylesheet: null` — there is no runtime-injected per-template stylesheet in the `da-blocks-slots` engine). Reused blocks bring their existing CSS; any new general block ships its CSS with the block, both authored by `of1-build-templates`. This skill does NOT style section internals (hero/cards/tables/columns). Page chrome (header/footer/site styles) is inherited automatically since `/of1` is an ordinary content page.
 
 ## Always start from the canonical base files
 
@@ -140,7 +140,7 @@ The `/of1` page is an ordinary EDS content page: a `metadata` block (Title/Descr
 
 ```bash
 # The api-endpoint baked here is the worker the *deployed* /of1 page calls at
-# runtime. Defaults to prod; OF1_GENWEB_URL (of1-labs "gen-web worker URL"
+# runtime. Defaults to prod; OF1_GENWEB_URL ("gen-web worker URL"
 # advanced field) points a branch/dev run's live page at a dev worker.
 WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.dev}"
 
@@ -267,7 +267,7 @@ Open the screenshot — the branded nav should be at the top, the branded footer
 
 ### Step 7b — Verify generated content styling
 
-**Advisory, not a gate, when templates aren't synced yet.** In the pipeline this skill runs before `of1-publish` syncs the tenant, so the worker may have no templates (`hasTemplates` false) or no indexed content and a query renders nothing — that is expected here. `of1-publish` (check 6) runs the real generation check after sync. If chips are absent (suggestions not synced yet), skip 7b and note it in the summary.
+**Advisory, not a gate, when templates aren't synced yet.** In the driver's graph this skill runs before `of1-publish` syncs the tenant, so the worker may have no templates (`hasTemplates` false) or no indexed content and a query renders nothing — that is expected here. `of1-publish` (check 6) runs the real generation check after sync. If chips are absent (suggestions not synced yet), skip 7b and note it in the summary.
 
 The page chrome rendering (Step 7) is necessary but not sufficient. When the tenant is already synced, also confirm a query returns styled content. Generated sections are the site's own EDS blocks styled by each block's code-bus CSS (`blocks/<name>/<name>.css`), so this is an end-to-end smoke test that the block, the client SDK, and the templates work together — not a check of `of1.css` selectors.
 
@@ -311,7 +311,7 @@ Fix any failures and re-push before Completion.
 
 ## Completion — HARD STOP for user review
 
-After pushing, mark the step as `review` and **STOP**. Do not proceed. The user must open the OF1 page, test the search UI, click suggestion chips, and visually approve the styling before the pipeline continues.
+After pushing, mark the step as `review` and **STOP**. Do not proceed. The user must open the OF1 page, test the search UI, click suggestion chips, and visually approve the styling before the driver continues.
 
 This is a gate — `of1-publish` (Deploy) cannot start until both `of1-build-templates`(assemble) and this skill (`of1-style-generative-block`) are approved.
 
@@ -337,7 +337,7 @@ The user will:
 
 ## Common mistakes that waste time
 
-Cross-cutting rules (EDS class collisions) live in `of1-demo-orchestrator/knowledge/common-pitfalls.md`. The pitfalls below are specific to OF1-block styling — read all before writing CSS.
+The pitfalls below are specific to OF1-block styling — read all before writing CSS.
 
 | Mistake | Time cost | Fix |
 |---|---|---|

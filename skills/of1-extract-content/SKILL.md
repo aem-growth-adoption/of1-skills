@@ -8,7 +8,7 @@ user-invocable: true
 
 Crawl a website to capture the site's own page content (products, features, FAQs, testimonials) and publish it to DA under `/of1/knowledge/**` for the worker's content-RAG, then infer user personas and write them as the DA sheet `/of1/config/personas`. Nothing is written to git: captured pages are staged in `$OF1_STATE_DIR/knowledge-pages.json`, personas rows in `$OF1_STATE_DIR/personas-rows.json`.
 
-## Env — orchestrator exports these (see `of1-check-dependencies`)
+## Env — the driver exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
@@ -19,8 +19,7 @@ Crawl a website to capture the site's own page content (products, features, FAQs
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
 
 Resolve `DA_TOKEN` (a shell local, not an input — the canonical credential is
-`ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`; see `of1-demo-orchestrator/knowledge/pipeline-contract.md`
-§ "Environment variables"). Walk the full resolution order so a standalone run with only a
+`ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`). Walk the full resolution order so a run with only a
 local `.hlx/.da-token.json` still works:
 
 ```bash
@@ -42,7 +41,7 @@ PAGES="$OF1_STATE_DIR/knowledge-pages.json"
 cd "$OF1_DEMO_REPO"
 ```
 
-Discovery output is **optional** (only the full e2e pipeline writes it). If it exists, read it to focus on the right product category:
+Discovery output is **optional** (usually absent). If it exists, read it to focus on the right product category:
 ```bash
 cat "$OF1_STATE_DIR/of1-discovery-output.md" 2>/dev/null
 ```
@@ -56,34 +55,33 @@ This skill crawls real pages, so it needs a base URL to crawl. There are two can
 
 ```bash
 if [ -n "$OF1_CONTENT_SOURCE" ]; then
-  # Pipeline mode: extract from the REAL external site. The orchestrator sets
-  # OF1_CONTENT_SOURCE to the target domain (e.g. frescopa.coffee), so here
-  # SOURCE_BASE is just that domain as an https:// URL.
+  # Extract from the REAL external site. The driver sets OF1_CONTENT_SOURCE
+  # (content-source=<domain>, e.g. frescopa.coffee), so here SOURCE_BASE is
+  # just that domain as an https:// URL.
   SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
 else
-  # Standalone mode (default): there is no external domain to point at — crawl the
-  # built EDS replica preview instead. This is NOT the target domain.
+  # Default: no external domain given — crawl the site's own EDS preview.
   SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
 fi
 echo "Extracting from: $SOURCE_BASE"
 ```
 
 Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everything else
-(output files, image rehosting, JSON shapes) is identical in both modes. Note: `$SOURCE_BASE`
+(output files, image rehosting, JSON shapes) is identical either way. Note: `$SOURCE_BASE`
 is only for extracting content — Step 8's image re-hosting always targets the EDS replica
 (`https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...`) regardless of source.
 
 ## Inputs
 
-- `$SOURCE_BASE` (resolved above) — the base URL to crawl. In pipeline mode this is the target domain; in standalone mode it's the replica preview.
+- `$SOURCE_BASE` (resolved above) — the base URL to crawl. With `OF1_CONTENT_SOURCE` set this is that domain; otherwise it's the site's own preview.
 
 ## Process
 
 ### 1. Understand scope
 
-In pipeline mode: use `$SOURCE_BASE` and focus on the **demo category** from discovery (10–20 products). Skip asking.
+If `OF1_NON_INTERACTIVE=1`: use `$SOURCE_BASE`, focus on the main category (10–20 products) and skip asking.
 
-In standalone mode, ask:
+Otherwise ask:
 > What should I index? Full catalog / specific category / curated list of URLs?
 
 ### 2. Discover catalog (or main content pages)
@@ -191,7 +189,7 @@ echo "captured $(jq length "$PAGES" 2>/dev/null || echo 0) page(s) → $PAGES"
 
 (Works in bash and zsh: `$(…)` inside `( )` splits into array elements in both, and the slice uses `$i`/`$BATCH_SIZE` — zsh rejects a bare `${arr[@]:i:n}`.)
 
-For each product (cap at 20 in pipeline mode), note: name, price, category, features, description, use cases, target audience. These notes are working context for persona inference (Step 4) only — the knowledge the worker uses is the captured page content in `$PAGES`.
+For each product (cap at 20), note: name, price, category, features, description, use cases, target audience. These notes are working context for persona inference (Step 4) only — the knowledge the worker uses is the captured page content in `$PAGES`.
 
 ### 4. Infer personas
 
@@ -211,9 +209,9 @@ Look for customer quotes, reviews, or social proof on the site:
 
 If they live on a page not yet captured, capture it into `$PAGES` the same way. If the site has NO real testimonials, capture none — never invent them.
 
-### 6. Present summary (standalone mode only)
+### 6. Present summary (interactive only)
 
-**Skip in pipeline mode** — go directly to Step 7.
+**Skip when `OF1_NON_INTERACTIVE=1`** — go directly to Step 7.
 
 ### 7. Write personas sheet (`/of1/config/personas`)
 
@@ -313,7 +311,7 @@ The worker indexes `/of1/knowledge/**` by default (no `contentIngestion` needed 
 - 10–30 content-rich captured pages work better than 200 sparse ones
 - Never use invented/fabricated image URLs — only images captured from the live site
 
-## Completion (pipeline mode)
+## Completion
 
 ⛔ **BEFORE writing the status file below, you MUST have:**
 1. Run `publish-knowledge-da.mjs` (Step 8) and seen `✓ N knowledge page(s) published to DA under of1/knowledge/`
@@ -329,4 +327,4 @@ cat > "$OF1_STATE_DIR/of1-extract-content-status.json" <<EOF
 EOF
 ```
 
-The orchestrator waits for both `of1-extract-content-status.json` and `of1-extract-brand-voice-status.json` before treating the content pair as complete.
+The driver waits for both `of1-extract-content-status.json` and `of1-extract-brand-voice-status.json` before treating the content pair as complete.

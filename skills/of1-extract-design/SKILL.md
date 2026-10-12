@@ -17,7 +17,7 @@ Two callers, one procedure:
 
 Everything below is identical either way — only the target URL argument changes.
 
-## Env — orchestrator exports these (see `of1-setup`)
+## Env — the driver exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
@@ -178,4 +178,4 @@ cat > "$OF1_STATE_DIR/of1-extract-design-status.json" <<EOF
 EOF
 ```
 
-The orchestrator handles the approve/done transition.
+The driver treats `review` as approved and continues.

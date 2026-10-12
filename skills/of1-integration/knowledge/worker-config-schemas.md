@@ -62,9 +62,9 @@ Example with both overrides (config-service site):
 
 ---
 
-## `cta-template.json` (git, pipeline mode only)
+## `cta-template.json` (git, only with `cta-template`)
 
-Produced only when `OF1_PIPELINE_MODE=1`. The gen-web worker reads it (synced as `cta-template`) and serves it
+Produced only when `OF1_CTA_TEMPLATE=1` (the `cta-template` argument). The gen-web worker reads it (synced as `cta-template`) and serves it
 to customer pages via `/api/personalize` (`inject_cta` event); personas are read by the preview extension / edge proxy, not the worker. Optional for the worker — not part of the ready gate.
 
 Mustache-style template with placeholders `{{title}}`, `{{description}}`, `{{buttonText}}`, `{{href}}`.
@@ -111,7 +111,7 @@ One row per persona, served as `/of1/config/personas.json` (`{":type":"sheet","d
   (`da-write.mjs` rejects them).
 - The six intent columns are numbers in 0–1 (the persona's intent profile).
 - Consumers: the preview extension / edge-proxy injected build ("apply persona" seeds a behaviour
-  profile) and the of1-labs experiments proxy. The worker does not sync personas.
+  profile) and the experiments proxy. The worker does not sync personas.
 
 ---
 

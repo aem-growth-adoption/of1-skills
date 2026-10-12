@@ -10,7 +10,7 @@
 // Usage:
 //   node download-images.mjs \
 //     --owner aem-growth-adoption \
-//     --repo of1-demo-orchestrator \
+//     --repo <repo> \
 //     --branch wknd-2 \
 //     --input image-manifest.json \
 //     [--output image-mapping.json] \

@@ -8,7 +8,7 @@ user-invocable: true
 
 Generate domain-specific quick suggestion chips, placeholder text, and search UI copy based on the site's captured content, personas, and brand voice.
 
-## Env — orchestrator exports these (see `of1-check-dependencies`)
+## Env — the driver exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
@@ -45,15 +45,15 @@ suggestions file into the repo: it would shadow the DA sheet), and the landing c
 `of1-style-generative-block` via `$OF1_STATE_DIR/of1-landing.json`, which writes it as rows on the `/of1` block.
 
 This skill does not crawl the site — it is a pure transform over the outputs of `of1-extract-content`
-and `of1-extract-brand-voice` (which own the live-site-vs-replica source resolution). There is no
-`OF1_CONTENT_SOURCE` handling here; outputs are identical in pipeline and standalone modes.
+and `of1-extract-brand-voice` (which own the content-source resolution). There is no
+`OF1_CONTENT_SOURCE` handling here.
 
 ## Inputs
 
 - `$OF1_STATE_DIR/knowledge-pages.json` — captured site pages (`[{ url, title, blocks: [{tag, text} | {tag:'img', src, alt}] }]`), produced by `of1-extract-content`. **Page titles and headings are the ground truth for chip subjects.**
 - `$OF1_STATE_DIR/personas-rows.json` — persona rows (`id, name, description, keywords[], priorities[], explore…support`), produced by `of1-extract-content`
 - Brand voice — the DA doc `/of1/brand-voice` (`https://$PREVIEW/of1/brand-voice.plain.html`, authoritative — an author may have edited it), falling back to the local copy `$OF1_STATE_DIR/brand-voice.html`; produced by `of1-extract-brand-voice`
-- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge) — **optional**; standalone runs usually have none, and `knowledge-pages.json` is enough on its own
+- Discovery output at `$OF1_STATE_DIR/of1-discovery-output.md` (for product/category knowledge) — **optional** (usually absent);  `knowledge-pages.json` is enough on its own
 
 **REQUIRED — read the content-extraction outputs before generating suggestions.** This skill runs AFTER `of1-extract-brand-voice` and `of1-extract-content` complete, so these exist:
 
@@ -133,7 +133,7 @@ It prints `✓ of1/config/suggestions previewed` on success. **The chips won't a
 
 ## Completion (both modes)
 
-Write the status file in **both** standalone and pipeline mode — `of1-publish`'s demo hub reads every `of1-*-status.json` for its "What worked" panel.
+`of1-publish`'s demo hub reads every `of1-*-status.json` for its "What worked" panel.
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-build-quick-suggestions-status.json" <<EOF

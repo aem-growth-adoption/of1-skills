@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # DA API helpers for authoring block templates. Verified live 2026-08-10
-# against of1-labs/of1-af1bb1a3 — see the design spec's "Verification
+# against a throwaway DA tenant — see the design spec's "Verification
 # Results" section for the exact request/response pairs this mirrors.
 #
 # Meant to be SOURCED into the agent's shell (bash or zsh). It deliberately

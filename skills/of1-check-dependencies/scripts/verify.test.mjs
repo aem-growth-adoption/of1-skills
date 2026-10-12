@@ -9,9 +9,9 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const verify = join(here, 'verify.sh');
 const root = join(here, '..', '..', '..');
-const SKILLS = ['of1-integration', 'of1-extract-design', 'of1-build-templates', 'of1-style-generative-block',
+const SKILLS = ['of1-integration', 'of1-check-dependencies', 'of1-extract-design', 'of1-build-templates', 'of1-style-generative-block',
   'of1-extract-brand-voice', 'of1-extract-content', 'of1-build-quick-suggestions', 'of1-build-cta-template',
-  'of1-publish', 'stardust', 'impeccable', 'extract', 'prototype', 'snowflake'];
+  'of1-publish', 'stardust', 'impeccable', 'extract'];
 
 function tmp() { return realpathSync(mkdtempSync(join(tmpdir(), 'of1-verify-'))); }
 function write(p, c = '') { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, c); }

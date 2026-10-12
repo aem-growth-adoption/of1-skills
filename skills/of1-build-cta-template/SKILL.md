@@ -8,7 +8,7 @@ user-invocable: true
 
 Analyze a website's visual design system (fonts, colors, button styles, spacing) and generate a branded HTML CTA template with slot placeholders. The template is used by the OF1 extension to inject a personalized call-to-action that looks native to the site.
 
-## Env — orchestrator exports these (see `of1-check-dependencies`)
+## Env — the driver exports these (see `of1-check-dependencies`)
 
 | Var | Purpose |
 |-----|---------|
@@ -120,7 +120,7 @@ Ensure:
 - Deep-wine bg (#58181D), Baskerville heading + Roboto body, teal pill button (#00647D), rounded card with generous padding
 - Fallback: "Find Your Perfect Brew" / "Discover handcrafted coffee and machines tailored to your taste." / "Explore Now"
 
-## Completion (pipeline mode)
+## Completion
 
 ```bash
 cat > "$OF1_STATE_DIR/of1-build-cta-template-status.json" <<EOF
