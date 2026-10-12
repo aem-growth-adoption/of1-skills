@@ -23,25 +23,15 @@ Resolve `DA_TOKEN` (a shell local, not an input — canonical credential is `ADO
 ```bash
 # Full resolution order: ADOBE_IMS_TOKEN → OF1_TOKEN_FILE → $PWD/.hlx/.da-token.json
 # → $OF1_DEMO_REPO/.hlx/.da-token.json.
-DA_TOKEN="${ADOBE_IMS_TOKEN:-}"
-for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
-  [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
-  [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
-done
-[ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] \
+LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/da-token.sh"
+DA_TOKEN=$(da_resolve_token) \
   || { echo "FAIL: no DA token (set ADOBE_IMS_TOKEN or OF1_TOKEN_FILE, or provide .hlx/.da-token.json)" >&2; exit 1; }
 
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
 # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
-DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
-  -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}")
-case "$DA_PROBE" in
-  200) ;;
-  401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; exit 1 ;;
-  *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
-esac
+da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 ```
@@ -243,8 +233,8 @@ cd "$OF1_DEMO_REPO"
 git add blocks/of1/
 git commit -m "feat: OF1 page + brand-aligned block styling for ${DOMAIN}"
 # Rebase onto the remote first so a concurrent push never rejects ours.
-git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
-git push origin "$BRANCH"
+LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/git-push.sh"
+git_push_rebased "$BRANCH" || exit 1
 ```
 
 ### Step 7 — Verify the live `/of1` page renders correctly
@@ -255,8 +245,7 @@ After the push, EDS picks up the code change automatically. Open the live OF1 pa
 OF1_URL="https://${BRANCH}--${REPO}--${OWNER}.aem.page/of1"
 # playwright-cli writes a .playwright-cli/ folder into cwd — run it from the
 # state dir (subshell), never from the repo. `pw_result` keeps eval's value only.
-pw() { ( cd "$OF1_STATE_DIR" && playwright-cli "$@" ); }
-pw_result() { awk '/^### Result/{f=1;next} /^### /{f=0} f'; }
+LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/pw.sh"
 pw open "$OF1_URL"
 sleep 4  # EDS loads header/footer blocks + lazy CSS
 

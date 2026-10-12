@@ -2,6 +2,7 @@
 
 ## 0.2.0
 
+- Skills now source `lib/` helpers (`da-token.sh`, `git-push.sh`, `pw.sh`) instead of inline copies.
 - Added baseline tooling (`scripts/baseline/`) and the golden shape in `docs/baseline/`.
 - Removed Restart from `of1-check-dependencies` (DA/git wipe and prompt); runs are idempotent.
 - Breaking for callers: `of1-check-dependencies` no longer asks Continue/Restart and no longer removes OF1-owned DA (`/of1/**`, `/templates/**`) or git (`blocks/of1`, `of1/config`) paths; callers that relied on that reset (of1-demo-skills orchestrator step 0a) must remove those paths themselves.

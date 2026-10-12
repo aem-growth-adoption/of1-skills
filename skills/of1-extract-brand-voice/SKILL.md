@@ -26,20 +26,11 @@ OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
 # Resolve the token in the shell only to probe it (da-write.mjs resolves its own,
 # same order).
-DA_TOKEN="${DA_TOKEN:-${ADOBE_IMS_TOKEN:-}}"
-for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
-  [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
-  [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
-done
-if [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ]; then
+LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/da-token.sh"
+DA_TOKEN="${DA_TOKEN:-$(da_resolve_token)}"
+if [ -n "$DA_TOKEN" ]; then
   # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
-  DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
-    -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}")
-  case "$DA_PROBE" in
-    200) ;;
-    401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; exit 1 ;;
-    *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
-  esac
+  da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
 else
   echo "WARN: no DA token resolvable in the shell — skipping the probe (da-write.mjs will report)" >&2
 fi

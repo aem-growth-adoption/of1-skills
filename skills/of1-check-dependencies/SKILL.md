@@ -155,8 +155,8 @@ if [ "${#LEGACY[@]}" -gt 0 ]; then
   if [ "${#C[@]}" -gt 0 ]; then
     git commit -m "chore: remove legacy OF1 config JSON" -- "${C[@]}"
     # Rebase onto the remote first so a concurrent push never rejects ours.
-    git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
-    git push origin "$BRANCH"
+    LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/git-push.sh"
+    git_push_rebased "$BRANCH" || exit 1
   fi
   echo "✓ Removed legacy OF1 config JSON: ${LEGACY[*]}"
 fi
@@ -236,8 +236,8 @@ if [ -f .hlxignore ] && grep -Eq '^of1/?$|^of1/config' .hlxignore; then
   git add -- .hlxignore
   git commit -m "chore: allow of1/config on the code bus" -- .hlxignore
   # Rebase onto the remote first so a concurrent push never rejects ours.
-  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
-  git push origin "$BRANCH"
+  LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/git-push.sh"
+  git_push_rebased "$BRANCH" || exit 1
   echo "✓ Removed the of1/config exclusion from .hlxignore (committed + pushed)"
 else
   echo "✓ .hlxignore does not block of1/config"
@@ -266,8 +266,8 @@ git add -- of1/config/config.json
 if ! git diff --cached --quiet -- of1/config/config.json; then
   git commit -m "feat: OF1 config.json for ${DOMAIN}" -- of1/config/config.json
   # Rebase onto the remote first so a concurrent push never rejects ours.
-  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
-  git push origin "$BRANCH"
+  LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/git-push.sh"
+  git_push_rebased "$BRANCH" || exit 1
   echo "✓ of1/config/config.json committed + pushed"
 fi
 ```
@@ -316,8 +316,8 @@ indices:
 YAML
   git add -- helix-query.yaml
   git commit -m "chore: index /of1/knowledge and /templates into query-index for OF1" -- helix-query.yaml
-  git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
-  git push origin "$BRANCH"
+  LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/git-push.sh"
+  git_push_rebased "$BRANCH" || exit 1
   echo "✓ created helix-query.yaml (indexes /of1/knowledge/** + /templates/** → /query-index.json)"
 else
   # Warn only — never edit a customer's helix-query.yaml.

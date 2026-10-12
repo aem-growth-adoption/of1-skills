@@ -32,12 +32,8 @@ Resolve tokens and repo config once at the top:
 ```bash
 # DA_TOKEN resolution (same order every OF1 skill uses):
 # ADOBE_IMS_TOKEN -> OF1_TOKEN_FILE -> $PWD/.hlx/.da-token.json -> $OF1_DEMO_REPO/.hlx/.da-token.json
-DA_TOKEN="${ADOBE_IMS_TOKEN:-}"
-for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
-  [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
-  [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
-done
-[ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] \
+LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/da-token.sh"
+DA_TOKEN=$(da_resolve_token) \
   || { echo "FAIL: no DA token (set ADOBE_IMS_TOKEN or OF1_TOKEN_FILE)" >&2; exit 1; }
 
 # AEM preview uses the SAME IMS token — the design doc's 403 was an org-permission
@@ -49,13 +45,7 @@ REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")   # DA org, e.g. of1-labs
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")   # DA repo,  e.g. of1-af1bb1a3
 # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
-DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
-  -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}")
-case "$DA_PROBE" in
-  200) ;;
-  401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; exit 1 ;;
-  *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
-esac
+da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 DOMAIN=$(jq -r .domain <<<"$REPO_CONFIG")
 export ORG="$OWNER" REPO DA_TOKEN AEM_TOKEN   # da-api.sh reads ORG/REPO/DA_TOKEN/AEM_TOKEN
@@ -226,8 +216,8 @@ skill writes no engine/template config file.
      git add blocks/<name>/
      git commit -m "feat: add general-purpose <name> block for OF1 templates"
      # Rebase onto the remote first so a concurrent push never rejects ours.
-     git pull --rebase --autostash -q origin "$BRANCH" || { git rebase --abort 2>/dev/null; echo "✗ FAIL: git pull --rebase origin $BRANCH failed (conflict with the remote) — rebase aborted, nothing pushed. Resolve manually (git pull --rebase origin $BRANCH), then re-run. Never force-push." >&2; exit 1; }
-     git push origin "$BRANCH"
+     LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/git-push.sh"
+     git_push_rebased "$BRANCH" || exit 1
      # Wait for code sync — poll the block JS on the code bus until 200:
      for i in $(seq 1 30); do
        curl -sf -o /dev/null "https://${BRANCH}--${REPO}--${OWNER}.aem.page/blocks/<name>/<name>.js" && break

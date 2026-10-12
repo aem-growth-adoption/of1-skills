@@ -24,26 +24,16 @@ Resolve `DA_TOKEN` (a shell local, not an input — the canonical credential is
 local `.hlx/.da-token.json` still works:
 
 ```bash
-DA_TOKEN="${ADOBE_IMS_TOKEN:-}"
-for f in "$OF1_TOKEN_FILE" "$PWD/.hlx/.da-token.json" "$OF1_DEMO_REPO/.hlx/.da-token.json"; do
-  [ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] && break
-  [ -n "$f" ] && [ -f "$f" ] && DA_TOKEN=$(jq -r .access_token "$f")
-done
-export DA_TOKEN
-[ -n "$DA_TOKEN" ] && [ "$DA_TOKEN" != "null" ] \
+LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/da-token.sh"
+DA_TOKEN=$(da_resolve_token) \
   || { echo "FAIL: no DA token (set ADOBE_IMS_TOKEN or OF1_TOKEN_FILE, or provide .hlx/.da-token.json)" >&2; exit 1; }
+export DA_TOKEN
 
 REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
 OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
 REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
 # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
-DA_PROBE=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
-  -H "Authorization: Bearer $DA_TOKEN" "https://admin.da.live/list/${OWNER}/${REPO}")
-case "$DA_PROBE" in
-  200) ;;
-  401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; exit 1 ;;
-  *) echo "WARN: DA token probe on ${OWNER}/${REPO} returned HTTP ${DA_PROBE} — continuing" >&2 ;;
-esac
+da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
 BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
 SKILL_DIR="${SKILL_DIR:?set SKILL_DIR to this skill's directory}"
 DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
@@ -143,8 +133,7 @@ Start each run from a fresh `$PAGES` (`rm -f "$PAGES"` before the first batch) s
 ```bash
 # playwright-cli writes .playwright-cli/ into cwd — run it from the state dir in a
 # subshell so it never lands in the repo and this shell's cwd doesn't change.
-pw() { ( cd "$OF1_STATE_DIR" && playwright-cli "$@" ); }
-pw_result() { awk '/^### Result/{f=1;next} /^### /{f=0} f'; }
+LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/pw.sh"
 CAPTURE_JS="() => {
   const root = document.querySelector('main') || document.querySelector('article') || document.body;
   const title = (document.querySelector('h1')?.innerText || document.title || '').trim();
