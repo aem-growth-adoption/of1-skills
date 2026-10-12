@@ -19,51 +19,13 @@ Analyze a website to extract its brand voice, tone, and personality, then write 
 | `OF1_CONTENT_SOURCE` | optional content domain to crawl (see Source resolution) |
 | `OF1_NON_INTERACTIVE` | `1` — no questions: overwrite `/of1/brand-voice` without asking, skip the confirmation step |
 
-Read repo config:
-
-```bash
-REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
-OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
-REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
-# Resolve the token in the shell only to probe it (da-write.mjs resolves its own,
-# same order).
-LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/da-token.sh"
-DA_TOKEN="${DA_TOKEN:-$(da_resolve_token)}"
-if [ -n "$DA_TOKEN" ]; then
-  # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
-  da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
-else
-  echo "WARN: no DA token resolvable in the shell — skipping the probe (da-write.mjs will report)" >&2
-fi
-BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
-PREVIEW="${BRANCH}--${REPO}--${OWNER}.aem.page"
-SKILL_DIR="${SKILL_DIR:?set SKILL_DIR to this skill's directory}"
-DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
-cd "$OF1_DEMO_REPO"
-```
+Each command step is a script in `$SKILL_DIR/scripts/` (run as `bash "$SKILL_DIR/scripts/<name>"`). Every script sources `common.sh`: env from `repo-config.json`, DA token probe (warns and continues if no token resolves), `SOURCE_BASE`, then `cd "$OF1_DEMO_REPO"`.
 
 Nothing is written to git — the brand voice lives only in DA at `/of1/brand-voice`.
 
 ## Source resolution — live site vs replica
 
-This skill crawls real pages (Step 1), so it needs a base URL to crawl. There are two candidates and
-`OF1_CONTENT_SOURCE` decides between them:
-
-```bash
-if [ -n "$OF1_CONTENT_SOURCE" ]; then
-  # Extract from the REAL external site. The driver sets OF1_CONTENT_SOURCE
-  # (content-source=<domain>, e.g. frescopa.coffee), so here SOURCE_BASE is
-  # just that domain as an https:// URL.
-  SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
-else
-  # Default: no external domain given — crawl the site's own EDS preview.
-  SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
-fi
-echo "Extracting from: $SOURCE_BASE"
-```
-
-Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everything else
-(output files, JSON shapes) is identical either way.
+`common.sh` sets `SOURCE_BASE`: `https://${OF1_CONTENT_SOURCE}` (the REAL external site) when `OF1_CONTENT_SOURCE` is set, else the site's own EDS preview `https://${BRANCH}--${REPO}--${OWNER}.aem.page`. It is the root for every crawl below; everything else is identical either way.
 
 ## Inputs
 
@@ -83,27 +45,10 @@ Fetch **3–5 pages** to get a representative sample of the brand's writing:
 **No discovery output?** Don't guess URLs — pick real pages from the site's nav or index, then read each page's undecorated EDS markup (`<path>.plain.html`, the authored copy without chrome):
 
 ```bash
-# Candidate pages: nav links first, else the JSON index. Collected into an
-# array line by line (no unquoted word-splitting — works in bash and zsh).
-PAGE_PATHS=()
-while IFS= read -r p; do [ -n "$p" ] && PAGE_PATHS+=("$p"); done < <(
-  curl -s --max-time 20 "${SOURCE_BASE}/nav.plain.html" \
-    | grep -oE 'href="/[^"#?]*"' | sed -E 's/^href="//; s/"$//' | sort -u)
-if [ "${#PAGE_PATHS[@]}" -eq 0 ]; then
-  while IFS= read -r p; do [ -n "$p" ] && PAGE_PATHS+=("$p"); done < <(
-    curl -s --max-time 20 "${SOURCE_BASE}/sitemap.json" \
-      | jq -r '[.. | objects | .path? // empty | strings] | .[]' 2>/dev/null \
-      | grep -vE '^/(drafts|fragments|of1|templates)(/|$)')
-fi
-printf '%s\n' "${PAGE_PATHS[@]}" | head -20
-# Fetch the home page + up to 4 others (pick the most editorial ones from the list):
-PICK=(/)
-for p in "${PAGE_PATHS[@]}"; do [ "$p" = "/" ] || PICK+=("$p"); [ "${#PICK[@]}" -ge 5 ] && break; done
-for page in "${PICK[@]}"; do
-  if [ "$page" = "/" ]; then plain="${SOURCE_BASE}/index.plain.html"; else plain="${SOURCE_BASE}${page%/}.plain.html"; fi
-  echo "=== $page"; curl -s --max-time 20 "$plain" | head -c 20000; echo
-done
+bash "$SKILL_DIR/scripts/pick-pages.sh"
 ```
+
+It lists candidate pages (nav links first, else the JSON index minus `drafts|fragments|of1|templates`) and prints the home page + up to 4 others as `=== <path>` followed by their first 20 KB of markup.
 
 (For a non-EDS live site via `OF1_CONTENT_SOURCE`, `.plain.html` won't exist — fetch the page itself with WebFetch.)
 
@@ -152,14 +97,11 @@ The worker injects this doc into the LLM system prompt to shape how generated se
 **Existing doc check (interactive only).** An author may already have edited `/of1/brand-voice` in DA. Before writing, check whether it exists:
 
 ```bash
-if [ "${OF1_NON_INTERACTIVE:-}" != "1" ] && \
-   [ "$(curl -s -o /dev/null -w '%{http_code}' "https://${PREVIEW}/of1/brand-voice.plain.html")" = "200" ]; then
-  echo "/of1/brand-voice already exists"
-fi
+bash "$SKILL_DIR/scripts/write-doc.sh" check   # prints "exists" or "absent"
 ```
 
-- **Interactive** (`OF1_NON_INTERACTIVE` unset) and the check returns 200: **ask the user before overwriting** ("`/of1/brand-voice` already exists in DA — overwrite it with the newly extracted voice? [y/N]"). On anything but an explicit yes, skip the write, keep the existing doc, and say so in the completion summary.
-- **Non-interactive** (`OF1_NON_INTERACTIVE=1`): overwrite without asking.
+- **Interactive** (`OF1_NON_INTERACTIVE` unset) and the check prints `exists`: **ask the user before overwriting** ("`/of1/brand-voice` already exists in DA — overwrite it with the newly extracted voice? [y/N]"). On anything but an explicit yes run `write-doc.sh skip` (keeps the doc; say so in the completion summary).
+- **Non-interactive** (`OF1_NON_INTERACTIVE=1`): do not check; overwrite without asking.
 
 Write the doc to `$OF1_STATE_DIR/brand-voice.html` with exactly these four sections (escape `&`, `<`, `>` in text):
 
@@ -175,8 +117,7 @@ Write the doc to `$OF1_STATE_DIR/brand-voice.html` with exactly these four secti
 Then upload + preview it:
 
 ```bash
-node "$DA_WRITE" doc --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
-  --path of1/brand-voice --file "$OF1_STATE_DIR/brand-voice.html"
+bash "$SKILL_DIR/scripts/write-doc.sh" overwrite   # default; uploads + previews the doc
 ```
 
 It prints `✓ of1/brand-voice previewed` on success. On `FAIL <step> <path> HTTP <status>` (non-zero exit) **stop** and report the failure — do not mark the skill done.

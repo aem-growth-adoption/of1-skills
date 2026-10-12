@@ -17,28 +17,7 @@ Generate domain-specific quick suggestion chips, placeholder text, and search UI
 | `SKILL_DIR` | absolute path to this skill (used to find `../of1-integration/assets/da-write.mjs`) |
 | `ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE` | DA token (resolved by `da-write.mjs`) |
 
-Read repo config:
-
-```bash
-SKILL_DIR="${SKILL_DIR:?set SKILL_DIR to this skill's directory}"
-REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
-OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
-REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
-# Resolve the token in the shell only to probe it (da-write.mjs resolves its own,
-# same order).
-LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/da-token.sh"
-DA_TOKEN="${DA_TOKEN:-$(da_resolve_token)}"
-if [ -n "$DA_TOKEN" ]; then
-  # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
-  da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
-else
-  echo "WARN: no DA token resolvable in the shell — skipping the probe (da-write.mjs will report)" >&2
-fi
-BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
-PREVIEW="${BRANCH}--${REPO}--${OWNER}.aem.page"
-DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
-cd "$OF1_DEMO_REPO"
-```
+Each command step is a script in `$SKILL_DIR/scripts/` (run as `bash "$SKILL_DIR/scripts/<name>"`). Every script sources `common.sh`: env from `repo-config.json`, DA token probe (warns and continues if no token resolves), `PREVIEW`, then `cd "$OF1_DEMO_REPO"`.
 
 Nothing is written to git — chips live only in the DA sheet `/of1/config/suggestions` (never commit a
 suggestions file into the repo: it would shadow the DA sheet), and the landing copy is handed to
@@ -58,16 +37,10 @@ and `of1-extract-brand-voice` (which own the content-source resolution). There i
 **REQUIRED — read the content-extraction outputs before generating suggestions.** This skill runs AFTER `of1-extract-brand-voice` and `of1-extract-content` complete, so these exist:
 
 ```bash
-# Chip subjects — page titles plus their h1–h3 headings
-jq -r '.[] | .title, (.blocks[] | select(.tag == "h1" or .tag == "h2" or .tag == "h3") | "  " + .text)' \
-  "$OF1_STATE_DIR/knowledge-pages.json"
-
-# Personas — each suggestion should target a real persona
-jq -r '.[] | "\(.name): \(.description)"' "$OF1_STATE_DIR/personas-rows.json"
-
-# Brand voice — personality, tone, words we use / avoid
-curl -sf "https://$PREVIEW/of1/brand-voice.plain.html" || cat "$OF1_STATE_DIR/brand-voice.html"
+bash "$SKILL_DIR/scripts/read-inputs.sh"
 ```
+
+It prints page titles + h1–h3 headings (chip subjects), each persona's `name: description`, and the brand voice (DA doc `https://$PREVIEW/of1/brand-voice.plain.html`, falling back to `$OF1_STATE_DIR/brand-voice.html`).
 
 **Every suggestion chip must reference real subjects from `knowledge-pages.json`** (page titles / headings). Do NOT invent product names from memory — if the site doesn't have snowboarding trips, don't suggest "skiing vs snowboarding." The captured pages are the ground truth. Respect the brand voice's "Words we avoid" and prefer its "Words we use".
 
@@ -111,10 +84,7 @@ The worker syncs this sheet (sync file `suggestions`) and serves the chips via `
 Upload + preview the sheet:
 
 ```bash
-node "$DA_WRITE" sheet --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
-  --path of1/config/suggestions \
-  --columns label,query \
-  --rows "$OF1_STATE_DIR/suggestions-rows.json"
+bash "$SKILL_DIR/scripts/write-sheet.sh"
 ```
 
 It prints `✓ of1/config/suggestions previewed` on success. **The chips won't appear on `/of1` yet** — the block reads them from the worker (`/api/suggest`), which only sees the sheet after the tenant is re-synced (`of1-publish` step 4, or the DA "Sync OF1" app). Empty chips right after this step are expected. On `FAIL <step> <path> HTTP <status>` (non-zero exit) **stop** and report the failure — do not mark the skill done.

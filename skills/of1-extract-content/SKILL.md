@@ -18,62 +18,15 @@ Crawl a website to capture the site's own page content (products, features, FAQs
 | `ADOBE_IMS_TOKEN` | raw DA token (preferred) |
 | `OF1_TOKEN_FILE` | path to a `{"access_token":"…"}` JSON (fallback) |
 
-Resolve `DA_TOKEN` (a shell local, not an input — the canonical credential is
-`ADOBE_IMS_TOKEN`/`OF1_TOKEN_FILE`). Walk the full resolution order so a run with only a
-local `.hlx/.da-token.json` still works:
+Each command step is a script in `$SKILL_DIR/scripts/` (run as `bash "$SKILL_DIR/scripts/<name>"`). Every script sources `common.sh`: env from `repo-config.json`, DA token resolution + expiry probe, `SOURCE_BASE`, then `cd "$OF1_DEMO_REPO"`.
 
-```bash
-LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/da-token.sh"
-DA_TOKEN=$(da_resolve_token) \
-  || { echo "FAIL: no DA token (set ADOBE_IMS_TOKEN or OF1_TOKEN_FILE, or provide .hlx/.da-token.json)" >&2; exit 1; }
-export DA_TOKEN
-
-REPO_CONFIG=$(cat "$OF1_STATE_DIR/repo-config.json")
-OWNER=$(jq -r .owner   <<<"$REPO_CONFIG")
-REPO=$(jq -r .repo     <<<"$REPO_CONFIG")
-# Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
-da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
-BRANCH=$(jq -r .branch <<<"$REPO_CONFIG")
-SKILL_DIR="${SKILL_DIR:?set SKILL_DIR to this skill's directory}"
-DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
-PAGES="$OF1_STATE_DIR/knowledge-pages.json"
-
-cd "$OF1_DEMO_REPO"
-```
-
-Discovery output is **optional** (usually absent). If it exists, read it to focus on the right product category:
-```bash
-cat "$OF1_STATE_DIR/of1-discovery-output.md" 2>/dev/null
-```
+Optional discovery output (usually absent): `cat "$OF1_STATE_DIR/of1-discovery-output.md" 2>/dev/null` — use it to focus on the right product category.
 
 Personas sheet columns (DA `/of1/config/personas`): `id,name,description,keywords,priorities,explore,research,compare,purchase,deals,support`.
 
 ## Source resolution — live site vs replica
 
-This skill crawls real pages, so it needs a base URL to crawl. There are two candidates and
-`OF1_CONTENT_SOURCE` decides between them:
-
-```bash
-if [ -n "$OF1_CONTENT_SOURCE" ]; then
-  # Extract from the REAL external site. The driver sets OF1_CONTENT_SOURCE
-  # (content-source=<domain>, e.g. frescopa.coffee), so here SOURCE_BASE is
-  # just that domain as an https:// URL.
-  SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
-else
-  # Default: no external domain given — crawl the site's own EDS preview.
-  SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
-fi
-echo "Extracting from: $SOURCE_BASE"
-```
-
-Use `$SOURCE_BASE` as the root for every crawl/scrape in the steps below. Everything else
-(output files, image rehosting, JSON shapes) is identical either way. Note: `$SOURCE_BASE`
-is only for extracting content — Step 8's image re-hosting always targets the EDS replica
-(`https://${BRANCH}--${REPO}--${OWNER}.aem.page/media/...`) regardless of source.
-
-## Inputs
-
-- `$SOURCE_BASE` (resolved above) — the base URL to crawl. With `OF1_CONTENT_SOURCE` set this is that domain; otherwise it's the site's own preview.
+`common.sh` sets `SOURCE_BASE`: `https://${OF1_CONTENT_SOURCE}` (the REAL external site, e.g. `frescopa.coffee`) when `OF1_CONTENT_SOURCE` is set, else the site's own EDS preview `https://${BRANCH}--${REPO}--${OWNER}.aem.page`. It is the root for every crawl; everything else is identical either way. Step 8's image re-hosting always targets the EDS replica regardless of source.
 
 ## Process
 
@@ -86,110 +39,27 @@ Otherwise ask:
 
 ### 2. Discover catalog (or main content pages)
 
-Fetch main product listing pages with WebFetch. Extract for each visible product: name, URL, category, price, short description. Put the page URLs to capture in a bash array `PRODUCT_URLS=( … )`.
+Fetch main product listing pages with WebFetch. Extract for each visible product: name, URL, category, price, short description. Write the page URLs to capture, one per line, to `$OF1_STATE_DIR/product-urls.txt`.
 
 **Non-commerce sites (no catalog).** If the site sells nothing / has no product listing (services, B2B, content, events, institutions), capture the site's **main content pages** instead — the knowledge base is "what this site says", not a product list. Take them from the site index or the nav, in that order:
 
 ```bash
-# EDS JSON index (paths) — skip drafts/fragments/OF1/template paths. Read line by
-# line into an array (no mapfile / unquoted splitting — works in bash and zsh).
-PRODUCT_URLS=()
-while IFS= read -r p; do [ -n "$p" ] && PRODUCT_URLS+=("${SOURCE_BASE}${p}"); done < <(
-  curl -s --max-time 20 "${SOURCE_BASE}/sitemap.json" \
-    | jq -r '[.. | objects | .path? // empty | strings] | .[]' 2>/dev/null \
-    | grep -vE '^/(drafts|fragments|of1|templates|nav|footer)(/|$)' | head -20)
-# Fallback: the nav fragment's site-relative links.
-if [ "${#PRODUCT_URLS[@]}" -eq 0 ]; then
-  while IFS= read -r p; do [ -n "$p" ] && PRODUCT_URLS+=("${SOURCE_BASE}${p}"); done < <(
-    curl -s --max-time 20 "${SOURCE_BASE}/nav.plain.html" \
-      | grep -oE 'href="/[^"#?]*"' | sed -E 's/^href="//; s/"$//' | sort -u | head -20)
-fi
-# Always capture the home page: prepend it when the index/nav didn't list it.
-HOME_URL="${SOURCE_BASE}/"
-has_home=0
-for u in "${PRODUCT_URLS[@]}"; do [ "$u" = "$HOME_URL" ] && has_home=1; done
-[ "$has_home" = 1 ] || PRODUCT_URLS=("$HOME_URL" "${PRODUCT_URLS[@]}")
-printf '%s\n' "${PRODUCT_URLS[@]}"
+bash "$SKILL_DIR/scripts/discover-urls.sh"
 ```
 
-The snippet always includes the home page (`${SOURCE_BASE}/`). Hand-prune the list to the 10–20 pages with real content (about, services/solutions, programs, FAQ/help, pricing/plans if any) before Step 3.
+It reads the EDS JSON index (`/sitemap.json`, skipping `drafts|fragments|of1|templates|nav|footer` paths, max 20), falls back to the nav fragment's links, always prepends `${SOURCE_BASE}/`, prints one URL per line and saves them to `$OF1_STATE_DIR/product-urls.txt`.
+
+Hand-prune `product-urls.txt` to the 10–20 pages with real content (about, services/solutions, programs, FAQ/help, pricing/plans if any) before Step 3.
 
 ### 3. Extract page data (parallel scraping)
 
-Start each run from a fresh `$PAGES` (`rm -f "$PAGES"` before the first batch) so re-runs do not duplicate pages.
-
-**Open pages in parallel batches of 5, then extract from each batch.** Do NOT scrape pages one at a time in a serial loop — that takes 2 min per page × 16 pages = 32 min. Batches of 5 take ~5 min total.
-
-`playwright-cli` rules (verified on the current CLI):
-
-- **Run it from `$OF1_STATE_DIR`, never from the repo** — it writes a `.playwright-cli/` folder (snapshots, console logs) into the current directory, which would otherwise end up in the customer's git tree. The `pw` helper below does that in a subshell, so your shell's cwd is left untouched.
-- First URL of a batch → `playwright-cli open URL` (starts the browser); every other URL → `playwright-cli tab-new URL`. Calling `open` repeatedly does not open new tabs.
-- Tab ids come from `playwright-cli tab-list` lines shaped `- <id>: …` → `grep -oE '^- [0-9]+:' | grep -oE '[0-9]+'` (a bare `grep -oE '[0-9]+'` also picks up digits in titles/URLs).
-- `playwright-cli eval` prints a Markdown report; the returned value is under `### Result`. Extract it with `awk '/^### Result/{f=1;next} /^### /{f=0} f'`.
-- Close the batch with `playwright-cli close` — it closes the **default session's** browser and all its tabs (any other `-s=<name>` session is untouched; don't run another default-session task in parallel). If you close tabs individually, go from the **highest id down** — ids are positional and renumber after each close.
-
 ```bash
-# playwright-cli writes .playwright-cli/ into cwd — run it from the state dir in a
-# subshell so it never lands in the repo and this shell's cwd doesn't change.
-LIB="${SKILL_DIR:?set SKILL_DIR to this skill's directory}/../../lib"; . "$LIB/pw.sh"
-CAPTURE_JS="() => {
-  const root = document.querySelector('main') || document.querySelector('article') || document.body;
-  const title = (document.querySelector('h1')?.innerText || document.title || '').trim();
-  const blocks = [];
-  root.querySelectorAll('h1,h2,h3,p,li,img').forEach((el) => {
-    if (el.closest('nav,header,footer,aside')) return;
-    if (el.tagName.toLowerCase() === 'img') {
-      const src = el.currentSrc || el.src || '';
-      if (src) blocks.push({ tag: 'img', src, alt: (el.alt || '').trim() });
-      return;
-    }
-    const text = el.innerText.replace(/\\s+/g, ' ').trim();
-    if (text) blocks.push({ tag: el.tagName.toLowerCase(), text });
-  });
-  return { url: location.href, title, blocks };
-}"
-rm -f "$PAGES"
-BATCH_SIZE=5
-for ((i=0; i<${#PRODUCT_URLS[@]}; i+=BATCH_SIZE)); do
-  # Open this batch: first URL starts the browser, the rest are new tabs.
-  first=1
-  for URL in "${PRODUCT_URLS[@]:$i:$BATCH_SIZE}"; do
-    if [ "$first" = 1 ]; then pw open "$URL"; first=0
-    else pw tab-new "$URL"; fi
-  done
-  sleep 5  # wait for batch to render
-
-  # Extract data from each tab in this batch.
-  TAB_IDS=($(pw tab-list | grep -oE '^- [0-9]+:' | grep -oE '[0-9]+'))
-  for TAB_ID in "${TAB_IDS[@]}"; do
-    pw tab-select "$TAB_ID" >/dev/null
-    # (Commerce sites) product facts for persona inference — working notes only:
-    # pw eval "() => ({ name: …, price: …, description: … })" | pw_result
-
-    # Readable page content for the knowledge RAG — same tab, no extra page load.
-    CAP=$(pw eval "$CAPTURE_JS" | pw_result \
-      | jq -c 'if type == "string" then fromjson else . end' 2>/dev/null)
-    # Append to $PAGES with jq (never hand-concatenate); skip empty/failed captures.
-    if [ -n "$CAP" ] && [ "$(jq '.blocks | length' <<<"$CAP" 2>/dev/null || echo 0)" -gt 0 ]; then
-      if [ -f "$PAGES" ]; then
-        jq --argjson p "$CAP" '. + [$p]' "$PAGES" > "$PAGES.tmp" && mv "$PAGES.tmp" "$PAGES"
-      else
-        jq -n --argjson p "$CAP" '[$p]' > "$PAGES"
-      fi
-    else
-      echo "WARN: no content captured from tab $TAB_ID" >&2
-    fi
-  done
-
-  # Close the whole batch (browser + tabs) before opening the next one.
-  pw close >/dev/null 2>&1 || true
-done
-echo "captured $(jq length "$PAGES" 2>/dev/null || echo 0) page(s) → $PAGES"
+bash "$SKILL_DIR/scripts/capture-pages.sh"   # URLs from product-urls.txt, or pass them as arguments
 ```
 
-(Works in bash and zsh: `$(…)` inside `( )` splits into array elements in both, and the slice uses `$i`/`$BATCH_SIZE` — zsh rejects a bare `${arr[@]:i:n}`.)
+`capture-pages.sh` starts from a fresh `$OF1_STATE_DIR/knowledge-pages.json`, opens pages in parallel **batches of 5** (first URL `playwright-cli open`, the rest `tab-new`), waits 5 s, runs the capture eval in each tab (`main`/`article` content: h1–h3, p, li, img, minus nav/header/footer/aside), appends non-empty captures with `jq` (empty ones warn and are skipped), and closes the batch. `playwright-cli` runs from `$OF1_STATE_DIR` (via the `pw` helper) so `.playwright-cli/` never lands in the repo. Do NOT scrape pages serially. Close tabs individually only from the highest id down. Pages for Step 5/5b: capture them the same way (append to `knowledge-pages.json`; re-running the script resets it, so pass ALL URLs in one run).
 
-For each product (cap at 20), note: name, price, category, features, description, use cases, target audience. These notes are working context for persona inference (Step 4) only — the knowledge the worker uses is the captured page content in `$PAGES`.
+For each product (cap at 20), note: name, price, category, features, description, use cases, target audience. These notes are working context for persona inference (Step 4) only — the knowledge the worker uses is the captured page content in `knowledge-pages.json`.
 
 ### 4. Infer personas
 
@@ -197,21 +67,17 @@ For each product (cap at 20), note: name, price, category, features, description
 
 ### 5. Capture features and FAQs
 
-**Features / FAQs:** if the site has dedicated feature, FAQ, help, or comparison pages that Step 3 did not visit, open them (same batch-of-5 pattern) and run the same capture eval, appending each to `$PAGES`. Their headings, paragraphs and list items become the knowledge docs — do not rewrite or summarise them.
+**Features / FAQs:** if the site has dedicated feature, FAQ, help, or comparison pages that Step 3 did not visit, open them (same batch-of-5 pattern) and run the same capture eval, appending each to `knowledge-pages.json`. Their headings, paragraphs and list items become the knowledge docs — do not rewrite or summarise them.
 
 ### 5b. Capture testimonials
 
-Look for customer quotes, reviews, or social proof on the site:
-- Testimonial sections (quote cards, carousels)
-- Tweet embeds or social proof sections
-- Customer review excerpts
-- Speaker/attendee quotes (for event sites)
+Look for testimonials / social proof (quote cards, tweet embeds, review excerpts, attendee quotes).
 
-If they live on a page not yet captured, capture it into `$PAGES` the same way. If the site has NO real testimonials, capture none — never invent them.
+If they live on a page not yet captured, capture it into `knowledge-pages.json` the same way. If the site has NO real testimonials, capture none — never invent them.
 
 ### 6. Present summary (interactive only)
 
-**Skip when `OF1_NON_INTERACTIVE=1`** — go directly to Step 7.
+**Skip when `OF1_NON_INTERACTIVE=1`** — go to Step 7.
 
 ### 7. Write personas sheet (`/of1/config/personas`)
 
@@ -219,19 +85,9 @@ Write the persona rows as a JSON array to `$OF1_STATE_DIR/personas-rows.json` �
 
 ```json
 [
-  {
-    "id": "persona-slug",
-    "name": "Persona Name",
-    "description": "Who this represents and what they're looking for",
-    "keywords": ["trigger", "words", "user", "would", "type", "in", "search"],
-    "priorities": ["what", "they", "value"],
-    "explore": 0.3,
-    "research": 0.8,
-    "compare": 0.6,
-    "purchase": 0.3,
-    "deals": 0.2,
-    "support": 0.2
-  }
+  { "id": "persona-slug", "name": "Persona Name", "description": "Who this represents and what they're looking for",
+    "keywords": ["trigger", "words", "user", "would", "type"], "priorities": ["what", "they", "value"],
+    "explore": 0.3, "research": 0.8, "compare": 0.6, "purchase": 0.3, "deals": 0.2, "support": 0.2 }
 ]
 ```
 
@@ -239,17 +95,14 @@ Write the persona rows as a JSON array to `$OF1_STATE_DIR/personas-rows.json` �
 
 Intent axes — `explore`, `research`, `compare`, `purchase`, `deals`, `support` (numbers 0–1): where this persona typically sits on the shopping-intent funnel — `explore` (browsing broadly, no target yet), `research` (digging into specs/details), `compare` (weighing alternatives), `purchase` (ready to buy), `deals` (price/promo-sensitive), `support` (needs help/service, post-sale). Infer them from the persona's `priorities`/`description` — give each persona a clearly dominant axis (≥0.7) and at least one clearly low axis (≤0.3) so personas render as visibly different shapes rather than a uniform hexagon.
 
-This isn't just cosmetic: it renders as the demo's Intent Map radar, and when a viewer clicks "Personalize" for that persona, the preview extension / edge proxy seeds the visitor's behaviour profile with these exact values and sends it to the OF1 worker's `/api/personalize` — where the intent and interests shape the content-chunk retrieval and the intent context put in the LLM prompt. Get them wrong and the persona won't just look wrong on the radar — it'll get content aimed at the wrong intent.
+This renders as the demo's Intent Map radar and seeds the visitor's behaviour profile sent to `/api/personalize` (shaping content retrieval and the LLM prompt) — wrong values get content aimed at the wrong intent.
 
 `keywords` (10–12 strings) describe what this persona searches for and cares about; the preview extension uses them as focus areas in the persona's seeded profile (and, only when the intent columns are empty, to guess its intent). Keep them specific to the persona so personas stay distinguishable.
 
 Upload + preview the sheet:
 
 ```bash
-node "$DA_WRITE" sheet --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
-  --path of1/config/personas \
-  --columns id,name,description,keywords,priorities,explore,research,compare,purchase,deals,support \
-  --rows "$OF1_STATE_DIR/personas-rows.json"
+bash "$SKILL_DIR/scripts/write-personas.sh"
 ```
 
 It prints a `✓ … previewed` line for the personas sheet on success. On `FAIL <step> <path> HTTP <status>` or a comma-validation error (non-zero exit) **stop** and fix — do not mark the skill done. Never write a personas file into the git repo (it would shadow the DA sheet).
@@ -260,43 +113,13 @@ Turn the captured pages into bare DA content docs the worker's content-RAG
 ingests. Fast — content, not craft (no EDS blocks). Requires
 `$OF1_STATE_DIR/knowledge-pages.json` from Steps 3–5b.
 
-Rehost the captured page images to DA, then author the knowledge docs with
-inline `<img>` pointing at the rehosted URLs. `download-images.mjs` is reused
-unchanged — `build-image-manifest.mjs` feeds it a per-image manifest keyed by a
-hash of each source URL, and `publish-knowledge-da.mjs --image-map` maps each
-captured `<img>` back to its rehosted DA url by that same key. Images that fail
-to download/upload are dropped from the doc; the text still publishes. **A partial
-image failure is OK** — `download-images.mjs` exits non-zero when any image fails
-but still writes the mapping for the ones that succeeded; carry on to step 3 (only
-`publish-knowledge-da.mjs` failing is a real failure). Non-http(s) srcs (inline
-`data:` SVG placeholders, `blob:`) are skipped by `build-image-manifest.mjs`.
+Rehost the captured images to DA, then author the knowledge docs with inline `<img>` pointing at the rehosted URLs (`build-image-manifest.mjs` keys each image by a hash of its source URL; `publish-knowledge-da.mjs --image-map` maps back by the same key). Failed images are dropped, the text still publishes. **A partial image failure is OK** (`download-images.mjs` exits non-zero but writes the mapping for the successes); only `publish-knowledge-da.mjs` failing is a real failure. Non-http(s) srcs are skipped.
 
 ```bash
-cd "$OF1_DEMO_REPO"
-
-# 1. captured images -> download-images input manifest (unique srcs, hash-keyed)
-node "$SKILL_DIR/assets/build-image-manifest.mjs" \
-  --pages "$OF1_STATE_DIR/knowledge-pages.json" \
-  --output /tmp/knowledge-image-manifest.json
-
-# 2. download + upload each image to DA, preview into the Media Bus
-#    (skip if the manifest is empty — no images captured)
-if [ "$(jq 'length' /tmp/knowledge-image-manifest.json)" -gt 0 ]; then
-  node "$SKILL_DIR/assets/download-images.mjs" \
-    --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
-    --input /tmp/knowledge-image-manifest.json \
-    --output /tmp/knowledge-image-mapping.json \
-    || echo "WARN: some images failed to rehost — publishing text with the ones that succeeded" >&2
-fi
-
-# 3. author the bare knowledge docs with inline <img> (text-only if no map)
-node "$SKILL_DIR/assets/publish-knowledge-da.mjs" \
-  --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
-  --pages "$OF1_STATE_DIR/knowledge-pages.json" \
-  --image-map /tmp/knowledge-image-mapping.json
-
-rm -f /tmp/knowledge-image-manifest.json /tmp/knowledge-image-mapping.json
+bash "$SKILL_DIR/scripts/publish-knowledge.sh"
 ```
+
+It runs `build-image-manifest.mjs` → `download-images.mjs` (skipped when the manifest is empty; a failure only warns) → `publish-knowledge-da.mjs`, then removes the `/tmp/knowledge-image-*.json` temp files; its exit code is the publish step's.
 
 The worker indexes `/of1/knowledge/**` by default (no `contentIngestion` needed in
 `config.json`; `of1-check-dependencies` makes sure `helix-query.yaml` covers it, and
@@ -313,11 +136,7 @@ The worker indexes `/of1/knowledge/**` by default (no `contentIngestion` needed 
 
 ## Completion
 
-⛔ **BEFORE writing the status file below, you MUST have:**
-1. Run `publish-knowledge-da.mjs` (Step 8) and seen `✓ N knowledge page(s) published to DA under of1/knowledge/`
-2. Run `da-write.mjs sheet` (Step 7) and seen its `✓ … previewed` line for the personas sheet
-
-If either is false, GO BACK and complete Step 7 (personas sheet) / Step 8 (knowledge pages). Do not proceed.
+⛔ **BEFORE writing the status file, you MUST have seen** `✓ N knowledge page(s) published to DA under of1/knowledge/` (Step 8) and the personas sheet's `✓ … previewed` line (Step 7). Otherwise GO BACK and complete Step 7 / Step 8.
 
 This skill runs alongside `of1-extract-brand-voice`. Both must complete before the content track is treated as done.
 
@@ -327,4 +146,3 @@ cat > "$OF1_STATE_DIR/of1-extract-content-status.json" <<EOF
 EOF
 ```
 
-The driver waits for both `of1-extract-content-status.json` and `of1-extract-brand-voice-status.json` before treating the content pair as complete.
