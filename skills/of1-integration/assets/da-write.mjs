@@ -19,33 +19,11 @@
 // ./.hlx/.da-token.json, $OF1_DEMO_REPO/.hlx/.da-token.json.
 
 import fs from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
+import { resolveToken, buildMultipart, daUpload, aemAction, TOKEN_HINT } from '../../../lib/da-client.mjs';
 
 
-function readTokenFile(p) {
-  const raw = fs.readFileSync(p, 'utf8').trim();
-  let parsed;
-  try { parsed = JSON.parse(raw); } catch { return raw; }
-  if (parsed && typeof parsed === 'object') {
-    if (parsed.access_token) return parsed.access_token;
-    throw new Error(`Token file ${p} is JSON but has no access_token`);
-  }
-  return raw;
-}
-
-export async function resolveToken() {
-  if (process.env.DA_TOKEN) return process.env.DA_TOKEN;
-  if (process.env.ADOBE_IMS_TOKEN) return process.env.ADOBE_IMS_TOKEN;
-  if (process.env.OF1_TOKEN_FILE) return readTokenFile(process.env.OF1_TOKEN_FILE);
-  if (fs.existsSync('.hlx/.da-token.json')) return readTokenFile('.hlx/.da-token.json');
-  if (process.env.OF1_DEMO_REPO) {
-    const p = path.join(process.env.OF1_DEMO_REPO, '.hlx', '.da-token.json');
-    if (fs.existsSync(p)) return readTokenFile(p);
-  }
-  throw new Error('Could not resolve DA token. Set $DA_TOKEN/$ADOBE_IMS_TOKEN/$OF1_TOKEN_FILE, or place .hlx/.da-token.json.');
-}
+export { resolveToken, buildMultipart, TOKEN_HINT };
 
 function cell(value, column) {
   if (value === undefined || value === null) return '';
@@ -71,33 +49,8 @@ export function buildSheetJson(rows, columns) {
   return { total: data.length, limit: data.length, offset: 0, data, ':sheetname': 'data', ':type': 'sheet' };
 }
 
-export function buildMultipart(content, filename, contentType) {
-  const boundary = '----DABoundary' + crypto.randomBytes(8).toString('hex');
-  const head = Buffer.from(
-    `--${boundary}\r\nContent-Disposition: form-data; name="data"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`,
-  );
-  const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
-  const payload = typeof content === 'string' ? Buffer.from(content, 'utf8') : Buffer.from(content);
-  return { body: Buffer.concat([head, payload, tail]), contentType: `multipart/form-data; boundary=${boundary}` };
-}
-
 function normalizePath(p) {
   return String(p).replace(/^\/+/, '').replace(/\.(html|json)$/, '');
-}
-
-export const TOKEN_HINT = 'DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE';
-
-async function step(name, label, fetchImpl, url, opts) {
-  try {
-    const resp = await fetchImpl(url, opts);
-    if (resp.ok) return null;
-    // A DA (admin.da.live) 401/403 means the token itself is bad; a preview 403 is
-    // a separate AEM-rights grant, so only the upload step gets the token hint.
-    const hint = name === 'upload' && (resp.status === 401 || resp.status === 403) ? ` — ${TOKEN_HINT}` : '';
-    return `FAIL ${name} ${label} HTTP ${resp.status}${hint}`;
-  } catch (e) {
-    return `FAIL ${name} ${label} ERROR ${e.message}`;
-  }
 }
 
 // Upload `content` to DA and preview it. Returns { ok, message }; never throws
@@ -110,18 +63,10 @@ export async function writeDa({ kind, owner, repo, branch, path: p, content, tok
   const previewPath = kind === 'doc' ? base : sourcePath;
   const mime = kind === 'doc' ? 'text/html' : 'application/json';
 
-  const { body, contentType } = buildMultipart(content, path.posix.basename(sourcePath), mime);
-  const upErr = await step('upload', sourcePath, fetchImpl, `https://admin.da.live/source/${owner}/${repo}/${sourcePath}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': contentType },
-    body,
-  });
+  const upErr = await daUpload({ owner, repo, path: sourcePath, content, contentType: mime, token, fetchImpl });
   if (upErr) return { ok: false, message: upErr };
 
-  const prevErr = await step('preview', previewPath, fetchImpl, `https://admin.hlx.page/preview/${owner}/${repo}/${branch}/${previewPath}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'x-content-source-authorization': `Bearer ${token}` },
-  });
+  const prevErr = await aemAction({ action: 'preview', owner, repo, branch, path: previewPath, token, fetchImpl });
   if (prevErr) return { ok: false, message: prevErr };
 
   return { ok: true, message: `✓ ${previewPath} previewed` };

@@ -31,7 +31,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
+import { resolveToken, daUpload, aemAction, briefError } from '../../../lib/da-client.mjs';
 import dns from 'node:dns/promises';
 
 
@@ -143,28 +143,6 @@ function parseArgs(argv) {
   return args;
 }
 
-function readTokenFile(filePath) {
-  const content = fs.readFileSync(filePath, 'utf8');
-  const data = JSON.parse(content);
-  const token = data.access_token || data.token;
-  if (!token) throw new Error(`Token file ${filePath} missing access_token / token field`);
-  return token;
-}
-
-async function resolveToken(tokenFileArg) {
-  if (tokenFileArg) return readTokenFile(tokenFileArg);
-  if (process.env.DA_TOKEN) return process.env.DA_TOKEN;
-  if (process.env.ADOBE_IMS_TOKEN) return process.env.ADOBE_IMS_TOKEN;
-  if (process.env.OF1_TOKEN_FILE) return readTokenFile(process.env.OF1_TOKEN_FILE);
-  for (const candidate of ['.hlx/.da-token.json']) {
-    if (fs.existsSync(candidate)) return readTokenFile(candidate);
-  }
-  throw new Error(
-    'Could not resolve DA token. Pass --token-file, set $DA_TOKEN/$ADOBE_IMS_TOKEN, '
-    + 'or place token JSON at .hlx/.da-token.json.',
-  );
-}
-
 async function downloadImage(url) {
   let resp;
   try {
@@ -183,25 +161,12 @@ async function downloadImage(url) {
   return { data: bytes, err: null };
 }
 
+// Ingest the uploaded media file into EDS's Media Bus so it resolves at
+// {branch}--{repo}--{owner}.aem.page/media/{filename}. Without this, the
+// file only exists in DA's source store — content.da.live is not a public
+// delivery endpoint (auth-gated) and the aem.page path 404s until previewed.
 async function triggerPreview(token, owner, repo, branch, filename) {
-  // Ingest the uploaded media file into EDS's Media Bus so it resolves at
-  // {branch}--{repo}--{owner}.aem.page/media/{filename}. Without this, the
-  // file only exists in DA's source store — content.da.live is not a public
-  // delivery endpoint (auth-gated) and the aem.page path 404s until previewed.
-  const url = `https://admin.hlx.page/preview/${owner}/${repo}/${branch}/media/${filename}`;
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'x-content-source-authorization': `Bearer ${token}`,
-      },
-    });
-    if (resp.ok) return null;
-    return `preview HTTP ${resp.status}`;
-  } catch (e) {
-    return `preview error: ${e.message}`;
-  }
+  return briefError(await aemAction({ action: 'preview', owner, repo, branch, path: `media/${filename}`, token }), 'preview');
 }
 
 async function upload(data, contentType, token, owner, repo, branch, filename, mountDir) {
@@ -226,32 +191,8 @@ async function upload(data, contentType, token, owner, repo, branch, filename, m
 
   // DA requires multipart/form-data with field name "data" for binary uploads.
   // Raw PUT silently returns 2xx but doesn't persist the file.
-  const boundary = '----DABoundary' + crypto.randomBytes(8).toString('hex');
-  const header = `--${boundary}\r\nContent-Disposition: form-data; name="data"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`;
-  const footer = `\r\n--${boundary}--\r\n`;
-
-  const headerBytes = new TextEncoder().encode(header);
-  const footerBytes = new TextEncoder().encode(footer);
-  const body = new Uint8Array(headerBytes.length + data.length + footerBytes.length);
-  body.set(headerBytes, 0);
-  body.set(data, headerBytes.length);
-  body.set(footerBytes, headerBytes.length + data.length);
-
-  const url = `https://admin.da.live/source/${owner}/${repo}/media/${filename}`;
-  let resp;
-  try {
-    resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': `multipart/form-data; boundary=${boundary}`,
-      },
-      body,
-    });
-  } catch (e) {
-    return ['api', `upload error: ${e.message}`];
-  }
-  if (!resp.ok) return ['api', `HTTP ${resp.status}`];
+  const upErr = await daUpload({ owner, repo, path: `media/${filename}`, content: data, contentType, token });
+  if (upErr) return ['api', upErr.includes(' ERROR ') ? briefError(upErr, 'upload') : upErr.replace(/^FAIL upload \S+ /, '')];
   // File is uploaded to DA's source store but not yet in the Media Bus —
   // request a preview so it becomes reachable at the site's /media/ path.
   const previewErr = await triggerPreview(token, owner, repo, branch, filename);
@@ -295,7 +236,7 @@ function semaphore(max) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const token = await resolveToken(args.tokenFile);
+  const token = await resolveToken({ tokenFile: args.tokenFile });
 
   const mountDir = fs.existsSync(args.mountDir) ? args.mountDir : null;
 
