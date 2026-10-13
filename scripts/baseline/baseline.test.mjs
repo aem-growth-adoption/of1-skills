@@ -133,3 +133,17 @@ test('captureShape hasKnowledgePages is false with no knowledge paths', async ()
   const out = await captureShape({ base: 'https://t', tenantId: 't', gitFiles: [], fetchImpl: async () => res({ data: [{ path: '/x' }] }) });
   assert.equal(out.hasKnowledgePages, false);
 });
+
+test('captureShape enumerates templates from the template-list sheet first', async () => {
+  const res = (body, ok = true) => ({ ok, status: ok ? 200 : 404, json: async () => body, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) });
+  const fetchImpl = async (url) => {
+    const u = String(url);
+    if (u.endsWith('/of1/config/template-list.json')) return res({ ':type': 'sheet', data: [{ name: 'sheetone' }] });
+    if (u.endsWith('/of1/config/config.json')) return res({ templates: { names: ['cfgone'] } });
+    if (u.endsWith('/query-index.json')) return res({ data: [{ path: '/templates/idxone' }] });
+    if (u.endsWith('.plain.html')) return res('<div><div class="hero"></div></div>');
+    return res('', false);
+  };
+  const out = await captureShape({ base: 'https://t.aem.page', worker: '', tenantId: 't', gitFiles: [], fetchImpl });
+  assert.deepEqual(Object.keys(out.templates), ['sheetone']);
+});

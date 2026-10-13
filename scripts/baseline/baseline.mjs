@@ -151,7 +151,11 @@ export async function captureShape({ base, worker, tenantId, gitFiles, fetchImpl
   const index = await getJson(`${base}${config?.contentIngestion?.indexPath || '/query-index.json'}`);
   const paths = (index?.data || []).map((d) => d.path).filter((p) => typeof p === 'string');
 
-  let names = Array.isArray(config?.templates?.names) ? config.templates.names : null;
+  // Same order as the worker: DA sheet -> config override -> query index.
+  const sheet = await getJson(`${base}/of1/config/template-list.json`);
+  const sheetRows = Array.isArray(sheet?.data) ? sheet.data : null;
+  let names = sheetRows ? sheetRows.map((r) => r?.name).filter((n) => typeof n === 'string' && n) : null;
+  if (!names?.length) names = Array.isArray(config?.templates?.names) ? config.templates.names : null;
   if (!names) names = paths.filter((p) => p.startsWith('/templates/')).map((p) => p.slice('/templates/'.length)).filter(Boolean);
   const templates = {};
   for (const n of names) templates[n] = shapeOfTemplate(await getText(`${base}/templates/${n}.plain.html`));
