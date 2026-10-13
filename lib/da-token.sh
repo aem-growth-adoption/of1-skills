@@ -6,6 +6,7 @@ _da_tok_from_file() {
 
 da_resolve_token() {
   local t="" f
+  if [ -n "${DA_TOKEN:-}" ]; then printf '%s\n' "$DA_TOKEN"; return 0; fi
   if [ -n "${ADOBE_IMS_TOKEN:-}" ]; then printf '%s\n' "$ADOBE_IMS_TOKEN"; return 0; fi
   for f in "${OF1_TOKEN_FILE:-}" "$PWD/.hlx/.da-token.json" "${OF1_DEMO_REPO:+$OF1_DEMO_REPO/.hlx/.da-token.json}"; do
     [ -n "$f" ] || continue
@@ -17,8 +18,9 @@ da_resolve_token() {
 
 da_probe_token() {
   local owner="$1" repo="$2" tok="$3" code
-  code=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
-    -H "Authorization: Bearer $tok" "${DA_BASE:-https://admin.da.live}/list/$owner/$repo")
+  # Token via `-K -` (stdin) so it never shows in `ps`.
+  code=$(printf 'header = "Authorization: Bearer %s"\n' "$tok" | curl -s -K - -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
+    "${DA_BASE:-https://admin.da.live}/list/$owner/$repo")
   case "$code" in
     200) return 0 ;;
     401|403) echo "FAIL: DA token expired or invalid (IMS tokens last ~3h) — refresh ADOBE_IMS_TOKEN / OF1_TOKEN_FILE" >&2; return 1 ;;
