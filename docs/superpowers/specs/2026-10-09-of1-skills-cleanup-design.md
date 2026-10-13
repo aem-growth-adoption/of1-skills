@@ -1,7 +1,7 @@
 # of1-skills cleanup: self-contained integration plugin
 
 Date: 2026-10-09
-Status: approved (stages 1-2 in PR #13); progress-contract section added 2026-10-09, pending review
+Status: Implemented (stages 1-2 in PR #13; stages 3-6 in plans 2-3)
 
 ## Intent
 
