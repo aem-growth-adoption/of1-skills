@@ -133,6 +133,32 @@ test('write-status: base / intent / final files', () => {
   assert.equal(rd('of1-build-templates-status.json').deliverables[0].url, 'https://da.live/edit#/o/r/templates');
 });
 test('bash -n', () => {
-  for (const s of ['common.sh', 'preview-all.sh', 'verify-richness.sh', 'commit-block-code.sh', 'env.sh', 'write-status.sh'])
+  for (const s of ['common.sh', 'preview-all.sh', 'verify-richness.sh', 'commit-block-code.sh', 'env.sh', 'write-status.sh', 'write-template-list.sh'])
     assert.equal(spawnSync('bash', ['-n', join(here, s)]).status, 0, s);
+});
+
+function stubWriter(f, body) {
+  const w = join(f.fake, 'writer.sh');
+  writeFileSync(w, `#!/bin/bash\necho "$@" > "$FAKE_DIR/writer.args"\ncp "\${@: -1}" "$FAKE_DIR/writer.rows"\n${body}\n`);
+  chmodSync(w, 0o755);
+  return w;
+}
+test('write-template-list: filters/sorts names, writes rows, calls writer', () => {
+  const f = fixture();
+  writeFileSync(join(f.fake, 'list.json'), JSON.stringify(['zeta', 'alpha', 'bad name', '_x'].map((n) => ({ path: `/o/r/templates/${n}.html`, ext: 'html' }))));
+  const r = f.run('write-template-list.sh', [], { OF1_DA_WRITE: stubWriter(f, 'exit 0') });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.state, 'template-list-rows.json'), 'utf8')), [{ name: 'alpha' }, { name: 'zeta' }]);
+  assert.match(r.stderr, /bad name/);
+  const args = readFileSync(join(f.fake, 'writer.args'), 'utf8');
+  assert.match(args, /sheet --owner o --repo r --branch main --path of1\/config\/template-list --columns name --rows .*template-list-rows\.json/);
+});
+test('write-template-list: fails on zero valid names and on writer failure', () => {
+  const f = fixture();
+  writeFileSync(join(f.fake, 'list.json'), JSON.stringify([{ path: '/o/r/templates/_x.html', ext: 'html' }]));
+  const r = f.run('write-template-list.sh', [], { OF1_DA_WRITE: stubWriter(f, 'exit 0') });
+  assert.notEqual(r.status, 0);
+  const g = fixture();
+  const r2 = g.run('write-template-list.sh', [], { OF1_DA_WRITE: stubWriter(g, 'echo "FAIL: boom"; exit 1') });
+  assert.notEqual(r2.status, 0); assert.match(r2.stdout + r2.stderr, /FAIL: boom/);
 });

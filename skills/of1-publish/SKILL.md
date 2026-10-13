@@ -24,7 +24,7 @@ Each step is a script in `$SKILL_DIR/scripts/`; every script sources `common.sh`
 
 ## How config sync works
 
-The worker pulls each source from `https://{branch}--{repo}--{owner}.aem.page` on `POST $WORKER_URL/api/tenants/$TENANT_ID/sync`: `of1/config/config.json` (git), `cta-template.json` (git, CTA only), `/of1/brand-voice`, `/of1/config/suggestions`, `/of1/strategy` (optional), `/templates/*`, and `/of1/knowledge/**` via `query-index.json`. `/of1/config/personas` and `/of1` are read by the extension/SDK, not synced. Response: `{ok, id, domain, synced, errors, content: {indexed} | null}`. Shapes: `of1-integration/knowledge/worker-config-schemas.md`. Tenant ID: `{branch}--{repo}--{owner}`.
+The worker pulls each source from `https://{branch}--{repo}--{owner}.aem.page` on `POST $WORKER_URL/api/tenants/$TENANT_ID/sync`: `of1/config/config.json` (git), `cta-template.json` (git, CTA only), `/of1/brand-voice`, `/of1/config/suggestions`, `/of1/strategy` (optional), `/of1/config/template-list` (template names), `/templates/*`, and `/of1/knowledge/**` via `query-index.json`. `/of1/config/personas` and `/of1` are read by the extension/SDK, not synced. Response: `{ok, id, domain, synced, errors, content: {indexed} | null}`. Shapes: `of1-integration/knowledge/worker-config-schemas.md`. Tenant ID: `{branch}--{repo}--{owner}`.
 
 ## Steps (in order)
 
@@ -32,7 +32,7 @@ The worker pulls each source from `https://{branch}--{repo}--{owner}.aem.page` o
 |---|---------|--------------|
 | 1 | `01-assert-git-config.sh` | Resets this run's status to `running`; only allowed `of1/config/*` files may be tracked (check 1). Fails listing extras; never deletes (`of1-check-dependencies` step 3b does) |
 | 2 | `02-refresh-of1-page.sh` | Re-uploads `/of1` via `of1-style-generative-block/scripts/upload-of1-page.sh` (override path: `OF1_UPLOAD_PAGE_SCRIPT`) so the landing copy from `of1-build-quick-suggestions` is present |
-| 2b | `02b-index-overrides.sh` | Probes `/query-index.json`; when it lacks `/templates/` or `/of1/knowledge/`, writes `templates.names` / `contentIngestion.indexPath` (from `/sitemap.json`) into `config.json`, commits and pushes it. A user-set `indexPath` and a daPath without leading `/` are left alone. If no index lists the knowledge pages, ask the user for another index (add it to `INDEX_CANDIDATES`, re-run; with `OF1_NON_INTERACTIVE=1` just continue). Template docs only appear in an index once published, so `templates.names` is usually set |
+| 2b | `02b-index-overrides.sh` | Probes `/query-index.json`; when it lacks `/of1/knowledge/`, writes `contentIngestion.indexPath` (from `/sitemap.json`) into `config.json`, commits and pushes it. Removes a stale `templates.names` (templates come from the `/of1/config/template-list` sheet). A user-set `indexPath` is left alone. If no index lists the knowledge pages, ask the user for another index (add it to `INDEX_CANDIDATES`, re-run; with `OF1_NON_INTERACTIVE=1` just continue). |
 | 3 | `03-push-config.sh` | Commits and pushes the allowed config paths |
 | 3b | `03b-wait-config.sh` | Polls the preview host until it serves the committed `config.json` (24 x 5 s, warns on timeout) |
 | 4 | `04-sync.sh` | Sync, writes `hub/sync.json`; prints errors, warnings (`{file, warning}` are not errors) |
@@ -60,7 +60,7 @@ The worker pulls each source from `https://{branch}--{repo}--{owner}.aem.page` o
 | 3 | `/status` has `ready: true` (only `hasTemplates`/`hasContent` gate it; `hasBrandVoice`/`hasSuggestions` should still be true) | Re-run `of1-build-templates` / content steps, then step 4 |
 | 4 | `/of1` renders header, footer, the `of1` block, the authored title (from `of1-landing.json`) and >=1 chip | Default title: step 2 ran before `of1-build-quick-suggestions`. No chips: suggestions sheet not previewed. No header/footer: `/nav` `/footer` missing (`of1-style-generative-block` step 4). No block: `blocks/of1/` not pushed |
 | 5 | `nav.plain.html`, `footer.plain.html`, `/of1`, `deliverables/index.html` (+ `discovery.html` if discovery output exists) return 200 | Chrome fragment 404 makes every page chromeless |
-| 6 | `/api/generate` streams >=2 `type:"section"` events, no `type:"error"` | `template not selected`: re-sync after `of1-build-templates`; config-service sites need `templates.names` (step 2b) |
+| 6 | `/api/generate` streams >=2 `type:"section"` events, no `type:"error"` | `template not selected`: re-sync after `of1-build-templates`; check the `/of1/config/template-list` sheet exists and is previewed (`of1-build-templates` assemble), and that `config.json` has no `templates.names` override (step 2b removes it) |
 | 7 | CTA only: `cta-template.json` present and `/api/personalize` streams `inject_cta` | Check `hasCtaTemplate` in `hub/status.json` |
 
 ## Completion

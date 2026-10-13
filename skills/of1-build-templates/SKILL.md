@@ -115,6 +115,10 @@ Run once after all 5 intent agents complete; first `. "$SKILL_DIR/scripts/env.sh
    bash "$SKILL_DIR/scripts/preview-all.sh"
    ```
    Aborts (non-zero) if `/templates` lists no docs or any preview is non-2xx. On 401/403 **stop and report the org-authorization gap** (see `of1-check-dependencies` step 5); other statuses (404, 5xx) are reported as-is. Never report templates ready with unpublished docs. DA content is shared across branches, so a preview on any existing ref is visible on every branch's preview host.
+   Then write the template-name sheet the worker enumerates (names of the `/templates` docs, previewed, not published):
+   ```bash
+   bash "$SKILL_DIR/scripts/write-template-list.sh"   # DA sheet /of1/config/template-list, column `name`; aborts on 0 valid names / write failure
+   ```
 2. **Verify the round-trip** per template: `https://{BRANCH}--{REPO}--{OWNER}.aem.page/templates/{name}.plain.html` must be 200 and each block's row/per-row cell counts must match the harvested fingerprint. A 404 means preview didn't materialize; a shape mismatch means markdown-intermediate mangling — fix before proceeding.
 3. **Check richness against purpose (RULE 6):**
    ```bash
@@ -125,7 +129,7 @@ Run once after all 5 intent agents complete; first `. "$SKILL_DIR/scripts/env.sh
 
 ## Deliverables & notes
 
-- DA documents at `/templates/<intent>-<variation>` (not git-committed; editable at `da.live/edit#/{org}/{repo}/templates/*`, the authoring showcase `of1-publish` surfaces) and any **new general-purpose** `blocks/<name>/{<name>.js,<name>.css}` (committed). No template config file; reused blocks are never modified.
+- DA sheet `/of1/config/template-list` (previewed; the worker's template enumeration) and DA documents at `/templates/<intent>-<variation>` (not git-committed; editable at `da.live/edit#/{org}/{repo}/templates/*`, the authoring showcase `of1-publish` surfaces) and any **new general-purpose** `blocks/<name>/{<name>.js,<name>.css}` (committed). No template config file; reused blocks are never modified.
 - **Preview is not optional** — a DA write with no preview means the worker syncs zero templates and the generative page is empty.
 - **Reuse over invention.** A new block must earn its place as a general pattern reused across templates.
 - Does not author `blocks/of1/of1.css`, generative-images.json, or generative-fragments.json (other skills).

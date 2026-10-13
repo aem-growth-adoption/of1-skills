@@ -45,37 +45,39 @@ function fixture({ cfg = { domain: 'x.com' }, tracked = ['of1/config/config.json
 const docs = (...n) => JSON.stringify(n.map((name) => ({ name, ext: 'html' })));
 const qi = (...p) => JSON.stringify({ data: p.map((path) => ({ path })) });
 
-test('02b: index covers both -> unchanged, stale templates.names removed', () => {
+test('02b: stale templates.names removed (and empty templates)', () => {
   const f = fixture({ cfg: { domain: 'x.com', templates: { names: ['old'] } } });
-  writeFileSync(join(f.fake, 'qi.json'), qi('/templates/a', '/of1/knowledge/k'));
+  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
   const r = f.run('02b-index-overrides.sh');
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.equal(f.cfgNow().templates, undefined);
-  assert.match(r.stdout, /templates\(\/templates\)=true knowledge=true/);
+  assert.match(r.stdout, /removed templates\.names \(superseded by the \/of1\/config\/template-list sheet/);
 });
-test('02b: index lacks templates -> templates.names set sorted', () => {
+test('02b: config without names unchanged, no DA /templates listing request', () => {
   const f = fixture();
   writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
-  writeFileSync(join(f.fake, 'da-list.json'), docs('zeta', 'alpha'));
+  const log = join(f.fake, 'curl.log');
+  writeFileSync(join(f.base, 'bin', 'curl'), `#!/bin/bash\necho "$@" >> "${log}"\n` + FAKE_CURL.split('\n').slice(1).join('\n'));
   const r = f.run('02b-index-overrides.sh');
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.deepEqual(f.cfgNow().templates.names, ['alpha', 'zeta']);
+  assert.deepEqual(f.cfgNow(), { domain: 'x.com' });
+  assert.match(r.stdout, /unchanged/);
+  assert.ok(!existsSync(log) || !/\/list\/o\/r\/templates/.test(readFileSync(log, 'utf8')));
 });
-test('02b: DA listing 403 -> exit 1 with token message', () => {
+test('02b: templates.daPath preserved when names removed', () => {
+  const f = fixture({ cfg: { domain: 'x.com', templates: { daPath: '/tpl', names: ['old'] } } });
+  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
+  const r = f.run('02b-index-overrides.sh');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(f.cfgNow().templates, { daPath: '/tpl' });
+});
+test('02b: knowledge fallback via sitemap still written', () => {
   const f = fixture();
-  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
-  writeFileSync(join(f.fake, 'da-code'), '403');
+  writeFileSync(join(f.fake, 'qi.json'), qi('/x'));
+  writeFileSync(join(f.fake, 'sitemap.json'), qi('/of1/knowledge/k'));
   const r = f.run('02b-index-overrides.sh');
-  assert.equal(r.status, 1);
-  assert.match(r.stderr, /DA token expired or lacks access/);
-});
-test('02b: daPath without slash -> warning, names untouched', () => {
-  const f = fixture({ cfg: { domain: 'x.com', templates: { daPath: 'templates', names: ['keep'] } } });
-  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
-  const r = f.run('02b-index-overrides.sh');
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stderr, /no leading '\/'/);
-  assert.deepEqual(f.cfgNow().templates.names, ['keep']);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.equal(f.cfgNow().contentIngestion.indexPath, '/sitemap.json');
 });
 test('02b: user-set indexPath untouched', () => {
   const f = fixture({ cfg: { domain: 'x.com', contentIngestion: { indexPath: '/query-index.json?limit=2000' } } });
