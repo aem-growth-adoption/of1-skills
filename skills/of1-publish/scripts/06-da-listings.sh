@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Step 6: DA listings -> hub/da-{pages,templates,knowledge}.txt
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+. "$LIB/curl-auth.sh"
 da_list() {
-  curl -s -H "Authorization: Bearer $DA_TOKEN" \
-    -H "x-content-source-authorization: Bearer $DA_TOKEN" \
+  of1_curl_auth DA_TOKEN auth+source -- -s \
     "https://admin.da.live/list/${OWNER}/${REPO}$1"
 }
 # Site pages (one "<name>.html" per line) — the hub's EDS pages section.
