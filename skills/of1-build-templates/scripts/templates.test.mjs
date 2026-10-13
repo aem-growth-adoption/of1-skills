@@ -133,7 +133,7 @@ test('write-status: base / intent / final files', () => {
   assert.equal(rd('of1-build-templates-status.json').deliverables[0].url, 'https://da.live/edit#/o/r/templates');
 });
 test('bash -n', () => {
-  for (const s of ['common.sh', 'preview-all.sh', 'verify-richness.sh', 'commit-block-code.sh', 'env.sh', 'write-status.sh'])
+  for (const s of ['common.sh', 'preview-all.sh', 'verify-richness.sh', 'commit-block-code.sh', 'env.sh', 'write-status.sh', 'write-template-list.sh'])
     assert.equal(spawnSync('bash', ['-n', join(here, s)]).status, 0, s);
 });
 

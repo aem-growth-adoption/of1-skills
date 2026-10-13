@@ -49,13 +49,12 @@ mode) is tracked in git.
 | `templates.daPath` | no | Override the template folder (default `/templates`) |
 | `templates.names` | no | Manual override: array of DA template doc names under `/templates` (no extension). When set it **shadows** the `/of1/config/template-list` sheet, so new templates stay hidden. Skills no longer write it; `of1-publish` step 2b removes a stale one |
 
-Example with both overrides (config-service site):
+Example for a config-service site (the only override the skills write is `contentIngestion.indexPath`; templates come from the `/of1/config/template-list` sheet):
 
 ```json
 {
   "domain": "example.com",
-  "contentIngestion": { "indexPath": "/sitemap.json" },
-  "templates": { "names": ["product-grid", "faq", "comparison"] }
+  "contentIngestion": { "indexPath": "/sitemap.json" }
 }
 ```
 
