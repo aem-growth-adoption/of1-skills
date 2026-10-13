@@ -20,6 +20,7 @@ only `config.json` (and, in pipeline mode, `cta-template.json`) is committed to 
 | `/of1/config/suggestions` | DA sheet | `of1-build-quick-suggestions` | `suggestions` |
 | `/of1` page, `of1` block rows | DA document | `of1-style-generative-block` Step 5 | — (read by the client SDK) |
 | `/of1/strategy` | DA document (optional) | authors | `strategy` |
+| `/of1/config/template-list` | DA sheet (single column `name`) | `of1-build-templates` | `templates` |
 | `/templates/*` | DA documents | `of1-build-templates` | `templates` |
 | `/of1/knowledge/**` | DA documents | `of1-extract-content` | `content` |
 
@@ -46,7 +47,7 @@ mode) is tracked in git.
 | `contentIngestion.indexPath` | no | Site-root index the worker reads knowledge-page paths from (e.g. `"/sitemap.json"`). Default `"/query-index.json"`. Set by `of1-publish` step 2b when the site's index is managed by the AEM config service and `/query-index.json` doesn't list `/of1/knowledge/` |
 | `of1Endpoint` | no | Override the derived CTA/landing URL (default `https://<id>.aem.page/of1`) |
 | `templates.daPath` | no | Override the template folder (default `/templates`) |
-| `templates.names` | no | Array of DA template doc names under `/templates` (e.g. `["product-grid","faq"]`, no extension). When set, the worker uses this list instead of discovering templates from the query index. Set by `of1-publish` step 2b when `/query-index.json` doesn't list `/templates/` |
+| `templates.names` | no | Manual override: array of DA template doc names under `/templates` (no extension). When set it **shadows** the `/of1/config/template-list` sheet, so new templates stay hidden. Skills no longer write it; `of1-publish` step 2b removes a stale one |
 
 Example with both overrides (config-service site):
 
@@ -157,8 +158,9 @@ strategy-aware personalization turns on (`/status` → `hasStrategy`). Delete it
 
 `of1-build-templates` authors templates as real EDS documents in `/templates` (composed from the
 site's own blocks, reused first, new general blocks where useful). The worker always materializes
-them with the `da-blocks-slots` engine: it enumerates `/templates` (via `/query-index.json`,
-prefix-filtered), fetches each doc's `.plain.html`, and derives content-only slots structurally — no
+them with the `da-blocks-slots` engine: it enumerates templates (in order: `config.templates.names` override → the previewed DA sheet
+`/of1/config/template-list`, written by `of1-build-templates`, one `name` per template doc, relative to
+`/templates` → `/query-index.json` prefix-filtered), fetches each doc's `.plain.html`, and derives content-only slots structurally — no
 catalog, no `.metadata.json`, no `data-slot` attributes. Per-template
 `intent`/`description`/`minItems`/`maxItems` travel in each doc's `section-metadata` block.
 Recognised intents: `comparison`, `recommendation`, `deep-dive`, `budget`, `discovery` (`discovery`

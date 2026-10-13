@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Template names now come from the previewed DA sheet `/of1/config/template-list` (written by `of1-build-templates` assemble via `write-template-list.sh`); requires gen-web worker >= PR #65.
+- `of1-publish` step 2b no longer writes `templates.names` into `config.json` and removes a stale one (an override would hide the sheet). `contentIngestion.indexPath` handling is unchanged.
+- Baseline `captureShape` enumerates templates from the sheet first (no change to the baseline shape keys).
+
 ## 0.3.0
 
 - Dropped SLICC runtime support (Claude Code only); one DA client (`lib/da-client.mjs`) for the DA scripts; skills use `lib/` helpers.
