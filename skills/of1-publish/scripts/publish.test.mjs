@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, realpathSync, chmodSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, realpathSync, chmodSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,7 @@ if [ "$hasO" = 1 ]; then printf 200; exit 0; fi
 case "$url" in
   */list/o/r/templates) printf '%s\\n%s' "$(cat "$d/da-list.json")" "$(cat "$d/da-code")";;
   */query-index.json) cat "$d/qi.json" 2>/dev/null || exit 22;;
-  */api/generate) cat "$d/gen.ndjson" 2>/dev/null || exit 22;;
+  */api/generate) echo "$url" >> "$d/gen-urls.log"; cat "$d/gen.ndjson" 2>/dev/null || exit 22; [ "$hasw" = 1 ] && printf '\\n%s' "$(cat "$d/gen-code" 2>/dev/null || echo 200)";;
   */sitemap.json) cat "$d/sitemap.json" 2>/dev/null || exit 22;;
   *) exit 22;;
 esac
@@ -186,4 +186,79 @@ test('bash -n on every script', () => {
   const scripts = readdirSync(here).filter((n) => n.endsWith('.sh'));
   assert.ok(scripts.length >= 12, scripts.join());
   for (const s of scripts) assert.equal(spawnSync('bash', ['-n', join(here, s)]).status, 0, s);
+});
+
+const SYNC_CURL = `#!/bin/bash
+d="$FAKE_DIR"
+echo "$@" >> "$d/sync-argv.log"
+case "$*" in *-K\\ -*) cat > "$d/sync-stdin.log";; esac
+case "$*" in *-o\\ *) printf 200; exit 0;; esac
+case "$*" in *"/sync"*) cat "$d/sync-body" ; printf '\\n%s' "$(cat "$d/sync-code")";; *) exit 22;; esac
+`;
+const syncFixture = (code, body, env = {}) => {
+  const f = fixture({ env });
+  writeFileSync(join(f.base, 'bin', 'curl'), SYNC_CURL); chmodSync(join(f.base, 'bin', 'curl'), 0o755);
+  writeFileSync(join(f.fake, 'sync-code'), code); writeFileSync(join(f.fake, 'sync-body'), body);
+  return f;
+};
+const SECRET = 'SECRET-DA-TOKEN-123';
+test('04-sync: DA token sent as Authorization header via stdin config, not argv, not in hub', () => {
+  const f = syncFixture('200', '{"ok":true,"synced":["config"],"errors":[],"content":{"indexed":3}}', { ADOBE_IMS_TOKEN: SECRET });
+  const r = f.run('04-sync.sh');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(join(f.fake, 'sync-stdin.log'), 'utf8'), /Authorization: Bearer SECRET-DA-TOKEN-123/);
+  const argv = readFileSync(join(f.fake, 'sync-argv.log'), 'utf8'); // includes the DA probe call
+  assert.doesNotMatch(argv, new RegExp(SECRET));
+  assert.match(argv, /main--r--o\/sync/);
+  assert.doesNotMatch(r.stdout + r.stderr, new RegExp(SECRET));
+  const out = readFileSync(join(f.state, 'hub', 'sync.json'), 'utf8');
+  assert.doesNotMatch(out, new RegExp(SECRET));
+  assert.equal(JSON.parse(out).ok, true);
+});
+test('04-sync: 401 gives explicit message and valid JSON ok:false', () => {
+  const f = syncFixture('401', '{"error":"Unauthorized"}', { ADOBE_IMS_TOKEN: SECRET });
+  const r = f.run('04-sync.sh');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /sync rejected \(HTTP 401\): DA token invalid or lacks access to o\/r, or worker not configured/);
+  const j = JSON.parse(readFileSync(join(f.state, 'hub', 'sync.json'), 'utf8'));
+  assert.equal(j.ok, false);
+  assert.equal(f.run('checks.sh', ['2']).status, 1);
+});
+test('of1_sync: missing token -> ok:false "no DA token", valid JSON, no request', () => {
+  const f = syncFixture('200', '{}');
+  const out = join(f.base, 'o.json');
+  const r = spawnSync('bash', ['-c', `. ${skillDir}/../../lib/genweb.sh; unset DA_TOKEN; of1_sync https://w main--r--o ${out}`], { encoding: 'utf8', env: { PATH: `${join(f.base, 'bin')}:${process.env.PATH}`, FAKE_DIR: f.fake } });
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /no DA token/);
+  assert.deepEqual(JSON.parse(readFileSync(out, 'utf8')), { ok: false, error: 'no DA token' });
+  assert.ok(!existsSync(join(f.fake, 'sync-argv.log')));
+});
+test('da_resolve_token honours DA_TOKEN first', () => {
+  const r = spawnSync('bash', ['-c', `. ${skillDir}/../../lib/da-token.sh; da_resolve_token`], { encoding: 'utf8', env: { PATH: process.env.PATH, DA_TOKEN: 'a', ADOBE_IMS_TOKEN: 'b' } });
+  assert.equal(r.stdout.trim(), 'a');
+});
+test('check 6: uses proxied tenant host; OF1_GENERATE_BASE_URL overrides', () => {
+  const f = fixture(); withHub(f);
+  writeFileSync(join(f.fake, 'gen.ndjson'), '{"type":"section"}\n{"type":"section"}\n');
+  const r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readFileSync(join(f.fake, 'gen-urls.log'), 'utf8').trim(), 'https://main--r--o.of1.live/api/generate');
+  f.run('checks.sh', ['6'], { OF1_GENERATE_BASE_URL: 'https://dev.example' });
+  assert.match(readFileSync(join(f.fake, 'gen-urls.log'), 'utf8'), /https:\/\/dev\.example\/api\/generate/);
+});
+test('check 6: proxy 401/404 fail with explanation; HTML or unreachable only warns', () => {
+  const f = fixture(); withHub(f);
+  writeFileSync(join(f.fake, 'gen.ndjson'), '{"error":"x"}');
+  for (const c of ['401', '404']) {
+    writeFileSync(join(f.fake, 'gen-code'), c);
+    const r = f.run('checks.sh', ['6']);
+    assert.equal(r.status, 1); assert.match(r.stderr, new RegExp(`HTTP ${c}.*edge proxy`));
+  }
+  writeFileSync(join(f.fake, 'gen-code'), '200');
+  writeFileSync(join(f.fake, 'gen.ndjson'), '<!DOCTYPE html><html></html>');
+  let r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 0); assert.match(r.stderr, /WARN \(check 6\).*NOT run/);
+  rmSync(join(f.fake, 'gen.ndjson'));
+  r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 0); assert.match(r.stderr, /WARN \(check 6\)/);
 });

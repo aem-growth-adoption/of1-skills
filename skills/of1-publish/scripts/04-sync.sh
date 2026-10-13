@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Step 4 (check 2): sync -> hub/sync.json. Never fails on sync errors; checks.sh 2 does.
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
-curl -s -X POST "${WORKER_URL}/api/tenants/${TENANT_ID}/sync" > "$HUB/sync.json"
+. "$LIB/genweb.sh"
+# Worker requires `Authorization: Bearer <DA token>` (gen-web #69); sent via curl -K - so it stays out of ps.
+of1_sync "$WORKER_URL" "$TENANT_ID" "$HUB/sync.json"
 jq . "$HUB/sync.json"
 OK=$(jq -r '.ok' "$HUB/sync.json")
 INDEXED=$(jq -r '.content.indexed // 0' "$HUB/sync.json")

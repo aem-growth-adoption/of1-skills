@@ -137,7 +137,9 @@ export function diffShapes(a, b) {
   return lines.sort();
 }
 
-export async function captureShape({ base, worker, tenantId, gitFiles, fetchImpl = fetch }) {
+export const proxyBase = (tenantId, env = process.env) => env.OF1_GENERATE_BASE_URL || `https://${tenantId}.of1.live`;
+
+export async function captureShape({ base, worker, tenantId, gitFiles, fetchImpl = fetch, generateBase }) {
   const get = async (url, opts) => {
     try {
       const r = await fetchImpl(url, opts);
@@ -163,7 +165,8 @@ export async function captureShape({ base, worker, tenantId, gitFiles, fetchImpl
   let status = null; let generate = null;
   if (worker) {
     status = shapeOfStatus(await getJson(`${worker}/api/tenants/${tenantId}/status`));
-    const r = await get(`${worker}/api/generate`, {
+    // /api/generate needs gen-web caller credentials: go through the tenant's proxied host (same-origin passthrough).
+    const r = await get(`${generateBase || proxyBase(tenantId)}/api/generate`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ domain: tenantId, query: 'show me your best products', followUp: false, context: { browsing: [], conversationHistory: [] } }),

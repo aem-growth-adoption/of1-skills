@@ -147,3 +147,14 @@ test('captureShape enumerates templates from the template-list sheet first', asy
   const out = await captureShape({ base: 'https://t.aem.page', worker: '', tenantId: 't', gitFiles: [], fetchImpl });
   assert.deepEqual(Object.keys(out.templates), ['sheetone']);
 });
+
+test('generate smoke goes through the proxied tenant host; status stays on the worker', async () => {
+  const urls = [];
+  const fetchImpl = async (u) => { urls.push(String(u)); return { ok: false, status: 404 }; };
+  await captureShape({ base: 'https://t.aem.page', worker: 'https://w', tenantId: 'main--r--o', gitFiles: [], fetchImpl });
+  assert.ok(urls.includes('https://main--r--o.of1.live/api/generate'));
+  assert.ok(urls.includes('https://w/api/tenants/main--r--o/status'));
+  urls.length = 0;
+  await captureShape({ base: 'https://t.aem.page', worker: 'https://w', tenantId: 'x', gitFiles: [], fetchImpl, generateBase: 'https://o' });
+  assert.ok(urls.includes('https://o/api/generate'));
+});

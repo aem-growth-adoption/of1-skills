@@ -2,6 +2,7 @@
 # checks.sh <1..7|all> — Pre-Launch Checklist. `all` runs every applicable check
 # (7 only when OF1_CTA_TEMPLATE=1), reports each, exits 1 if any failed.
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+. "$LIB/genweb.sh"
 
 check_1() { assert_git_config; }
 
@@ -58,9 +59,22 @@ check_5() {
 }
 
 check_6() {
-  RESPONSE=$(curl -s -X POST "${WORKER_URL}/api/generate" \
-    -H "Content-Type: application/json" \
-    -d "{\"domain\":\"${TENANT_ID}\",\"query\":\"show me your best products\",\"followUp\":false,\"context\":{\"browsing\":[],\"conversationHistory\":[]}}")
+  # Same-origin proxy passthrough (adds the gen-web credential itself): no secret needed here.
+  of1_proxy_post generate "{\"domain\":\"${TENANT_ID}\",\"query\":\"show me your best products\",\"followUp\":false,\"context\":{\"browsing\":[],\"conversationHistory\":[]}}"
+  RESPONSE="$PROXY_BODY"
+  case "$PROXY_CODE" in
+    401|403|404)
+      echo "✗ FAIL (check 6): $(of1_proxy_base)/api/generate returned HTTP $PROXY_CODE — the edge proxy rejected it (401/403: proxy credential not accepted by gen-web; 404: no passthrough route or tenant host not proxied). Set OF1_GENERATE_BASE_URL to override the base." >&2
+      exit 1 ;;
+    200) ;;
+    *)
+      echo "⚠ WARN (check 6): $(of1_proxy_base)/api/generate not reachable (HTTP $PROXY_CODE) — proxied host not available; generation smoke test NOT run" >&2
+      exit 0 ;;
+  esac
+  if printf '%s' "$RESPONSE" | head -c 200 | grep -qiE '^[[:space:]]*<(!doctype|html)'; then
+    echo "⚠ WARN (check 6): $(of1_proxy_base)/api/generate returned HTML, not NDJSON — proxied host not available; generation smoke test NOT run" >&2
+    exit 0
+  fi
   # The response is NDJSON (one event per line). Count real section events; any
   # {"type":"error"} line is a failure even if sections were also emitted.
   # (`grep -c … || echo 0` printed "0" twice on no match — never use it.)
@@ -82,10 +96,8 @@ check_6() {
 check_7() {
   if [ "${OF1_CTA_TEMPLATE:-}" = "1" ]; then
     [ -f of1/config/cta-template.json ] || { echo "✗ FAIL (check 7): of1/config/cta-template.json missing" >&2; exit 1; }
-    curl -s -X POST "${WORKER_URL}/api/personalize" \
-      -H "Content-Type: application/json" \
-      -d "{\"id\":\"${TENANT_ID}\",\"elements\":{\"T0\":{\"tag\":\"h1\",\"text\":\"Welcome\"}},\"behaviorProfile\":{\"interests\":[],\"intent\":\"research\"}}" \
-      > "$OF1_STATE_DIR/check-personalize.ndjson"
+    of1_proxy_post personalize "{\"id\":\"${TENANT_ID}\",\"elements\":{\"T0\":{\"tag\":\"h1\",\"text\":\"Welcome\"}},\"behaviorProfile\":{\"interests\":[],\"intent\":\"research\"}}"
+    printf '%s\n' "$PROXY_BODY" > "$OF1_STATE_DIR/check-personalize.ndjson"
     grep -q '"type":"inject_cta"' "$OF1_STATE_DIR/check-personalize.ndjson" \
       && echo "✓ /api/personalize streamed inject_cta" \
       || { echo "✗ FAIL (check 7): no inject_cta event — is hasCtaTemplate true in hub/status.json?" >&2; exit 1; }

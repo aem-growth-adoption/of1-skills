@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2
+
+- Fix: `of1-publish` sync works again after gen-web #69 made `POST /api/tenants/<id>/sync` require `Authorization: Bearer <token>`. `04-sync.sh` sends the DA token (resolution: `$DA_TOKEN`, `$ADOBE_IMS_TOKEN`, `$OF1_TOKEN_FILE`, `.hlx/.da-token.json`, `$OF1_DEMO_REPO/.hlx/.da-token.json`) through curl's stdin config (never in argv/`ps`, never written to `hub/`). A 401/403 or missing token yields a clear message and a valid `hub/sync.json` (`ok:false`); the script still never fails itself.
+- `da_probe_token` also passes the token via stdin; `da_resolve_token` honours `$DA_TOKEN` first (parity with `lib/da-client.mjs`).
+- Check 6 (`/api/generate`), check 7 (`/api/personalize`) and the baseline capture call the tenant's proxied host `https://<tenant-id>.of1.live/api/*` (edge-proxy passthrough adds the gen-web caller credential; ready for gen-web #77). Override: `OF1_GENERATE_BASE_URL`. Proxy 401/403/404 fails check 6; HTML/unreachable warns.
+- `/api/tenants/<id>/status` stays unauthenticated and unchanged.
+
 ## 0.3.1
 
 - Template names now come from the previewed DA sheet `/of1/config/template-list` (written by `of1-build-templates` assemble via `write-template-list.sh`); requires gen-web worker >= PR #65 (Adobe-AEM-Foundation/of1-gen-web-service#65).
