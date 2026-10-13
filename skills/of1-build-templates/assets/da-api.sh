@@ -15,6 +15,9 @@
 # the design spec's "Blocked" finding). aem_preview fails loudly rather than
 # silently if this is missing.
 
+_DA_API_SRC="${BASH_SOURCE[0]:-$0}"
+. "$(cd "$(dirname "$_DA_API_SRC")" && pwd)/../../../lib/curl-auth.sh"
+
 _da_require() {
   local missing=""
   [ -n "${DA_TOKEN:-}" ] || missing="$missing DA_TOKEN"
@@ -31,10 +34,8 @@ _da_require() {
 da_put() {
   _da_require || return 1
   local local_file="$1" remote_path="$2" out code
-  out=$(curl -sS -w '\n%{http_code}' -X POST \
+  out=$(of1_curl_auth DA_TOKEN auth+source -- -sS -w '\n%{http_code}' -X POST \
     "https://admin.da.live/source/${ORG}/${REPO}/${remote_path}" \
-    -H "Authorization: Bearer ${DA_TOKEN}" \
-    -H "x-content-source-authorization: Bearer ${DA_TOKEN}" \
     -F "data=@${local_file};type=text/html") || return 1
   code=$(tail -n1 <<<"$out")
   sed '$d' <<<"$out"
@@ -48,9 +49,8 @@ da_put() {
 da_delete() {
   _da_require || return 1
   local remote_path="$1"
-  curl -sS -X DELETE \
-    "https://admin.da.live/source/${ORG}/${REPO}/${remote_path}" \
-    -H "Authorization: Bearer ${DA_TOKEN}"
+  of1_curl_auth DA_TOKEN auth -- -sS -X DELETE \
+    "https://admin.da.live/source/${ORG}/${REPO}/${remote_path}"
 }
 
 # da_list <remote-path>  e.g. da_list templates
@@ -59,8 +59,7 @@ da_delete() {
 da_list() {
   _da_require || return 1
   local remote_path="$1"
-  curl -sS "https://admin.da.live/list/${ORG}/${REPO}/${remote_path}" \
-    -H "Authorization: Bearer ${DA_TOKEN}"
+  of1_curl_auth DA_TOKEN auth -- -sS "https://admin.da.live/list/${ORG}/${REPO}/${remote_path}"
 }
 
 # aem_preview <content-path>  e.g. aem_preview templates/comparison-a   (no leading
@@ -81,9 +80,8 @@ aem_preview() {
     echo "aem_preview: AEM_TOKEN is required for preview" >&2
     return 1
   fi
-  body=$(curl -sS -w '\n%{http_code}' -X POST \
-    "https://admin.hlx.page/preview/${ORG}/${REPO}/${ref}/${doc}" \
-    -H "Authorization: Bearer ${AEM_TOKEN}")
+  body=$(of1_curl_auth AEM_TOKEN auth -- -sS -w '\n%{http_code}' -X POST \
+    "https://admin.hlx.page/preview/${ORG}/${REPO}/${ref}/${doc}")
   code=$(tail -n1 <<<"$body")
   case "$code" in
     200|201) echo "aem_preview OK for ${doc} (ref ${ref})"; return 0 ;;

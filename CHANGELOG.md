@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3
+
+- Security: bearer/DA/AEM tokens no longer appear in curl's argument list (`ps`, `/proc/<pid>/cmdline`, xtrace). New shared `lib/curl-auth.sh` (`of1_curl_auth <TOKEN_VAR_NAME> <auth|auth+source> -- curl-args…`) feeds the `Authorization` (and `x-content-source-authorization`) headers through `curl -K -` on stdin; it takes the variable *name* so even a caller's `set -x` never shows the token, suspends xtrace inside, and refuses tokens outside `[A-Za-z0-9._~+/=-]+`.
+- Converted: `da-api.sh` (`da_put`, `da_delete`, `da_list`, `aem_preview`; same signatures), `of1-publish/06-da-listings.sh`, `of1-style-generative-block/upload-of1-page.sh`, `of1-check-dependencies/05-aem-preview-auth.sh`. A guard test fails on `-H Authorization`, `--header`, `curl -u`, `curl -v`/`--trace` or `set -x` in any shell script.
+
 ## 0.3.2
 
 - Fix: `of1-publish` sync works again after gen-web #69 made `POST /api/tenants/<id>/sync` require `Authorization: Bearer <token>`. `04-sync.sh` sends the DA token (resolution: `$DA_TOKEN`, `$ADOBE_IMS_TOKEN`, `$OF1_TOKEN_FILE`, `.hlx/.da-token.json`, `$OF1_DEMO_REPO/.hlx/.da-token.json`) through curl's stdin config (never in argv/`ps`, never written to `hub/`). A 401/403 or missing token yields a clear message and a valid `hub/sync.json` (`ok:false`); the script still never fails itself.
