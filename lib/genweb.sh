@@ -2,21 +2,21 @@
 
 # of1_proxy_base — same-origin gen-web passthrough: the edge proxy adds the caller
 # credential and derives the tenant from the host. Override: OF1_GENERATE_BASE_URL.
-of1_proxy_base() { printf '%s' "${OF1_GENERATE_BASE_URL:-https://${TENANT_ID}.of1.live}"; }
+of1_proxy_base() { printf '%s' "${OF1_GENERATE_BASE_URL:-${PROXY_BASE}}"; }
 
-# of1_sync <worker-url> <tenant-id> <out-file>
-# POST /api/tenants/<id>/sync with `Authorization: Bearer $DA_TOKEN`. The token goes to
+# of1_sync <worker-url> <org/repo> <out-file> [stage=preview]
+# POST /api/tenants/<org>/<repo>/sync?stage=<stage>&ref=$BRANCH with `Authorization: Bearer $DA_TOKEN`. The token goes to
 # curl via `-K -` (stdin, printf is a builtin): never in argv/ps, never echoed or saved.
 # Never returns non-zero for sync errors: <out-file> always ends up valid JSON.
 of1_sync() {
-  local worker="$1" tenant="$2" out="$3" raw code body org repo
-  org="${tenant##*--}"; repo="${tenant%--*}"; repo="${repo##*--}"
+  local worker="$1" tenant="$2" out="$3" raw code body org repo stage="${4:-preview}"
+  org="${tenant%%/*}"; repo="${tenant#*/}"
   if [ -z "${DA_TOKEN:-}" ]; then
     echo "✗ sync skipped: no DA token (set DA_TOKEN/ADOBE_IMS_TOKEN/OF1_TOKEN_FILE or provide .hlx/.da-token.json)" >&2
     printf '{"ok":false,"error":"no DA token"}\n' > "$out"; return 0
   fi
   raw=$(printf 'header = "Authorization: Bearer %s"\n' "$DA_TOKEN" \
-    | curl -s -K - -X POST -w '\n%{http_code}' "${worker}/api/tenants/${tenant}/sync")
+    | curl -s -K - -X POST -w '\n%{http_code}' "${worker}/api/tenants/${org}/${repo}/sync?stage=${stage}&ref=${BRANCH}")
   code="${raw##*$'\n'}"; body="${raw%$'\n'*}"
   case "$code" in
     401|403)

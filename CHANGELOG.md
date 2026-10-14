@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (new tenant system)
+
+- `lib/env.sh`: `TENANT_ID` is now `<owner>/<repo>` (lowercase); new `PROXY_HOST`/`PROXY_BASE` (`<branch>--<repo>--<owner>.of1.live`). `of1_sync <worker> <org/repo> <out> [stage=preview]` posts `/api/tenants/<org>/<repo>/sync?stage=<stage>&ref=<branch>`.
+
 ## 0.3.3
 
 - Security: bearer/DA/AEM tokens no longer appear in curl's argument list (`ps`, `/proc/<pid>/cmdline`, xtrace). New shared `lib/curl-auth.sh` (`of1_curl_auth <TOKEN_VAR_NAME> <auth|auth+source> -- curl-args…`) feeds the `Authorization` (and `x-content-source-authorization`) headers through `curl -K -` on stdin; it takes the variable *name* so even a caller's `set -x` never shows the token, suspends xtrace inside, and refuses tokens outside `[A-Za-z0-9._~+/=-]+`.
