@@ -19,6 +19,9 @@ check_2() {
   local pf="$HUB/sync-preview.json"; [ -f "$pf" ] || pf="$HUB/sync.json"
   sync_ok "$pf" preview 1 || exit 1
   echo "✓ preview sync ok, $(jq -r '.content.indexed // 0' "$pf") chunk(s) indexed"
+  if [ -f "$HUB/publish-live.json" ] && [ "$(jq -r .ok "$HUB/publish-live.json")" != true ]; then
+    echo "✗ FAIL (check 2): publish live failed:" >&2; jq -r '.failed[]' "$HUB/publish-live.json" >&2; exit 1
+  fi
   if [ -f "$HUB/sync-publish.json" ]; then
     sync_ok "$HUB/sync-publish.json" publish 0 || exit 1
     echo "✓ publish sync ok ($(jq -r '.synced // [] | length' "$HUB/sync-publish.json") synced, $(jq -r '.content.indexed // 0' "$HUB/sync-publish.json") indexed)"
@@ -95,7 +98,9 @@ gen_one() {
 check_6() {
   local rc=0
   gen_one "https://prev--${PROXY_HOST}.of1.live" preview preview 1 || rc=1
-  gen_one "${OF1_GENERATE_BASE_URL:-$PROXY_BASE}" publish live 0 || rc=1
+  local strict=0
+  jq -e '((.synced // []) | length > 0) or (.content != null)' "$HUB/sync-publish.json" >/dev/null 2>&1 && strict=1
+  gen_one "${OF1_GENERATE_BASE_URL:-$PROXY_BASE}" publish live "$strict" || rc=1
   exit $rc
 }
 

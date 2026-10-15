@@ -16,6 +16,7 @@ report() {
 of1_sync "$WORKER_URL" "$TENANT_ID" "$HUB/sync-preview.json" preview
 cp "$HUB/sync-preview.json" "$HUB/sync.json"
 report preview
-if [ "${OF1_PUBLISH_LIVE:-}" = "1" ]; then bash "$SKILL_DIR/scripts/04b-publish-live.sh"; fi
+rm -f "$HUB/publish-live.json"
+if [ "${OF1_PUBLISH_LIVE:-}" = "1" ]; then bash "$SKILL_DIR/scripts/04b-publish-live.sh" || echo "⚠ publish-live reported failures (hub/publish-live.json); check 2 will fail" >&2; fi
 of1_sync "$WORKER_URL" "$TENANT_ID" "$HUB/sync-publish.json" publish
 report publish

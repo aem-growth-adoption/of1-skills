@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, chmodSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, chmodSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +25,7 @@ esac
 const OK_SYNC = '{"ok":true,"synced":["config"],"errors":[],"content":{"indexed":3}}';
 const PUB_SYNC = '{"ok":true,"synced":[],"errors":[],"content":null}';
 
-function fixture({ legacy = true } = {}) {
+function fixture({ legacy = true, cfg = { domain: 'x.com', contentIngestion: { indexPath: '/sitemap.json' } } } = {}) {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'of1-mig-')));
   const state = join(base, 'state'), repo = join(base, 'o-r'), bin = join(base, 'bin'), fake = join(base, 'fake');
   [state, repo, bin, fake].forEach((p) => mkdirSync(p, { recursive: true }));
@@ -41,7 +41,7 @@ function fixture({ legacy = true } = {}) {
   writeFileSync(join(state, 'repo-config.json'), JSON.stringify({ owner: 'o', repo: 'r', branch: 'main', domain: 'x.com' }));
   if (legacy) {
     mkdirSync(join(repo, 'of1/config'), { recursive: true });
-    writeFileSync(join(repo, 'of1/config/config.json'), JSON.stringify({ domain: 'x.com', contentIngestion: { indexPath: '/sitemap.json' } }));
+    writeFileSync(join(repo, 'of1/config/config.json'), JSON.stringify(cfg));
     writeFileSync(join(repo, 'of1/config/cta-template.json'), JSON.stringify({ html: '<p>x</p>', fallback: { title: 't', description: 'd', buttonText: 'b' } }));
   } else writeFileSync(join(repo, 'README.md'), 'x');
   sh('git add -A && git commit -qm init && git push -q origin main', repo);
@@ -116,6 +116,93 @@ test('batch dry-run lists repos without writes', () => {
   assert.match(r.stdout, /summary \(dry-run\): would-migrate=1 already-new=1/);
   assert.ok(!(r.stdout + r.stderr).includes('SECRET-TOK'));
   assert.ok(sh('git ls-files of1/config', join(base, 'orgs', 'old.git')).stdout.includes('of1/config/config.json'));
+});
+const DIRS = ['01-detect.sh', '02-config-to-da.sh'];
+test('push rejected: local removal undone, remote still legacy, re-run is not already-new', () => {
+  const f = fixture();
+  writeFileSync(join(f.base, 'origin.git/hooks/pre-receive'), '#!/bin/sh\necho rejected >&2\nexit 1\n'); chmodSync(join(f.base, 'origin.git/hooks/pre-receive'), 0o755);
+  assert.equal(f.full().status, 1);
+  assert.equal(f.result().status, 'failed');
+  assert.match(f.tracked(), /of1\/config\/config\.json/);
+  assert.equal(sh('git log --format=%s -1', f.repo).stdout.trim(), 'init');
+  assert.ok(f.result().errors.some((e) => e.step === '03'));
+  assert.equal(f.run('01-detect.sh').status, 0);
+  assert.ok(!existsSync(join(f.state, 'of1-migrate-result.json')));
+});
+test('01 treats config still on origin/<branch> as legacy; warns on untracked of1/config', () => {
+  const f = fixture();
+  sh('git rm -rq of1/config && git commit -qm local-only', f.repo); // local removal, remote still has it
+  mkdirSync(join(f.repo, 'of1/config'), { recursive: true }); writeFileSync(join(f.repo, 'of1/config/stray.json'), '{}');
+  const r = f.run('01-detect.sh');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /untracked files under of1\/config/);
+  assert.match(r.stdout, /legacy setup found/);
+  assert.ok(!existsSync(join(f.state, 'of1-migrate-result.json')));
+});
+test('detached HEAD fails early', () => {
+  const f = fixture();
+  sh('git checkout -q --detach', f.repo);
+  const r = f.run('01-detect.sh');
+  assert.equal(r.status, 1); assert.match(r.stderr, /detached HEAD/);
+});
+test('02: list keys comma-joined, nested config written losslessly', () => {
+  const f = fixture({ cfg: { domain: 'x.com', templates: { names: ['a', 'b'] }, contentIngestion: { includePaths: ['/x/**', '/y'], indexPath: '/s.json' }, flag: true, n: 3 } });
+  assert.equal(f.run('01-detect.sh').status, 0);
+  const r = f.run('02-config-to-da.sh');
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.fake, 'rows-config.json'), 'utf8')), [
+    { key: 'domain', value: 'x.com' }, { key: 'templates.names', value: 'a,b' },
+    { key: 'contentIngestion.includePaths', value: '/x/**,/y' }, { key: 'contentIngestion.indexPath', value: '/s.json' },
+    { key: 'flag', value: 'true' }, { key: 'n', value: '3' }]);
+});
+for (const [name, cfg, key] of [
+  ['other array', { domain: 'x.com', tags: ['a'] }, 'tags'],
+  ['null', { domain: 'x.com', gone: null }, 'gone'],
+  ['empty object', { domain: 'x.com', o: {} }, 'o'],
+  ['numeric string', { domain: 'x.com', code: '123' }, 'code'],
+  ['boolean string', { domain: 'x.com', flag: 'true' }, 'flag'],
+  ['dotted key', { domain: 'x.com', 'a.b': 'x' }, 'a.b'],
+  ['list key with comma item', { domain: 'x.com', templates: { names: ['a,b'] } }, 'templates.names'],
+]) {
+  test(`02: lossy shape rejected (${name}), nothing written`, () => {
+    const f = fixture({ cfg });
+    f.run('01-detect.sh');
+    const r = f.run('02-config-to-da.sh');
+    assert.equal(r.status, 1);
+    assert.ok(r.stderr.includes(key), r.stderr);
+    assert.ok(!existsSync(join(f.fake, 'daw.log')));
+  });
+}
+const fakeGh = (base, out) => { mkdirSync(join(base, 'ghbin'), { recursive: true }); writeFileSync(join(base, 'ghbin/gh'), `#!/bin/bash\necho "$@" > ${base}/gh.args\nprintf '${out}'\n`); chmodSync(join(base, 'ghbin/gh'), 0o755); };
+const batchEnv = (base, extra = {}) => ({ ...process.env, PATH: `${join(base, 'ghbin')}:${process.env.PATH}`, OF1_BATCH_CLONE_BASE: join(base, 'orgs'), ...extra });
+test('batch --repos auto excludes forks/archived, prints the list; --no-dry-run needs --yes', () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'of1-batch-')));
+  const d = join(base, 'orgs', 'a.git'); mkdirSync(d, { recursive: true });
+  sh('git init -q -b main . && git config user.email a@b && git config user.name t && echo x > a && git add -A && git commit -qm i', d);
+  fakeGh(base, 'a\n');
+  const bin = join(skillDir, 'assets/batch.mjs');
+  let r = spawnSync('node', [bin, '--org', 'acme', '--repos', 'auto'], { encoding: 'utf8', env: batchEnv(base) });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /resolved repos \(1, forks and archived excluded\): a/);
+  const args = readFileSync(join(base, 'gh.args'), 'utf8');
+  assert.match(args, /--no-archived/); assert.match(args, /isFork/);
+  r = spawnSync('node', [bin, '--org', 'acme', '--repos', 'auto', '--no-dry-run'], { encoding: 'utf8', env: batchEnv(base) });
+  assert.equal(r.status, 2); assert.match(r.stderr, /needs --yes/);
+});
+test('batch --no-dry-run migrates, keeps per-repo result with errors in --out', () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'of1-batch-')));
+  const f = fixture({ legacy: false });
+  const d = join(base, 'orgs', 'old.git'); mkdirSync(d, { recursive: true });
+  sh(`git init -q -b main . && git config user.email a@b && git config user.name t && mkdir -p of1/config && echo '{"domain":"x.com","gone":null}' > of1/config/config.json && git add -A && git commit -qm i`, d);
+  writeFileSync(join(base, 'repos.txt'), 'old\n');
+  const out = join(base, 'out');
+  const r = spawnSync('node', [join(skillDir, 'assets/batch.mjs'), '--org', 'acme', '--repos', join(base, 'repos.txt'), '--no-dry-run', '--out', out],
+    { encoding: 'utf8', env: batchEnv(base, { PATH: `${join(f.base, 'bin')}:${process.env.PATH}`, ADOBE_IMS_TOKEN: 't', OF1_DA_WRITE: join(f.base, 'daw.sh'), FAKE_DIR: f.fake, SKILL_DIR: skillDir }) });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /acme\/old\tfailed/);
+  assert.match(r.stdout, /02: .*gone/);
+  const j = JSON.parse(readFileSync(join(out, 'old.json'), 'utf8'));
+  assert.equal(j.status, 'failed'); assert.ok(j.errors.length > 0);
 });
 test('bash -n on every migrate script', () => {
   for (const s of ['common', '01-detect', '02-config-to-da', '03-remove-git-config', '04-sync', '05-verify', '06-report'])

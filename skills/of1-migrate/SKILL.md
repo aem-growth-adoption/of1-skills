@@ -16,16 +16,16 @@ Moves one repo's OF1 config from git into DA sheets, syncs the new tenant (`org/
 
 `OF1_DEMO_REPO` (repo path), `OF1_STATE_DIR` (state dir), `SKILL_DIR` (this skill), a DA token (`ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE`), optional `OF1_PUBLISH_LIVE=1` (argument `publish-live`: publish config sheets and pages live before the publish sync), `OF1_GENWEB_URL`. If `repo-config.json` is missing it is derived from `git remote origin` and the current branch.
 
-## Steps (run in this order)
+## Steps (run in this order: 01, 02, 04, 05, 03, 06)
 
-| Order | Script | What it does |
-|---|---|---|
-| 1 | `01-detect.sh` | Finds git-tracked `of1/config/*` or a triple `TENANT_ID` in `repo-config.json`. Nothing: writes `status: already-new` and stops (exit 0) |
-| 2 | `02-config-to-da.sh` | Reads git `config.json` (nested keys become dotted rows) and `cta-template.json`, writes the DA sheets `of1/config/config` and `of1/config/cta-template` (`key,value`) and previews them |
-| 3 | `04-sync.sh` | Preview sync, optional live publish, publish sync (`ref=<branch>`) |
-| 4 | `05-verify.sh` | Runs publish checks 2, 3 and 6; all must pass (writes the `migrate-verified` marker) |
-| 5 | `03-remove-git-config.sh` | `git rm of1/config`, commit by pathspec, `git_push_rebased`. Refuses without the verified marker |
-| 6 | `06-report.sh` | Writes `$OF1_STATE_DIR/of1-migrate-result.json`; exit 1 unless migrated |
+| Script | What it does |
+|---|---|
+| `01-detect.sh` | Finds git-tracked `of1/config/*` (local checkout or `origin/<branch>`) or a triple `TENANT_ID` in `repo-config.json`. Nothing: writes `status: already-new` and stops (exit 0). Warns about untracked `of1/config` files |
+| `02-config-to-da.sh` | Reads git `config.json` (nested keys become dotted rows, `templates.names`/`contentIngestion.includePaths` comma-joined) and `cta-template.json`, writes the DA sheets `of1/config/config` and `of1/config/cta-template` (`key,value`) and previews them. Fails, naming the key, on values a sheet cannot hold losslessly (other arrays, null, `{}`, `"123"`/`"true"` strings, dotted keys) |
+| `04-sync.sh` | Preview sync, optional live publish (`publish-live.json`), publish sync (`ref=<branch>`) |
+| `05-verify.sh` | Runs publish checks 2, 3 and 6; all must pass (writes the `migrate-verified` marker) |
+| `03-remove-git-config.sh` | LAST: `git rm of1/config`, commit by pathspec, `git_push_rebased`. Refuses without the verified marker; a failed push undoes the local removal |
+| `06-report.sh` | Writes `$OF1_STATE_DIR/of1-migrate-result.json`; exit 1 unless migrated |
 
 Run each as `bash "$SKILL_DIR/scripts/<name>"`; stop at the first non-zero exit except `06-report.sh`, which you always run last (also on failure).
 
@@ -58,4 +58,4 @@ bash "$SKILL_DIR/scripts/06-report.sh"
 
 ## Batch
 
-`node "$SKILL_DIR/assets/batch.mjs" --org <org> --repos <file|auto> [--dry-run]` clones each repo (shallow, temp dir, git credentials only) and prints one line per repo plus a summary. The default `--dry-run` only detects (`would-migrate` / `already-new`). `--no-dry-run` runs the steps above in each clone.
+`node "$SKILL_DIR/assets/batch.mjs" --org <org> --repos <file|auto> [--dry-run] [--out <dir>]` clones each repo (shallow, temp dir, git credentials only) and prints one line per repo plus a summary. `auto` lists the org's repos without forks and archived ones and prints the list. Default `--dry-run` only detects (`would-migrate` / `already-new`). `--no-dry-run` runs the steps in each clone and needs `--repos <file>` or `--yes`; each repo's result JSON (with errors) is kept in `--out` (default `./of1-migrate-results`).
