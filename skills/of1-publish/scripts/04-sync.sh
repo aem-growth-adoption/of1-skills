@@ -20,3 +20,7 @@ rm -f "$HUB/publish-live.json"
 if [ "${OF1_PUBLISH_LIVE:-}" = "1" ]; then bash "$SKILL_DIR/scripts/04b-publish-live.sh" || echo "⚠ publish-live reported failures (hub/publish-live.json); check 2 will fail" >&2; fi
 of1_sync "$WORKER_URL" "$TENANT_ID" "$HUB/sync-publish.json" publish
 report publish
+if jq -e '.code == "legacy-tenant-present"' "$HUB/sync-publish.json" "$HUB/sync-preview.json" >/dev/null 2>&1; then
+  echo "✗ STOP: $(jq -r 'select(.code == "legacy-tenant-present") | .error' "$HUB/sync-publish.json" "$HUB/sync-preview.json" | head -1)" >&2
+  exit 3
+fi

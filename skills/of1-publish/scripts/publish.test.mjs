@@ -376,3 +376,43 @@ test('of1_sync: ref is URL-encoded', () => {
   spawnSync('bash', ['-c', `. ${skillDir}/../../lib/genweb.sh; DA_TOKEN=t BRANCH='feat/x y' of1_sync https://w o/r ${out} publish`], { encoding: 'utf8', env: { PATH: `${join(f.base, 'bin')}:${process.env.PATH}`, FAKE_DIR: f.fake } });
   assert.match(readFileSync(join(f.fake, 'sync-argv.log'), 'utf8'), /sync\?stage=publish&ref=feat%2Fx%20y/);
 });
+
+test('mixed-case org/repo: sync URL path keeps original case, bodies use the lowercase id', () => {
+  const f = fixture({ tracked: [] });
+  writeFileSync(join(f.state, 'repo-config.json'), JSON.stringify({ owner: 'AdobeDocs', repo: 'Site', branch: 'main', domain: 'x.com' }));
+  writeFileSync(join(f.base, 'bin', 'curl'), `#!/bin/bash
+echo "$@" >> "$FAKE_DIR/all-argv.log"
+case "$*" in *-K\\ -*) cat > /dev/null;; esac
+case "$*" in *"/sync"*) printf '{"ok":true,"synced":[],"errors":[],"content":null}\\n200'; exit 0;; esac
+case "$*" in *"/api/generate"*) printf '{"type":"section"}\\n{"type":"section"}\\n200'; exit 0;; esac
+case "$*" in *-o\\ *) printf 200; exit 0;; esac
+exit 22
+`); chmodSync(join(f.base, 'bin', 'curl'), 0o755);
+  mkdirSync(join(f.state, 'hub'), { recursive: true });
+  assert.equal(f.run('04-sync.sh').status, 0);
+  const r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 0, r.stderr);
+  const argv = readFileSync(join(f.fake, 'all-argv.log'), 'utf8');
+  assert.match(argv, /tenants\/AdobeDocs\/Site\/sync\?stage=preview/);
+  assert.doesNotMatch(argv, /tenants\/adobedocs\/site\/sync/);
+  assert.match(argv, /"id":"adobedocs\/site"/);
+  assert.match(argv, /prev--main--site--adobedocs\.of1\.live/);
+});
+test('409 (legacy gen-web data): publish 04-sync stops with the admin message, check 2 names legacy-tenant-present', () => {
+  const f = syncFixture('409', '{"error":"Tenant not migrated"}');
+  const r = f.run('04-sync.sh');
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /Legacy gen-web data exists for o\/r\. An admin must either delete the legacy tenant \(DELETE \/api\/admin\/tenants\/<legacy id>\).*migrate-tenants\?tenant=o\/r/);
+  const j = JSON.parse(readFileSync(join(f.state, 'hub', 'sync-publish.json'), 'utf8'));
+  assert.equal(j.code, 'legacy-tenant-present');
+  hub(f, 'sync-preview.json', { ok: true, errors: [], content: { indexed: 3 } });
+  const c = f.run('checks.sh', ['2']);
+  assert.equal(c.status, 1); assert.match(c.stderr, /legacy-tenant-present/);
+});
+test('of1_sync: token outside the allowed charset is refused, never sent', () => {
+  const f = syncFixture('200', '{"ok":true}');
+  const out = join(f.base, 'o.json');
+  spawnSync('bash', ['-c', `. ${skillDir}/../../lib/genweb.sh; DA_TOKEN='bad token"' of1_sync https://w o/r ${out}`], { encoding: 'utf8', env: { PATH: `${join(f.base, 'bin')}:${process.env.PATH}`, FAKE_DIR: f.fake } });
+  assert.equal(JSON.parse(readFileSync(out, 'utf8')).ok, false);
+  assert.ok(!existsSync(join(f.fake, 'sync-argv.log')));
+});

@@ -8,3 +8,8 @@ rm -f "$HUB/publish-live.json"
 if [ "${OF1_PUBLISH_LIVE:-}" = "1" ]; then SKILL_DIR="$PUB" bash "$PUB/scripts/04b-publish-live.sh" || echo "⚠ publish-live reported failures (hub/publish-live.json); step 4 verification will fail" >&2; fi
 of1_sync "$WORKER_URL" "$TENANT_ID" "$HUB/sync-publish.json" publish
 for s in preview publish; do echo "sync $s: ok=$(jq -r .ok "$HUB/sync-$s.json") ref=$BRANCH"; done
+for s in preview publish; do
+  if [ "$(jq -r '.code // empty' "$HUB/sync-$s.json")" = legacy-tenant-present ]; then
+    fail 04 "$(jq -r .error "$HUB/sync-$s.json")" legacy-tenant-present
+  fi
+done

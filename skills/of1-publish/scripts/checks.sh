@@ -9,6 +9,9 @@ check_1() { assert_git_config; }
 # sync_ok <file> <label> <strict:1|0> — strict also requires content.indexed > 0.
 sync_ok() {
   local f="$1" l="$2" strict="$3"
+  if [ "$(jq -r '.code // empty' "$f" 2>/dev/null)" = legacy-tenant-present ]; then
+    echo "✗ FAIL (check 2): legacy-tenant-present — $(jq -r .error "$f")" >&2; return 1
+  fi
   [ "$(jq -r .ok "$f" 2>/dev/null)" = "true" ] || { echo "✗ FAIL (check 2): $l sync ok != true — see $f (.error/.errors)" >&2; return 1; }
   [ "$(jq '[.errors // [] | .[] | select((.warning != null and .error == null) | not)] | length' "$f" 2>/dev/null || echo 1)" -eq 0 ] || { echo "✗ FAIL (check 2): $l sync errors (ok=true is not enough):" >&2; jq -c '.errors[]' "$f" >&2; return 1; }
   if [ "$strict" = 1 ] && [ "$(jq -r '.content.indexed // 0' "$f")" -le 0 ]; then

@@ -19,4 +19,4 @@ RESULT="$OF1_STATE_DIR/of1-migrate-result.json"
 ERRORS="$OF1_STATE_DIR/migrate-errors.jsonl"
 if [ -n "${OF1_DA_WRITE:-}" ]; then WRITER=("$OF1_DA_WRITE"); else WRITER=(node "$SKILL_DIR/../of1-integration/assets/da-write.mjs"); fi
 # fail <step> <message> — record the error for 06-report.sh and stop.
-fail() { jq -cn --arg s "$1" --arg m "$2" '{step:$s, error:$m}' >> "$ERRORS"; echo "✗ FAIL ($1): $2" >&2; exit 1; }
+fail() { jq -cn --arg s "$1" --arg m "$2" --arg c "${3:-}" '{step:$s, error:$m} + (if $c != "" then {code:$c} else {} end)' >> "$ERRORS"; echo "✗ FAIL ($1): $2" >&2; exit 1; }

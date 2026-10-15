@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased (new tenant system)
+## 0.4.0 (new tenant system)
+
+- Breaking/contract: tenant id is `org/repo`, config is DA sheets, sync is stage-aware, new skill `of1-migrate`, `OF1_PUBLISH_LIVE` / `publish-live`. Callers (e.g. of1-demo-skills) must require of1-skills >= 0.4.0.
+- Legacy gen-web data: publish sync HTTP 409 `Tenant not migrated` is reported as `legacy-tenant-present` (of1-publish `04-sync.sh` exits 3, check 2 names the reason; `of1-migrate` fails with that code and leaves git untouched). An admin must delete or migrate the gen-web tenant first; the skills never call admin APIs.
+- `of1_sync` URL path keeps the original-case `$OWNER/$REPO` (gen-web authorizes against DA with the id as sent); bodies/check 6 use the lowercase id. Token goes through `of1_curl_auth` (charset-validated).
+- `07-config-json.sh` no longer overwrites an authored config sheet: existing rows are kept, `domain` is added only when missing.
+- `lib/env.sh`: dev workers (`-dev` host) get the `--dev` proxy host suffix; `OF1_PROXY_SUFFIX` overrides.
+- `of1-migrate`: reads `cta-template.json` from `origin/<branch>` when only origin has it; `batch.mjs` accepts `repo@branch` and `--branch`.
+
 
 - `lib/env.sh`: `TENANT_ID` is now `<owner>/<repo>` (lowercase); new `PROXY_HOST`/`PROXY_BASE` (`<branch>--<repo>--<owner>.of1.live`). `of1_sync <worker> <org/repo> <out> [stage=preview]` posts `/api/tenants/<org>/<repo>/sync?stage=<stage>&ref=<branch>`.
 

@@ -9,7 +9,7 @@ user-invocable: true
 Moves one repo's OF1 config from git into DA sheets, syncs the new tenant (`org/repo`, both stages), verifies, and only then removes the git config. Run it from a top-level context in the EDS repo checkout.
 
 - The **branch is the current checkout branch**; it is passed to the worker as `ref`. Never merges or switches branches.
-- Never touches the legacy gen-web tenant (the triple-form id); it only creates/updates the new `org/repo` tenant.
+- Never calls admin APIs. gen-web keeps using its legacy layout while legacy data exists for the repo: the publish sync then returns HTTP 409 `Tenant not migrated`, and the run stops with `legacy-tenant-present` (git config untouched). An admin must delete the legacy tenant (`DELETE /api/admin/tenants/<legacy id>`, the next sync recreates it from DA) or run `POST /api/admin/migrate-tenants?tenant=<org>/<repo>`; then re-run.
 - Idempotent: a failed run leaves the git config in place; fix and repeat. Removal (step 3) runs **last**.
 
 ## Env

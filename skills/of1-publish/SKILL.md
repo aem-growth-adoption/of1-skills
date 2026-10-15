@@ -46,6 +46,7 @@ The worker pulls each source from `https://{branch}--{repo}--{owner}.aem.page` (
 ## Failure flow
 
 - Steps 1, 2, 2b, 3 failing: stop and report; fix and re-run from that step.
+- Step 4 exits `3` with `legacy-tenant-present` when the publish sync answers 409 `Tenant not migrated` (legacy gen-web data): an admin must delete or migrate the gen-web tenant, then re-run; check 2 names this reason.
 - Steps 4-6 may report a bad sync or status: do NOT stop. Finish 7 and 8 so the hub's "What worked" panel shows what failed and is live for check 5, then let the checks fail.
 - `checks.sh all` runs every applicable check, prints each result and exits 1 if any failed. Fix the cause (usually: preview the DA item, re-run the producing skill) and re-run from step 4.
 - On any failed check call `finish.sh failed "Check <N> failed: <reason>"`, then stop. On success call `finish.sh done` (default summary names the indexed chunk count and the check count). `finish.sh` re-generates and re-commits the hub after the checks so the committed hub reflects the final status of this run, never the previous one.

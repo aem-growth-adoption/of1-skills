@@ -224,6 +224,66 @@ test('03: no migrate-removed marker when local is behind origin (config gone loc
   assert.equal(r.status, 1); assert.match(r.stderr, /pull first/);
   assert.ok(!existsSync(join(f.state, 'migrate-removed')));
 });
+test('409 legacy gen-web tenant: failed with code legacy-tenant-present, git config kept, repeatable', () => {
+  const f = fixture();
+  writeFileSync(join(f.fake, 'sync-publish.body'), '{"error":"Tenant not migrated"}'); writeFileSync(join(f.fake, 'sync-publish.code'), '409');
+  assert.equal(f.full().status, 1);
+  const res = f.result();
+  assert.equal(res.status, 'failed');
+  assert.ok(res.errors.some((e) => e.code === 'legacy-tenant-present' && /Legacy gen-web data exists for o\/r\. An admin must/.test(e.error)));
+  assert.match(f.tracked(), /of1\/config\/config\.json/);
+  writeFileSync(join(f.fake, 'sync-publish.body'), PUB_SYNC); writeFileSync(join(f.fake, 'sync-publish.code'), '200');
+  assert.equal(f.full().status, 0);
+  assert.equal(f.result().status, 'migrated');
+});
+test('02 reads cta-template.json from origin when only origin has it', () => {
+  const f = fixture();
+  sh('git rm -rq of1/config && git commit -qm local-only', f.repo);
+  assert.equal(f.run('01-detect.sh').status, 0);
+  const r = f.run('02-config-to-da.sh');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(join(f.fake, 'daw.log'), 'utf8'), /of1\/config\/cta-template/);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.fake, 'rows-cta-template.json'), 'utf8')).map((x) => x.key), ['html', 'fallback.title', 'fallback.description', 'fallback.buttonText']);
+});
+const verified = (f) => { for (const s of ['01-detect.sh', '02-config-to-da.sh', '04-sync.sh', '05-verify.sh']) assert.equal(f.run(s).status, 0, s); };
+const hook = (f, body) => { const h = join(f.base, 'origin.git/hooks/pre-receive'); writeFileSync(h, `#!/bin/sh\n${body}\nexit 1\n`); chmodSync(h, 0o755); };
+test('rollback: reset --keep refusal falls back to restoring only of1/config, local work survives', () => {
+  const f = fixture();
+  writeFileSync(join(f.repo, 'keep.txt'), 'v1'); sh('git add keep.txt && git commit -qm keep && git push -q origin main', f.repo);
+  hook(f, `mkdir -p ${f.repo}/of1/config; echo '{"local":1}' > ${f.repo}/of1/config/config.json`);
+  verified(f);
+  writeFileSync(join(f.repo, 'keep.txt'), 'LOCAL WORK');
+  const r = f.run('03-remove-git-config.sh');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /could not drop the local commit/);
+  assert.equal(readFileSync(join(f.repo, 'keep.txt'), 'utf8'), 'LOCAL WORK');
+  assert.match(f.tracked(), /of1\/config\/config\.json/);
+});
+test('rollback: HEAD moved during the failed push -> migration commit is reverted by subject', () => {
+  const f = fixture();
+  hook(f, `unset GIT_DIR GIT_QUARANTINE_PATH GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES; git -C ${f.repo} -c user.email=a@b -c user.name=t commit -q --allow-empty -m moved`);
+  verified(f);
+  const r = f.run('03-remove-git-config.sh');
+  assert.equal(r.status, 1);
+  assert.match(f.tracked(), /of1\/config\/config\.json/);
+  assert.match(sh('git log --format=%s -3', f.repo).stdout, /Revert "chore: move OF1 config to DA/);
+});
+test('batch: repo@branch entries and --branch default are cloned from that branch', () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'of1-batch-')));
+  const d = join(base, 'orgs', 'site.git'); mkdirSync(d, { recursive: true });
+  sh(`git init -q -b main . && git config user.email a@b && git config user.name t && echo x > a && git add -A && git commit -qm i && git checkout -qb dev && mkdir -p of1/config && echo {} > of1/config/config.json && git add -A && git commit -qm legacy && git checkout -q main`, d);
+  const bin = join(skillDir, 'assets/batch.mjs');
+  writeFileSync(join(base, 'repos.txt'), 'site\nsite@dev\n');
+  let r = spawnSync('node', [bin, '--org', 'acme', '--repos', join(base, 'repos.txt')], { encoding: 'utf8', env: { ...process.env, OF1_BATCH_CLONE_BASE: join(base, 'orgs') } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /acme\/site\talready-new/); assert.match(r.stdout, /acme\/site@dev\twould-migrate/);
+  writeFileSync(join(base, 'repos.txt'), 'site\n');
+  r = spawnSync('node', [bin, '--org', 'acme', '--repos', join(base, 'repos.txt'), '--branch', 'dev'], { encoding: 'utf8', env: { ...process.env, OF1_BATCH_CLONE_BASE: join(base, 'orgs') } });
+  assert.match(r.stdout, /acme\/site\twould-migrate/);
+  fakeGh(base, 'site\n');
+  r = spawnSync('node', [bin, '--org', 'acme', '--repos', 'auto'], { encoding: 'utf8', env: batchEnv(base) });
+  assert.match(r.stdout, /note: only each default branch is examined/);
+});
 test('bash -n on every migrate script', () => {
   for (const s of ['common', '01-detect', '02-config-to-da', '03-remove-git-config', '04-sync', '05-verify', '06-report'])
     assert.equal(spawnSync('bash', ['-n', join(here, `${s}.sh`)]).status, 0, s);

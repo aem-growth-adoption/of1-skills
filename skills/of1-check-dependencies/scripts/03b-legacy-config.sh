@@ -4,6 +4,7 @@
 LEGACY=$(git ls-files of1/config)
 if [ -n "$LEGACY" ]; then
   echo "Legacy OF1 setup found: run of1-skills:of1-migrate" >&2
+  echo "(if the gen-web tenant is legacy too: admin-delete or admin-migrate it first, then of1-migrate)" >&2
   git ls-files of1/config | sed 's/^/    /' >&2
   exit 3
 fi

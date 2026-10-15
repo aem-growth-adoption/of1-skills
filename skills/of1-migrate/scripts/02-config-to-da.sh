@@ -26,11 +26,13 @@ else
   jq -n --arg d "$DOMAIN" '[{key:"domain", value:$d}]' > "$ROWS"
 fi
 write_sheet config "$ROWS"
-if [ -f of1/config/cta-template.json ]; then
-  jq -e '[.html, .fallback.title, .fallback.description, .fallback.buttonText] | all(type == "string" and length > 0)' of1/config/cta-template.json >/dev/null \
+CTA=of1/config/cta-template.json
+if [ ! -f "$CTA" ] && git cat-file -e "origin/$BRANCH:$CTA" 2>/dev/null; then git show "origin/$BRANCH:$CTA" > "$OF1_STATE_DIR/migrate-remote-cta.json"; CTA="$OF1_STATE_DIR/migrate-remote-cta.json"; fi
+if [ -f "$CTA" ]; then
+  jq -e '[.html, .fallback.title, .fallback.description, .fallback.buttonText] | all(type == "string" and length > 0)' "$CTA" >/dev/null \
     || fail 02 "of1/config/cta-template.json needs html and fallback.{title,description,buttonText}"
   jq -c '[{key:"html",value:.html},{key:"fallback.title",value:.fallback.title},{key:"fallback.description",value:.fallback.description},{key:"fallback.buttonText",value:.fallback.buttonText}]' \
-    of1/config/cta-template.json > "$OF1_STATE_DIR/migrate-cta-rows.json"
+    "$CTA" > "$OF1_STATE_DIR/migrate-cta-rows.json"
   write_sheet cta-template "$OF1_STATE_DIR/migrate-cta-rows.json"
   touch "$OF1_STATE_DIR/migrate-cta"
 fi

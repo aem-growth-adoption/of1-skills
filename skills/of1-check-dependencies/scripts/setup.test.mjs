@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, chmodSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, chmodSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +44,22 @@ test('07: uploads the config sheet to DA, no git commit', () => {
   assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'domain', value: 'd.com' }]);
   assert.equal(existsSync(join(f.repo, 'of1/config/config.json')), false);
   assert.equal(f.git('rev-list --count HEAD'), before);
+});
+test('07: existing sheet kept, only a missing domain row is added; complete sheet not rewritten', () => {
+  const f = fixture();
+  const cb = join(f.base, 'cbin'); mkdirSync(cb, { recursive: true });
+  const sheet = join(f.base, 'sheet.json');
+  writeFileSync(join(cb, 'curl'), `#!/bin/bash\ncat ${sheet}\n`); chmodSync(join(cb, 'curl'), 0o755);
+  const path = { PATH: `${cb}:${process.env.PATH}` };
+  writeFileSync(sheet, JSON.stringify({ data: [{ key: 'contentIngestion.indexPath', value: '/s.json' }, { key: 'x', value: 'y' }] }));
+  let r = f.run('07-config-json.sh', [], { DOMAIN: 'd.com', OF1_DA_WRITE: stubWriter(f), ...path });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'contentIngestion.indexPath', value: '/s.json' }, { key: 'x', value: 'y' }, { key: 'domain', value: 'd.com' }]);
+  rmSync(join(f.base, 'writer.log'));
+  writeFileSync(sheet, JSON.stringify({ data: [{ key: 'domain', value: 'other.com' }, { key: 'x', value: 'y' }] }));
+  r = f.run('07-config-json.sh', [], { DOMAIN: 'd.com', OF1_DA_WRITE: stubWriter(f), ...path });
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /left untouched/);
+  assert.equal(existsSync(join(f.base, 'writer.log')), false);
 });
 test('cta: write-cta-template.sh uploads key,value rows', () => {
   const f = fixture();
