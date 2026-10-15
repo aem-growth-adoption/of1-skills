@@ -204,6 +204,26 @@ test('batch --no-dry-run migrates, keeps per-repo result with errors in --out', 
   const j = JSON.parse(readFileSync(join(out, 'old.json'), 'utf8'));
   assert.equal(j.status, 'failed'); assert.ok(j.errors.length > 0);
 });
+test('push rejected: uncommitted edit to an unrelated tracked file survives the rollback', () => {
+  const f = fixture();
+  writeFileSync(join(f.repo, 'keep.txt'), 'v1'); sh('git add keep.txt && git commit -qm keep && git push -q origin main', f.repo);
+  writeFileSync(join(f.base, 'origin.git/hooks/pre-receive'), '#!/bin/sh\nexit 1\n'); chmodSync(join(f.base, 'origin.git/hooks/pre-receive'), 0o755);
+  for (const s of ['01-detect.sh', '02-config-to-da.sh', '04-sync.sh', '05-verify.sh']) assert.equal(f.run(s).status, 0, s);
+  writeFileSync(join(f.repo, 'keep.txt'), 'LOCAL WORK');
+  const r = f.run('03-remove-git-config.sh');
+  assert.equal(r.status, 1);
+  assert.equal(readFileSync(join(f.repo, 'keep.txt'), 'utf8'), 'LOCAL WORK');
+  assert.match(f.tracked(), /of1\/config\/config\.json/);
+  assert.ok(!existsSync(join(f.state, 'migrate-removed')));
+});
+test('03: no migrate-removed marker when local is behind origin (config gone locally, still on origin)', () => {
+  const f = fixture();
+  for (const s of ['01-detect.sh', '02-config-to-da.sh', '04-sync.sh', '05-verify.sh']) assert.equal(f.run(s).status, 0, s);
+  sh('git rm -rq of1/config && git commit -qm local-only', f.repo);
+  const r = f.run('03-remove-git-config.sh');
+  assert.equal(r.status, 1); assert.match(r.stderr, /pull first/);
+  assert.ok(!existsSync(join(f.state, 'migrate-removed')));
+});
 test('bash -n on every migrate script', () => {
   for (const s of ['common', '01-detect', '02-config-to-da', '03-remove-git-config', '04-sync', '05-verify', '06-report'])
     assert.equal(spawnSync('bash', ['-n', join(here, `${s}.sh`)]).status, 0, s);

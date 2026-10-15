@@ -99,7 +99,7 @@ check_6() {
   local rc=0
   gen_one "https://prev--${PROXY_HOST}.of1.live" preview preview 1 || rc=1
   local strict=0
-  jq -e '((.synced // []) | length > 0) or (.content != null)' "$HUB/sync-publish.json" >/dev/null 2>&1 && strict=1
+  jq -e '((.synced // []) | length > 0) or ((.content.indexed // 0) > 0)' "$HUB/sync-publish.json" >/dev/null 2>&1 && strict=1
   gen_one "${OF1_GENERATE_BASE_URL:-$PROXY_BASE}" publish live "$strict" || rc=1
   exit $rc
 }

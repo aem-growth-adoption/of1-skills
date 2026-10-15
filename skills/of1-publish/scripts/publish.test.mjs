@@ -363,6 +363,9 @@ test('check 6: live-host 404 is strict when the publish sync synced something, w
   hub(f, 'sync-publish.json', { ok: true, synced: [], errors: [], content: null });
   let r = f.run('checks.sh', ['6']);
   assert.equal(r.status, 0, r.stderr); assert.match(r.stderr, /not live yet/);
+  hub(f, 'sync-publish.json', { ok: true, synced: [], errors: [], content: { indexed: 0 } });
+  r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stderr, /not live yet/);
   hub(f, 'sync-publish.json', { ok: true, synced: ['config'], errors: [], content: { indexed: 2 } });
   r = f.run('checks.sh', ['6']);
   assert.equal(r.status, 1); assert.match(r.stderr, /HTTP 404/);
