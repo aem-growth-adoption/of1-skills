@@ -14,6 +14,7 @@
 | [2026-10-09-of1-skills-cleanup-1-baseline-hygiene](superpowers/plans/2026-10-09-of1-skills-cleanup-1-baseline-hygiene.md) | plan | Implemented |  |
 | [2026-10-12-of1-skills-cleanup-2-driver](superpowers/plans/2026-10-12-of1-skills-cleanup-2-driver.md) | plan | Implemented |  |
 | [2026-10-12-of1-skills-cleanup-3-slim](superpowers/plans/2026-10-12-of1-skills-cleanup-3-slim.md) | plan | Implemented |  |
+| New tenant system (`org/repo` tenant ids, config as DA sheets, preview/publish stages, `of1-migrate`) | work | Implemented on `feat/new-tenant-system` (PR pending) |  |
 | [2026-08-27-knowledge-only-config-design](superpowers/specs/2026-08-27-knowledge-only-config-design.md) | spec | Superseded by 2026-10-05-da-first-config-design | 2026-10-05-da-first-config-design |
 | [2026-08-28-of1-knowledge-pages-to-rag](superpowers/specs/2026-08-28-of1-knowledge-pages-to-rag.md) | spec | Superseded by 2026-10-05-da-first-config-design | 2026-10-05-da-first-config-design |
 | [2026-08-31-of1-build-templates-da-blocks-slots-migration](superpowers/specs/2026-08-31-of1-build-templates-da-blocks-slots-migration.md) | spec | Implemented |  |

@@ -1,6 +1,6 @@
 # Sync OF1 — DA app (author-facing re-sync)
 
-After OF1 is deployed to a site, its author-tunable config lives in DA: the brand voice doc `/of1/brand-voice`, the sheets `/of1/config/personas` and `/of1/config/suggestions`, the optional strategy doc `/of1/strategy`, the template docs under `/templates/`, and the knowledge pages under `/of1/knowledge/`. Only `of1/config/config.json` (and, in pipeline mode, `cta-template.json`) is in git. The gen-web worker only sees changes after the edited doc is **previewed** and a **sync** (`POST /api/tenants/{id}/sync`) re-pulls the config into R2 and re-indexes the knowledge pages. The **Sync OF1** DA app gives authors a one-click way to trigger that sync from inside the DA editor — no CLI, no manual `curl`.
+After OF1 is deployed to a site, its author-tunable config lives in DA: the brand voice doc `/of1/brand-voice`, the sheets `/of1/config/personas` and `/of1/config/suggestions`, the optional strategy doc `/of1/strategy`, the template docs under `/templates/`, and the knowledge pages under `/of1/knowledge/`. Nothing under `of1/config/` is in git: `config` and `cta-template` are DA sheets too. The gen-web worker only sees changes after the edited doc is **previewed** and a **sync** (`POST /api/tenants/{org}/{repo}/sync?stage=preview|publish`) re-pulls the config into R2 and re-indexes the knowledge pages. The **Sync OF1** DA app gives authors a one-click way to trigger that sync from inside the DA editor — no CLI, no manual `curl`.
 
 This is optional and separate from `of1-publish` (which does the initial deploy). It's what an author uses to push *later* content edits.
 
@@ -53,6 +53,6 @@ Nothing installs this row automatically — lab sites need the same manual `libr
 
 ## Tenant id
 
-Derived as `main--{repo}--{org}` (DA hardcodes `ref=main`; `org`/`repo` come from the open doc path). This must match the site's `aem.page` host label, which is where the worker fetches config from. If nothing syncs, confirm the edited DA docs/sheets are previewed on that tier.
+The tenant id is `{org}/{repo}` (from the open doc path); the sync reads from the `main--{repo}--{org}` `aem.page` host (DA hardcodes `ref=main`), the host label where the worker fetches config from. If nothing syncs, confirm the edited DA docs/sheets are previewed on that tier.
 
 Full operator reference: of1-gen-web-service `worker/docs/da-sync-app.md`.

@@ -38,11 +38,11 @@ bash -n <script>.sh        # syntax-check every shell script you touch
 Run after every stage of the cleanup; a non-empty diff needs an explanation in the PR.
 
 ```
-node scripts/baseline/baseline.mjs capture --tenant <tenant> --repo-dir <path> --out <file>
+node scripts/baseline/baseline.mjs capture --tenant <host-label> --repo-dir <path> --out <file>
 node scripts/baseline/baseline.mjs diff docs/baseline/of1-site-da-first.shape.json <file>
 ```
 
-See `docs/baseline/README.md`.
+`--tenant` is the preview **host label** `<branch>--<repo>--<owner>` (it builds `https://<label>.aem.page`), not the worker tenant id, which is `<org>/<repo>` (`$TENANT_ID`). See `docs/baseline/README.md`.
 
 ## Conventions
 

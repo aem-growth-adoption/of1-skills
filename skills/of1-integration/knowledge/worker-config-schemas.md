@@ -1,14 +1,13 @@
 # OF1 Worker — Tenant Config Sources
 
-The OF1 worker reads tenant config from R2. A **sync** (`POST /api/tenants/<id>/sync`, tenant id
-`<branch>--<repo>--<owner>`) pulls each source from the site's preview host
-`https://<id>.aem.page` and stores it. Most author-tunable config is a **DA document or sheet**;
+The OF1 worker reads tenant config from R2. A **sync** (`POST /api/tenants/<org>/<repo>/sync?stage=preview|publish&ref=<branch>`; tenant id
+`<org>/<repo>`, lowercase) pulls each source from the site's preview host
+`https://<ref>--<repo>--<org>.aem.page` (stage `preview`) or `.aem.live` (stage `publish`) and stores it. Most author-tunable config is a **DA document or sheet**;
 nothing under `of1/config/` is committed to git (`config` and `cta-template` are DA sheets).
 
 > **DA config is shared per org/repo, not per branch.** DA keeps one content tree per
 > `<owner>/<repo>`; every branch's preview host reads the same `/of1/**` and
-> `/templates/**`. Only the git files (`config.json`, `cta-template.json`) are
-> branch-scoped. The supported model is therefore **one EDS repo per site/demo** — two
+> `/templates/**`. The tenant id is `org/repo` (no branch), so the config is per repo. The supported model is therefore **one EDS repo per site/demo** — two
 > demos on different branches of the same repo would overwrite each other's DA config.
 
 | Source | Where | Produced by | Sync file |
@@ -33,10 +32,10 @@ check 1 fails if any `of1/config/*` is tracked in git.
 
 ---
 
-## `config.json` (git)
+## `/of1/config/config` (DA sheet, `key,value` rows)
 
 ```json
-{ "domain": "example.com" }
+{ "domain": "example.com" }   // rows: key=domain, value=example.com; nested keys are dotted (contentIngestion.indexPath)
 ```
 
 | Field | Required | Notes |
@@ -133,7 +132,7 @@ Columns `label`, `query` — one row per chip, 8–12 rows (the block shows a ra
 | Row | Value |
 |---|---|
 | `api-endpoint` | worker URL (`$OF1_GENWEB_URL` or prod) |
-| `domain` | tenant id `<branch>--<repo>--<owner>` |
+| `domain` | tenant id `<org>/<repo>` (`$TENANT_ID`) |
 | `engine` | literal `da-blocks-slots` |
 | `title` | optional — landing `<h1>` |
 | `subtitle` | optional — supporting text |
@@ -182,7 +181,7 @@ only if absent; if an existing one lacks `/of1/knowledge`, it warns and leaves i
 
 ## Ready gate
 
-`GET /api/tenants/<id>/status`:
+`GET /api/tenants/<org>/<repo>/status?stage=preview|publish` (unauthenticated):
 
 ```json
 {
