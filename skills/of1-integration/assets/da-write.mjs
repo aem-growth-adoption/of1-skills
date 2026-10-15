@@ -5,6 +5,7 @@
 //   node da-write.mjs doc   --owner O --repo R --branch B --path of1/brand-voice --file <html>
 //   node da-write.mjs sheet --owner O --repo R --branch B --path of1/config/personas \
 //                           --columns a,b,c --rows <json-file>
+//   node da-write.mjs live  --owner O --repo R --branch B --path of1/config/config.json
 //
 // doc   → POST multipart admin.da.live/source/O/R/<path>.html, then
 //         POST admin.hlx.page/preview/O/R/B/<path>
@@ -72,6 +73,13 @@ export async function writeDa({ kind, owner, repo, branch, path: p, content, tok
   return { ok: true, message: `✓ ${previewPath} previewed` };
 }
 
+// Publish an already-previewed path to the live index.
+export async function publishLive({ owner, repo, branch, path: p, token, fetchImpl = globalThis.fetch }) {
+  const livePath = String(p).replace(/^\/+/, '');
+  const err = await aemAction({ action: 'live', owner, repo, branch, path: livePath, token, fetchImpl });
+  return err ? { ok: false, message: err } : { ok: true, message: `✓ ${livePath} published live` };
+}
+
 function parseArgs(argv) {
   const [kind, ...rest] = argv;
   const args = { kind };
@@ -86,7 +94,7 @@ function parseArgs(argv) {
     else if (a === '--rows') args.rows = rest[++i];
     else throw new Error(`Unknown argument: ${a}`);
   }
-  if (kind !== 'doc' && kind !== 'sheet') throw new Error('First argument must be "doc" or "sheet"');
+  if (!['doc', 'sheet', 'live'].includes(kind)) throw new Error('First argument must be "doc", "sheet" or "live"');
   for (const k of ['owner', 'repo', 'branch', 'path']) if (!args[k]) throw new Error(`Missing --${k}`);
   if (kind === 'doc' && !args.file) throw new Error('Missing --file');
   if (kind === 'sheet' && (!args.columns || !args.rows)) throw new Error('Missing --columns / --rows');
@@ -95,6 +103,12 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.kind === 'live') {
+    const res = await publishLive({ ...args, token: await resolveToken() });
+    if (!res.ok) { console.error(res.message); process.exit(1); }
+    console.log(res.message);
+    return;
+  }
   let content;
   if (args.kind === 'doc') {
     content = fs.readFileSync(args.file, 'utf8');

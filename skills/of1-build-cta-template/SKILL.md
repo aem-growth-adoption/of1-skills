@@ -34,7 +34,7 @@ Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `cta-t
 
 ## Output
 
-`of1/config/cta-template.json`:
+`$OF1_STATE_DIR/cta-template.json` (working file, never committed to git):
 
 ```json
 {
@@ -97,12 +97,18 @@ Generate appropriate static fallback content that fits the brand:
 - **description:** invites exploration, 1 sentence
 - **buttonText:** action-oriented, 2–4 words
 
-### 5. Write `of1/config/cta-template.json`
+### 5. Write the DA sheet `/of1/config/cta-template`
 
 Ensure:
 - HTML is on a single line (no newlines inside the `html` field)
 - All double quotes inside the HTML use escaped `\"`
 - No trailing commas
+
+Then upload it as a `key,value` sheet (`html`, `fallback.title`, `fallback.description`, `fallback.buttonText`) and preview it:
+
+```bash
+bash "$SKILL_DIR/scripts/write-cta-template.sh" "$OF1_STATE_DIR/cta-template.json"
+```
 
 ## Quality checklist
 

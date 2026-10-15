@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildSheetJson, buildMultipart, writeDa, resolveToken } from './da-write.mjs';
+import { buildSheetJson, buildMultipart, writeDa, publishLive, resolveToken } from './da-write.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./da-write.mjs', import.meta.url));
 
@@ -196,4 +196,22 @@ test('CLI: rows containing a comma in an array item → exit 1, mentions comma',
   ], { encoding: 'utf8', env: { ...process.env, DA_TOKEN: 'T' } });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /comma/);
+});
+
+test('publishLive: POSTs admin.hlx.page/live with both auth headers', async () => {
+  const { impl, calls } = fakeFetch(() => 200);
+  const res = await publishLive({ ...base, path: '/of1/config/config.json', fetchImpl: impl });
+  assert.equal(res.ok, true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://admin.hlx.page/live/O/R/B/of1/config/config.json');
+  assert.equal(calls[0].opts.method, 'POST');
+  assert.equal(calls[0].opts.headers.Authorization, 'Bearer T');
+  assert.equal(calls[0].opts.headers['x-content-source-authorization'], 'Bearer T');
+});
+
+test('publishLive: HTTP failure is reported', async () => {
+  const { impl } = fakeFetch(() => 403);
+  const res = await publishLive({ ...base, path: 'of1/config/config.json', fetchImpl: impl });
+  assert.equal(res.ok, false);
+  assert.match(res.message, /live/);
 });
