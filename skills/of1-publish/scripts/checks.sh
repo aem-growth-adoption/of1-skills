@@ -6,11 +6,23 @@
 
 check_1() { assert_git_config; }
 
+# sync_ok <file> <label> <strict:1|0> — strict also requires content.indexed > 0.
+sync_ok() {
+  local f="$1" l="$2" strict="$3"
+  [ "$(jq -r .ok "$f" 2>/dev/null)" = "true" ] || { echo "✗ FAIL (check 2): $l sync ok != true — see $f (.error/.errors)" >&2; return 1; }
+  [ "$(jq '[.errors // [] | .[] | select((.warning != null and .error == null) | not)] | length' "$f" 2>/dev/null || echo 1)" -eq 0 ] || { echo "✗ FAIL (check 2): $l sync errors (ok=true is not enough):" >&2; jq -c '.errors[]' "$f" >&2; return 1; }
+  if [ "$strict" = 1 ] && [ "$(jq -r '.content.indexed // 0' "$f")" -le 0 ]; then
+    echo "✗ FAIL (check 2): content.indexed = 0 — /of1/knowledge/** not in the worker's index (query-index.json or contentIngestion.indexPath — see step 2b; pages must be previewed)" >&2; return 1
+  fi
+}
 check_2() {
-  [ "$(jq -r .ok "$HUB/sync.json")" = "true" ] || { echo "✗ FAIL (check 2): sync ok != true — see $HUB/sync.json .errors" >&2; exit 1; }
-  [ "$(jq '[.errors // [] | .[] | select((.warning != null and .error == null) | not)] | length' "$HUB/sync.json" 2>/dev/null || echo 1)" -eq 0 ] || { echo "✗ FAIL (check 2): sync errors (ok=true is not enough):" >&2; jq -c '.errors[]' "$HUB/sync.json" >&2; exit 1; }
-  [ "$(jq -r '.content.indexed // 0' "$HUB/sync.json")" -gt 0 ] || { echo "✗ FAIL (check 2): content.indexed = 0 — /of1/knowledge/** not in the worker's index (query-index.json or contentIngestion.indexPath — see step 2b; pages must be published live)" >&2; exit 1; }
-  echo "✓ sync ok, $(jq -r .content.indexed "$HUB/sync.json") chunk(s) indexed"
+  local pf="$HUB/sync-preview.json"; [ -f "$pf" ] || pf="$HUB/sync.json"
+  sync_ok "$pf" preview 1 || exit 1
+  echo "✓ preview sync ok, $(jq -r '.content.indexed // 0' "$pf") chunk(s) indexed"
+  if [ -f "$HUB/sync-publish.json" ]; then
+    sync_ok "$HUB/sync-publish.json" publish 0 || exit 1
+    echo "✓ publish sync ok ($(jq -r '.synced // [] | length' "$HUB/sync-publish.json") synced, $(jq -r '.content.indexed // 0' "$HUB/sync-publish.json") indexed)"
+  fi
 }
 
 check_3() {
@@ -58,46 +70,40 @@ check_5() {
   [ "$ALL_OK" = "true" ] || { echo "✗ FAIL (check 5): some deliverable URLs return non-200" >&2; exit 1; }
 }
 
-check_6() {
-  # Same-origin proxy passthrough (adds the gen-web credential itself): no secret needed here.
-  of1_proxy_post generate "{\"domain\":\"${TENANT_ID}\",\"query\":\"show me your best products\",\"followUp\":false,\"context\":{\"browsing\":[],\"conversationHistory\":[]}}"
+# gen_one <base> <index> <label> <strict404:1|0> — one generate smoke test; returns 0 ok/warn, 1 fail.
+gen_one() {
+  local base="$1" idx="$2" label="$3" strict="$4" RESPONSE SECTIONS GEN_ERRORS
+  OF1_GENERATE_BASE_URL="$base" of1_proxy_post generate "{\"id\":\"${TENANT_ID}\",\"index\":\"${idx}\",\"query\":\"show me your best products\",\"followUp\":false,\"context\":{\"browsing\":[],\"conversationHistory\":[]}}"
   RESPONSE="$PROXY_BODY"
   case "$PROXY_CODE" in
     401|403|404)
-      echo "✗ FAIL (check 6): $(of1_proxy_base)/api/generate returned HTTP $PROXY_CODE — the edge proxy rejected it (401/403: proxy credential not accepted by gen-web; 404: no passthrough route or tenant host not proxied). Set OF1_GENERATE_BASE_URL to override the base." >&2
-      exit 1 ;;
+      if [ "$PROXY_CODE" = 404 ] && [ "$strict" = 0 ]; then echo "⚠ WARN (check 6): $base/api/generate HTTP 404 ($label not live yet) — skipped" >&2; return 0; fi
+      echo "✗ FAIL (check 6): $base/api/generate returned HTTP $PROXY_CODE — the edge proxy rejected it (401/403: proxy credential not accepted by gen-web; 404: no passthrough route or tenant host not proxied). Set OF1_GENERATE_BASE_URL to override the base." >&2
+      return 1 ;;
     200) ;;
-    *)
-      echo "⚠ WARN (check 6): $(of1_proxy_base)/api/generate not reachable (HTTP $PROXY_CODE) — proxied host not available; generation smoke test NOT run" >&2
-      exit 0 ;;
+    *) echo "⚠ WARN (check 6): $base/api/generate not reachable (HTTP $PROXY_CODE) — proxied host not available; generation smoke test NOT run" >&2; return 0 ;;
   esac
   if printf '%s' "$RESPONSE" | head -c 200 | grep -qiE '^[[:space:]]*<(!doctype|html)'; then
-    echo "⚠ WARN (check 6): $(of1_proxy_base)/api/generate returned HTML, not NDJSON — proxied host not available; generation smoke test NOT run" >&2
-    exit 0
+    echo "⚠ WARN (check 6): $base/api/generate returned HTML, not NDJSON — proxied host not available; generation smoke test NOT run" >&2; return 0
   fi
-  # The response is NDJSON (one event per line). Count real section events; any
-  # {"type":"error"} line is a failure even if sections were also emitted.
-  # (`grep -c … || echo 0` printed "0" twice on no match — never use it.)
   SECTIONS=$(printf '%s\n' "$RESPONSE" | jq -R 'fromjson? | select(.type == "section")' | jq -s 'length')
   GEN_ERRORS=$(printf '%s\n' "$RESPONSE" | jq -R -c 'fromjson? | select(.type == "error")')
-  if [ -n "$GEN_ERRORS" ]; then
-    echo "✗ FAIL (check 6): generation streamed error event(s):" >&2
-    printf '%s\n' "$GEN_ERRORS" >&2
-    exit 1
-  elif [ "$SECTIONS" -ge 2 ]; then
-    echo "✓ Generation returned ${SECTIONS} sections"
-  else
-    echo "✗ FAIL (check 6): generation returned ${SECTIONS} sections (expected ≥2)" >&2
-    printf '%s\n' "$RESPONSE" | head -20
-    exit 1
-  fi
+  if [ -n "$GEN_ERRORS" ]; then echo "✗ FAIL (check 6): $label generation streamed error event(s):" >&2; printf '%s\n' "$GEN_ERRORS" >&2; return 1
+  elif [ "$SECTIONS" -ge 2 ]; then echo "✓ $label generation returned ${SECTIONS} sections"
+  else echo "✗ FAIL (check 6): $label generation returned ${SECTIONS} sections (expected ≥2)" >&2; printf '%s\n' "$RESPONSE" | head -20; return 1; fi
+}
+check_6() {
+  local rc=0
+  gen_one "https://prev--${PROXY_HOST}.of1.live" preview preview 1 || rc=1
+  gen_one "${OF1_GENERATE_BASE_URL:-$PROXY_BASE}" publish live 0 || rc=1
+  exit $rc
 }
 
 check_7() {
   if [ "${OF1_CTA_TEMPLATE:-}" = "1" ]; then
     [ "$(jq -r '.config.hasCtaTemplate // false' "$HUB/status.json" 2>/dev/null)" = "true" ] \
       || { echo "✗ FAIL (check 7): hasCtaTemplate is not true in hub/status.json — DA sheet /of1/config/cta-template missing or not synced" >&2; exit 1; }
-    of1_proxy_post personalize "{\"id\":\"${TENANT_ID}\",\"elements\":{\"T0\":{\"tag\":\"h1\",\"text\":\"Welcome\"}},\"behaviorProfile\":{\"interests\":[],\"intent\":\"research\"}}"
+    of1_proxy_post personalize "{\"id\":\"${TENANT_ID}\",\"index\":\"preview\",\"elements\":{\"T0\":{\"tag\":\"h1\",\"text\":\"Welcome\"}},\"behaviorProfile\":{\"interests\":[],\"intent\":\"research\"}}"
     printf '%s\n' "$PROXY_BODY" > "$OF1_STATE_DIR/check-personalize.ndjson"
     grep -q '"type":"inject_cta"' "$OF1_STATE_DIR/check-personalize.ndjson" \
       && echo "✓ /api/personalize streamed inject_cta" \

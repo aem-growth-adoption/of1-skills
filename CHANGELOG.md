@@ -6,6 +6,7 @@
 
 - `da-write.mjs live`: publishes a previewed path to the live index (`admin.hlx.page/live`). `07-config-json.sh` now writes the DA sheet `/of1/config/config` (`key,value`) instead of a git `config.json`; new `of1-build-cta-template/scripts/write-cta-template.sh` writes the `/of1/config/cta-template` sheet. Nothing under `of1/config/` is committed.
 - `03b-legacy-config.sh` stops with exit 3 (`Legacy OF1 setup found: run of1-skills:of1-migrate`) when any `of1/config/*` is tracked; `06-hlxignore.sh` removed. `of1-publish` check 1 fails on any tracked `of1/config/*`; check 7 reads `hasCtaTemplate` from `hub/status.json`.
+- `of1-publish` syncs both stages: `04-sync.sh` writes `hub/sync-preview.json`, `hub/sync-publish.json` (+ `sync.json` = preview); new `04b-publish-live.sh` (`OF1_PUBLISH_LIVE=1` / driver arg `publish-live`) publishes config sheets and pages live first. Check 2: preview strict, publish tolerates warnings/404s (401/403/5xx fail). `05-status.sh` uses `?stage=preview` (+ informational `status-publish.json`). Check 6 hits `prev--$PROXY_HOST` and `$PROXY_BASE` with `{id,index}`. `02b`/`03`/`03b` are config-sheet aware (no git commits of config). `/of1` block domain row writes `$TENANT_ID`; hub links the DA config sheet and shows both stages.
 
 ## 0.3.3
 

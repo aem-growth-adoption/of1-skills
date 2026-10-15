@@ -15,7 +15,7 @@ if [ -f "$LANDING" ]; then
   done
 fi
 
-OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>'${WORKER_URL}'</p></td></tr><tr><td><p>domain</p></td><td><p>'${BRANCH}'--'${REPO}'--'${OWNER}'</p></td></tr><tr><td><p>engine</p></td><td><p>'${ENGINE}'</p></td></tr>'${LANDING_ROWS}'</table></div></div></main><footer></footer></body>'
+OF1_HTML='<body><header></header><main><div><div class="metadata"><div><div>Title</div><div>'${DOMAIN}' — Ask Anything</div></div><div><div>Description</div><div>Search and get personalized results.</div></div></div></div><div><div class="of1"><table><tr><th colspan="2">of1</th></tr><tr><td><p>api-endpoint</p></td><td><p>'${WORKER_URL}'</p></td></tr><tr><td><p>domain</p></td><td><p>'${TENANT_ID}'</p></td></tr><tr><td><p>engine</p></td><td><p>'${ENGINE}'</p></td></tr>'${LANDING_ROWS}'</table></div></div></main><footer></footer></body>'
 
 . "$LIB/curl-auth.sh"
 PUT_RESP=$(of1_curl_auth DA_TOKEN auth -- -s -w "\n%{http_code}" -X PUT \

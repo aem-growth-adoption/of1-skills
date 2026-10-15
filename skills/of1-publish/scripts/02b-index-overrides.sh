@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 2b: index coverage — config.json overrides (knowledge indexPath) + removal of a stale templates.names.
+# Step 2b: index coverage — config sheet overrides (DA sheet of1/config/config, key/value rows) (knowledge indexPath) + removal of a stale templates.names.
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 # Paths in an EDS JSON index, one per line — read exactly the way the worker does:
 # top-level `.data[].path`. A multi-sheet index (`:type: multi-sheet`, data under
@@ -18,12 +18,16 @@ index_paths() {
   fi
 }
 
-CFG=of1/config/config.json
-CFG_NEW=$(cat "$CFG")
-# Index candidates step 2b may write as contentIngestion.indexPath (its own fallbacks).
-# Append any index the user names, e.g. INDEX_CANDIDATES+=("/en/query-index.json").
+# Config is a DA sheet {data:[{key,value}]} served at ${PREVIEW_BASE}/of1/config/config.json.
+ROWS_FILE="$OF1_STATE_DIR/config-rows.json"
+if [ -n "${OF1_DA_WRITE:-}" ]; then WRITER=("$OF1_DA_WRITE"); else WRITER=(node "$SKILL_DIR/../of1-integration/assets/da-write.mjs"); fi
+SHEET=$(curl -s --connect-timeout 10 --max-time 30 -H 'Cache-Control: no-cache' "${PREVIEW_BASE}/of1/config/config.json" 2>/dev/null)
+jq -e '(.data | type) == "array"' >/dev/null 2>&1 <<<"$SHEET" \
+  || { echo "✗ FAIL: ${PREVIEW_BASE}/of1/config/config.json is not a config sheet — run of1-check-dependencies step 7 (or of1-migrate)" >&2; exit 1; }
+ROWS=$(jq -c '[.data[] | {key, value}]' <<<"$SHEET")
+ROWS_NEW="$ROWS"
 INDEX_CANDIDATES=(/sitemap.json)
-CUR_INDEX_PATH=$(jq -r '.contentIngestion.indexPath // empty' "$CFG")
+CUR_INDEX_PATH=$(jq -r '.[] | select(.key == "contentIngestion.indexPath") | .value' <<<"$ROWS")
 CUR_INDEX_IS_OURS=false
 for idx in "${INDEX_CANDIDATES[@]}"; do [ "$CUR_INDEX_PATH" = "$idx" ] && CUR_INDEX_IS_OURS=true; done
 
@@ -32,27 +36,17 @@ QI_HAS_KNOWLEDGE=false
 grep -q '^/of1/knowledge/' <<<"$QI_PATHS" && QI_HAS_KNOWLEDGE=true
 echo "query-index.json: knowledge=$QI_HAS_KNOWLEDGE"
 
-# Templates come from the previewed DA sheet /of1/config/template-list (of1-build-templates).
-# A templates.names override would shadow it and hide new templates — remove a stale one.
-if jq -e '.templates | type == "object" and has("names")' "$CFG" >/dev/null 2>&1; then
-  CFG_NEW=$(jq 'del(.templates.names) | if .templates == {} then del(.templates) else . end' <<<"$CFG_NEW")
-  echo "→ removed templates.names (superseded by the /of1/config/template-list sheet; an override there would hide new templates)"
-fi
-
 if [ -n "$CUR_INDEX_PATH" ] && [ "$CUR_INDEX_IS_OURS" != "true" ]; then
-  # User-set indexPath (e.g. "/query-index.json?limit=2000") — never delete or overwrite it.
   echo "· contentIngestion.indexPath = $CUR_INDEX_PATH is user-set — left untouched"
 elif [ "$QI_HAS_KNOWLEDGE" = "true" ]; then
-  # Index covers knowledge — drop only a fallback this step wrote earlier.
-  CFG_NEW=$(jq 'del(.contentIngestion.indexPath) | if .contentIngestion == {} then del(.contentIngestion) else . end' <<<"$CFG_NEW")
+  ROWS_NEW=$(jq -c 'map(select(.key != "contentIngestion.indexPath"))' <<<"$ROWS")
 else
-  # (b) knowledge: first candidate index whose top-level .data lists /of1/knowledge/ paths.
   KNOWLEDGE_INDEX=""
   for idx in "${INDEX_CANDIDATES[@]}"; do
     if index_paths "$idx" | grep -q '^/of1/knowledge/'; then KNOWLEDGE_INDEX="$idx"; break; fi
   done
   if [ -n "$KNOWLEDGE_INDEX" ]; then
-    CFG_NEW=$(jq --arg p "$KNOWLEDGE_INDEX" '.contentIngestion = ((.contentIngestion // {}) + {indexPath: $p})' <<<"$CFG_NEW")
+    ROWS_NEW=$(jq -c --arg p "$KNOWLEDGE_INDEX" 'map(select(.key != "contentIngestion.indexPath")) + [{key:"contentIngestion.indexPath", value:$p}]' <<<"$ROWS")
     echo "→ contentIngestion.indexPath = $KNOWLEDGE_INDEX"
   else
     echo "⚠ no single-sheet index lists /of1/knowledge/ (tried: ${INDEX_CANDIDATES[*]}) — check 2 (content.indexed > 0) will fail." >&2
@@ -60,15 +54,11 @@ else
   fi
 fi
 
-# Merge result (keeps domain + any other fields); commit ONLY config.json.
-if [ "$(jq -S . <<<"$CFG_NEW")" != "$(jq -S . "$CFG")" ]; then
-  jq . <<<"$CFG_NEW" > "$CFG"
-  git add -- "$CFG"
-  git commit -m "feat: OF1 index overrides for ${DOMAIN}" -- "$CFG"
-  # Rebase onto the remote first so a concurrent push never rejects ours.
-  . "$LIB/git-push.sh"
-  git_push_rebased "$BRANCH" || exit 1
-  echo "✓ $CFG updated + pushed"
+if [ "$(jq -S . <<<"$ROWS_NEW")" != "$(jq -S . <<<"$ROWS")" ]; then
+  printf '%s\n' "$ROWS_NEW" > "$ROWS_FILE"
+  "${WRITER[@]}" sheet --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+    --path of1/config/config --columns key,value --rows "$ROWS_FILE" || exit 1
+  echo "✓ config sheet updated + previewed"
 else
-  echo "✓ config.json already matches index coverage — unchanged"
+  echo "✓ config sheet already matches index coverage — unchanged"
 fi

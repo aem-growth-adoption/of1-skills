@@ -14,19 +14,20 @@ tell the caller to run `of1-integration` at top level.
 
 ## 1. Arguments and environment
 
-Invocation: `/of1-integration [content-source=<domain>] [non-interactive] [cta-template]`
+Invocation: `/of1-integration [content-source=<domain>] [non-interactive] [cta-template] [publish-live]`
 
 | Argument | Env var exported | Effect |
 |---|---|---|
 | `content-source=<domain>` | `OF1_CONTENT_SOURCE=<domain>` | brand-voice/content skills crawl `https://<domain>`; unset = the site's own preview URL |
 | `non-interactive` | `OF1_NON_INTERACTIVE=1` | no skill asks anything: overwrite `/of1/brand-voice`, remove legacy `of1/config/*.json`, skip confirmations |
-| `cta-template` | `OF1_CTA_TEMPLATE=1` | also run `of1-build-cta-template`, commit `of1/config/cta-template.json`, enable publish check 7 |
+| `cta-template` | `OF1_CTA_TEMPLATE=1` | also run `of1-build-cta-template` (DA sheet `of1/config/cta-template`), enable publish check 7 |
+| `publish-live` | `OF1_PUBLISH_LIVE=1` | `of1-publish` publishes config sheets and pages live before the publish-stage sync |
 
 Parse the arguments, then export (these are the **same env vars every dispatch gets**):
 
 ```bash
-# Set the three flags from the parsed arguments, e.g.:
-#   export OF1_CONTENT_SOURCE=frescopa.coffee OF1_NON_INTERACTIVE=1 OF1_CTA_TEMPLATE=1
+# Set the flags from the parsed arguments, e.g.:
+#   export OF1_CONTENT_SOURCE=frescopa.coffee OF1_NON_INTERACTIVE=1 OF1_CTA_TEMPLATE=1 OF1_PUBLISH_LIVE=1
 # OF1_DEMO_REPO: absolute path to the EDS repo (git toplevel of the cwd when unset).
 if [ -z "${OF1_DEMO_REPO:-}" ]; then
   OF1_DEMO_REPO=$(git rev-parse --show-toplevel 2>/dev/null) || OF1_DEMO_REPO=""
@@ -143,7 +144,7 @@ The driver (you, at top level) dispatches every non-inline skill itself.
 
 ## 5. Deploy — `of1-publish` (inline)
 
-Once `of1-build-templates`(assemble) + `of1-style-generative-block` + `of1-build-quick-suggestions` (+ `of1-build-cta-template` when `OF1_CTA_TEMPLATE=1`) are all done, run the `of1-publish` skill inline with the Skill tool (export `SKILL_DIR` to its base directory first). With `OF1_CTA_TEMPLATE` off there is no `cta-template.json` requirement and check 7 is skipped. Its pre-launch checklist is self-contained; follow it as written.
+Once `of1-build-templates`(assemble) + `of1-style-generative-block` + `of1-build-quick-suggestions` (+ `of1-build-cta-template` when `OF1_CTA_TEMPLATE=1`) are all done, run the `of1-publish` skill inline with the Skill tool (export `SKILL_DIR` to its base directory first). With `OF1_CTA_TEMPLATE` off there is no CTA template requirement and check 7 is skipped. Its pre-launch checklist is self-contained; follow it as written.
 
 ## 6. Result file (always, also on failure)
 

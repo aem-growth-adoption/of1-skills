@@ -16,6 +16,7 @@ d="$FAKE_DIR"
 if [ "$hasO" = 1 ]; then printf 200; exit 0; fi
 case "$url" in
   */list/o/r/templates) printf '%s\\n%s' "$(cat "$d/da-list.json")" "$(cat "$d/da-code")";;
+  */of1/config/config.json) cat "$d/cfg-sheet.json" 2>/dev/null || exit 22;;
   */query-index.json) cat "$d/qi.json" 2>/dev/null || exit 22;;
   */api/generate) echo "$url" >> "$d/gen-urls.log"; cat "$d/gen.ndjson" 2>/dev/null || exit 22; [ "$hasw" = 1 ] && printf '\\n%s' "$(cat "$d/gen-code" 2>/dev/null || echo 200)";;
   */api/personalize) cat "$d/pers.ndjson" 2>/dev/null || exit 22; [ "$hasw" = 1 ] && printf '\\n200';;
@@ -46,47 +47,42 @@ function fixture({ cfg = { domain: 'x.com' }, tracked = ['of1/config/config.json
 const docs = (...n) => JSON.stringify(n.map((name) => ({ name, ext: 'html' })));
 const qi = (...p) => JSON.stringify({ data: p.map((path) => ({ path })) });
 
-test('02b: stale templates.names removed (and empty templates)', () => {
-  const f = fixture({ cfg: { domain: 'x.com', templates: { names: ['old'] } } });
-  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
-  const r = f.run('02b-index-overrides.sh');
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.equal(f.cfgNow().templates, undefined);
-  assert.match(r.stdout, /removed templates\.names \(superseded by the \/of1\/config\/template-list sheet/);
-});
-test('02b: config without names unchanged, no DA /templates listing request', () => {
-  const f = fixture();
-  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
-  const log = join(f.fake, 'curl.log');
-  writeFileSync(join(f.base, 'bin', 'curl'), `#!/bin/bash\necho "$@" >> "${log}"\n` + FAKE_CURL.split('\n').slice(1).join('\n'));
-  const r = f.run('02b-index-overrides.sh');
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.deepEqual(f.cfgNow(), { domain: 'x.com' });
-  assert.match(r.stdout, /unchanged/);
-  assert.ok(!existsSync(log) || !/\/list\/o\/r\/templates/.test(readFileSync(log, 'utf8')));
-});
-test('02b: templates.daPath preserved when names removed', () => {
-  const f = fixture({ cfg: { domain: 'x.com', templates: { daPath: '/tpl', names: ['old'] } } });
-  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
-  const r = f.run('02b-index-overrides.sh');
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.deepEqual(f.cfgNow().templates, { daPath: '/tpl' });
-});
-test('02b: knowledge fallback via sitemap still written', () => {
-  const f = fixture();
-  writeFileSync(join(f.fake, 'qi.json'), qi('/x'));
+const sheet = (rows) => JSON.stringify({ data: Object.entries(rows).map(([key, value]) => ({ key, value })) });
+const fakeWriter = (f) => {
+  const w = join(f.base, 'daw.sh');
+  writeFileSync(w, '#!/bin/bash\necho "$@" >> "$FAKE_DIR/daw.log"\nwhile [ $# -gt 0 ]; do [ "$1" = --rows ] && cp "$2" "$FAKE_DIR/rows-written.json"; shift; done\n');
+  chmodSync(w, 0o755);
+  return { OF1_DA_WRITE: w };
+};
+const dawFixture = (rows, qiPaths = []) => {
+  const f = fixture({ tracked: [] });
+  writeFileSync(join(f.fake, 'cfg-sheet.json'), sheet(rows));
+  writeFileSync(join(f.fake, 'qi.json'), qi(...qiPaths));
+  return f;
+};
+test('02b: sitemap fallback upserts indexPath through da-write sheet, nothing committed', () => {
+  const f = dawFixture({ domain: 'x.com' }, ['/x']);
   writeFileSync(join(f.fake, 'sitemap.json'), qi('/of1/knowledge/k'));
-  const r = f.run('02b-index-overrides.sh');
+  const r = f.run('02b-index-overrides.sh', [], fakeWriter(f));
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.equal(f.cfgNow().contentIngestion.indexPath, '/sitemap.json');
+  assert.match(readFileSync(join(f.fake, 'daw.log'), 'utf8'), /sheet .*--path of1\/config\/config --columns key,value/);
+  const rows = JSON.parse(readFileSync(join(f.fake, 'rows-written.json'), 'utf8'));
+  assert.deepEqual(rows, [{ key: 'domain', value: 'x.com' }, { key: 'contentIngestion.indexPath', value: '/sitemap.json' }]);
+  assert.equal(sh('git status --porcelain of1; git ls-files of1', f.repo).stdout.trim(), '');
 });
-test('02b: user-set indexPath untouched', () => {
-  const f = fixture({ cfg: { domain: 'x.com', contentIngestion: { indexPath: '/query-index.json?limit=2000' } } });
-  writeFileSync(join(f.fake, 'qi.json'), qi('/templates/a'));
-  const r = f.run('02b-index-overrides.sh');
+test('02b: user-set indexPath untouched; no write', () => {
+  const f = dawFixture({ domain: 'x.com', 'contentIngestion.indexPath': '/query-index.json?limit=2000' }, ['/templates/a']);
+  const r = f.run('02b-index-overrides.sh', [], fakeWriter(f));
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(f.cfgNow().contentIngestion.indexPath, '/query-index.json?limit=2000');
+  assert.ok(!existsSync(join(f.fake, 'daw.log')));
   assert.match(r.stdout, /user-set/);
+  assert.match(r.stdout, /unchanged/);
+});
+test('02b: non-sheet config fails with a hint', () => {
+  const f = fixture({ tracked: [] });
+  const r = f.run('02b-index-overrides.sh');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /not a config sheet/);
 });
 
 const hub = (f, name, o) => { mkdirSync(join(f.state, 'hub'), { recursive: true }); writeFileSync(join(f.state, 'hub', name), JSON.stringify(o)); };
@@ -130,6 +126,33 @@ test('checks 2: indexed 0 fails; warning-only errors pass', () => {
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /3 chunk/);
   hub(f, 'sync.json', { ok: true, errors: [{ file: 'brand-voice', error: 'empty document' }], content: { indexed: 3 } });
   assert.equal(f.run('checks.sh', ['2']).status, 1);
+});
+const pubSync = (f, o) => { hub(f, 'sync-preview.json', { ok: true, errors: [], content: { indexed: 3 } }); hub(f, 'sync-publish.json', o); };
+test('check 2: publish sync with only 404 warnings/empty passes; 502 error and 401 fail', () => {
+  const f = fixture({ tracked: [] });
+  pubSync(f, { ok: true, synced: [], errors: [{ file: 'query-index', warning: '404 not published' }], content: null });
+  let r = f.run('checks.sh', ['2']);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /publish sync ok/);
+  pubSync(f, { ok: true, synced: [], errors: [{ file: 'brand-voice', error: 'HTTP 502' }], content: null });
+  r = f.run('checks.sh', ['2']);
+  assert.equal(r.status, 1); assert.match(r.stderr, /publish sync errors/);
+  pubSync(f, { ok: false, error: 'sync rejected (HTTP 401)' });
+  assert.equal(f.run('checks.sh', ['2']).status, 1);
+  hub(f, 'sync-preview.json', { ok: true, errors: [], content: { indexed: 0 } });
+  hub(f, 'sync-publish.json', { ok: true, errors: [], content: null });
+  assert.equal(f.run('checks.sh', ['2']).status, 1);
+});
+test('04b: publishes sheets + pages only with OF1_PUBLISH_LIVE=1 via 04-sync', () => {
+  const f = syncFixture('200', '{"ok":true,"synced":[],"errors":[],"content":null}');
+  const w = fakeWriter(f);
+  let r = f.run('04-sync.sh', [], w);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!existsSync(join(f.fake, 'daw.log')), 'live must not be called');
+  for (const n of ['sync-preview.json', 'sync-publish.json', 'sync.json']) assert.ok(existsSync(join(f.state, 'hub', n)), n);
+  const argv = readFileSync(join(f.fake, 'sync-argv.log'), 'utf8');
+  assert.match(argv, /sync\?stage=preview/); assert.match(argv, /sync\?stage=publish/);
+  r = f.run('04-sync.sh', [], { ...w, OF1_PUBLISH_LIVE: '1' });
+  assert.equal(r.status, 0, r.stderr);
 });
 test('checks 3: not ready names gated flag; ready passes', () => {
   const f = fixture();
@@ -253,7 +276,7 @@ test('check 6: uses proxied tenant host; OF1_GENERATE_BASE_URL overrides', () =>
   writeFileSync(join(f.fake, 'gen.ndjson'), '{"type":"section"}\n{"type":"section"}\n');
   const r = f.run('checks.sh', ['6']);
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(readFileSync(join(f.fake, 'gen-urls.log'), 'utf8').trim(), 'https://main--r--o.of1.live/api/generate');
+  assert.equal(readFileSync(join(f.fake, 'gen-urls.log'), 'utf8').trim(), 'https://prev--main--r--o.of1.live/api/generate\nhttps://main--r--o.of1.live/api/generate');
   f.run('checks.sh', ['6'], { OF1_GENERATE_BASE_URL: 'https://dev.example' });
   assert.match(readFileSync(join(f.fake, 'gen-urls.log'), 'utf8'), /https:\/\/dev\.example\/api\/generate/);
 });
@@ -264,6 +287,7 @@ test('check 6: proxy 401/404 fail with explanation; HTML or unreachable only war
     writeFileSync(join(f.fake, 'gen-code'), c);
     const r = f.run('checks.sh', ['6']);
     assert.equal(r.status, 1); assert.match(r.stderr, new RegExp(`HTTP ${c}.*edge proxy`));
+    assert.match(r.stderr, /prev--main--r--o/);
   }
   writeFileSync(join(f.fake, 'gen-code'), '200');
   writeFileSync(join(f.fake, 'gen.ndjson'), '<!DOCTYPE html><html></html>');

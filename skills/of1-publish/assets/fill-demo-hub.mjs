@@ -91,11 +91,11 @@ export function renderConfigLinks({ owner, repo, previewBase }) {
     [`https://da.live/edit#/${da}/of1`, 'DA doc', 'OF1 page (title / subtitle / placeholder)'],
     [`https://da.live/#/${da}/templates`, 'DA folder', 'Templates'],
     [`https://da.live/#/${da}/of1/knowledge`, 'DA folder', 'Knowledge pages'],
-    [`${previewBase}/of1/config/config.json`, 'Git', 'config.json'],
+    [`https://da.live/sheet#/${da}/of1/config/config`, 'DA sheet', 'Config sheet'],
   ];
   return links
     .map(([href, badge, label]) => {
-      const cls = badge === 'Git' ? 'badge--blue' : 'badge--orange';
+      const cls = 'badge--orange';
       return `  <a href="${htmlEscape(href)}"><span class="badge ${cls}">${badge}</span> ${htmlEscape(label)}</a>`;
     })
     .join('\n');
@@ -149,7 +149,7 @@ function statusColor(status) {
 // "What worked" panel: per-skill status files, the saved sync response
 // ({ok,synced,errors,content:{indexed}}) and the saved /status response
 // ({ready,config:{has*…}}). Every input is optional.
-export function renderStatusPanel({ statuses = [], sync = null, status = null } = {}) {
+export function renderStatusPanel({ statuses = [], sync = null, syncPublish = null, status = null } = {}) {
   let html = '<h2>What worked</h2>\n';
 
   // Per-skill status
@@ -170,20 +170,23 @@ export function renderStatusPanel({ statuses = [], sync = null, status = null } 
     html += '<p style="font-size:12px;color:var(--dim);margin-bottom:16px;">No per-skill status files found.</p>\n';
   }
 
-  // Sync
+  // Sync (preview + publish stage)
   html += '<div style="font-size:12px;margin-bottom:12px;">\n';
-  if (sync && typeof sync === 'object') {
-    const synced = Array.isArray(sync.synced) ? sync.synced : [];
-    const errors = Array.isArray(sync.errors) ? sync.errors : [];
-    const indexed = sync.content && typeof sync.content === 'object' ? (sync.content.indexed ?? 0) : 'n/a';
-    html += `  <div>Sync: <span style="color:${statusColor(sync.ok === true)};">ok: ${htmlEscape(String(sync.ok))}</span>`;
-    html += ` &bull; synced: ${htmlEscape(synced.join(', ') || '—')}`;
-    html += ` &bull; content indexed: ${htmlEscape(String(indexed))}</div>\n`;
-    for (const e of errors) {
-      const { label, msg, warning } = formatSyncError(e);
-      html += warning
-        ? `  <div style="color:var(--dim);">⚠ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`
-        : `  <div style="color:var(--orange);">✗ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`;
+  const stages = [['preview', sync], ['publish', syncPublish]].filter(([, v]) => v && typeof v === 'object');
+  if (stages.length) {
+    for (const [stage, sy] of stages) {
+      const synced = Array.isArray(sy.synced) ? sy.synced : [];
+      const errors = Array.isArray(sy.errors) ? sy.errors : [];
+      const indexed = sy.content && typeof sy.content === 'object' ? (sy.content.indexed ?? 0) : 'n/a';
+      html += `  <div>Sync (${stage}): <span style="color:${statusColor(sy.ok === true)};">ok: ${htmlEscape(String(sy.ok))}</span>`;
+      html += ` &bull; synced: ${htmlEscape(synced.join(', ') || '—')}`;
+      html += ` &bull; content indexed: ${htmlEscape(String(indexed))}</div>\n`;
+      for (const e of errors) {
+        const { label, msg, warning } = formatSyncError(e);
+        html += warning
+          ? `  <div style="color:var(--dim);">⚠ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`
+          : `  <div style="color:var(--orange);">✗ ${htmlEscape(label)}: ${htmlEscape(msg)}</div>\n`;
+      }
     }
   } else {
     html += '  <div style="color:var(--dim);">Sync: not synced (no hub/sync.json)</div>\n';
@@ -500,7 +503,8 @@ export function buildHub({ repoConfig, domain, stateDir, repoDir, template, now 
     '{{CONFIG_LINKS}}': renderConfigLinks({ owner, repo, previewBase }),
     '{{STATUS_PANEL}}': renderStatusPanel({
       statuses: loadStatuses(stateDir),
-      sync: loadJsonOrNull(path.join(hubDir, 'sync.json')),
+      sync: loadJsonOrNull(path.join(hubDir, 'sync-preview.json')) ?? loadJsonOrNull(path.join(hubDir, 'sync.json')),
+      syncPublish: loadJsonOrNull(path.join(hubDir, 'sync-publish.json')),
       status: loadJsonOrNull(path.join(hubDir, 'status.json')),
     }),
     '{{PREVIEW_BASE}}': previewBase,
