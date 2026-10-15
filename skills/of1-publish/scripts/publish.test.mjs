@@ -88,27 +88,27 @@ test('02b: user-set indexPath untouched', () => {
   assert.match(r.stdout, /user-set/);
 });
 
-test('01: extra tracked file fails and is listed; config.json only passes', () => {
-  const bad = fixture({ tracked: ['of1/config/config.json', 'of1/config/personas.json'] });
+test('01: any tracked of1/config file fails and is listed; none passes', () => {
+  const bad = fixture();
   const r = bad.run('01-assert-git-config.sh');
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /of1\/config\/personas\.json/);
-  const ok = fixture();
+  assert.match(r.stderr, /of1\/config\/config\.json/);
+  assert.match(r.stderr, /of1-migrate/);
+  const ok = fixture({ tracked: [] });
   const r2 = ok.run('01-assert-git-config.sh');
   assert.equal(r2.status, 0, r2.stderr);
   assert.equal(JSON.parse(readFileSync(join(ok.state, 'of1-publish-status.json'), 'utf8')).status, 'running');
 });
-test('01: cta-template.json required only with OF1_CTA_TEMPLATE=1', () => {
+test('check 7: reads hasCtaTemplate from hub/status.json', () => {
   const f = fixture();
-  assert.equal(f.run('01-assert-git-config.sh').status, 0);
-  const r = f.run('01-assert-git-config.sh', [], { OF1_CTA_TEMPLATE: '1' });
+  hub(f, 'status.json', { ready: true, config: { hasCtaTemplate: false } });
+  const r = f.run('checks.sh', ['7'], { OF1_CTA_TEMPLATE: '1' });
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /cta-template\.json missing/);
-  const g = fixture({ tracked: ['of1/config/config.json', 'of1/config/cta-template.json'] });
-  assert.equal(g.run('01-assert-git-config.sh', [], { OF1_CTA_TEMPLATE: '1' }).status, 0);
+  assert.match(r.stderr, /hasCtaTemplate/);
 });
 
-const hub = (f, name, o) => { mkdirSync(join(f.state, 'hub'), { recursive: true }); writeFileSync(join(f.state, 'hub', name), JSON.stringify(o)); };
+function hub(f, name, o) { return hubImpl(f, name, o); }
+const hubImpl = (f, name, o) => { mkdirSync(join(f.state, 'hub'), { recursive: true }); writeFileSync(join(f.state, 'hub', name), JSON.stringify(o)); };
 test('checks 2: indexed 0 fails; warning-only errors pass', () => {
   const f = fixture();
   hub(f, 'sync.json', { ok: true, errors: [], content: { indexed: 0 } });
@@ -135,7 +135,7 @@ const PW = `#!/bin/bash
 printf '### Result\\nstub\\n### Ran\\n'
 `;
 test('checks 4: ends with REVIEW line; all does not claim check 4 passed', () => {
-  const f = fixture();
+  const f = fixture({ tracked: [] });
   writeFileSync(join(f.base, 'bin', 'playwright-cli'), PW); chmodSync(join(f.base, 'bin', 'playwright-cli'), 0o755);
   let r = f.run('checks.sh', ['4'], { OF1_STATE_DIR: f.state });
   assert.equal(r.status, 0, r.stderr);
@@ -177,7 +177,7 @@ test('finish.sh: final status, hub re-committed, prints values to copy', () => {
   assert.match(r.stdout, /Demo hub: https:\/\/main--r--o\.aem\.page\/deliverables\/index\.html/);
   assert.match(r.stdout, /OF1 page: https:\/\/main--r--o\.aem\.page\/of1/);
   assert.match(r.stdout, /DA config: https:\/\/da\.live\/#\/o\/r\/of1/);
-  assert.match(r.stdout, /Tenant: main--r--o/);
+  assert.match(r.stdout, /Tenant: o\/r/);
   const remote = sh(`git --git-dir=${f.base}/origin.git log --format=%s main`, f.repo).stdout;
   assert.ok((remote.match(/demo hub/g) || []).length >= 1);
 });
@@ -209,7 +209,7 @@ test('04-sync: DA token sent as Authorization header via stdin config, not argv,
   assert.match(readFileSync(join(f.fake, 'sync-stdin.log'), 'utf8'), /Authorization: Bearer SECRET-DA-TOKEN-123/);
   const argv = readFileSync(join(f.fake, 'sync-argv.log'), 'utf8'); // includes the DA probe call
   assert.doesNotMatch(argv, new RegExp(SECRET));
-  assert.match(argv, /main--r--o\/sync/);
+  assert.match(argv, /tenants\/o\/r\/sync\?stage=preview&ref=main/);
   assert.doesNotMatch(r.stdout + r.stderr, new RegExp(SECRET));
   const out = readFileSync(join(f.state, 'hub', 'sync.json'), 'utf8');
   assert.doesNotMatch(out, new RegExp(SECRET));

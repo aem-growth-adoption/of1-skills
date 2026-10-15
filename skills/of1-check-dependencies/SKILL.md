@@ -54,11 +54,10 @@ Each step is a script in `$SKILL_DIR/scripts/`, run as `bash "$SKILL_DIR/scripts
 |---|---------|--------------|
 | 0 | `02-domain.sh [<domain>]` | Resolves `DOMAIN`, first match wins: env `DOMAIN`; `.domain` of an existing `$OF1_STATE_DIR/repo-config.json`; `OF1_CONTENT_SOURCE`; first `https://` host in `fstab.yaml`/`README.md` that is not `aem.live\|aem.page\|hlx.*\|github.com`; then the argument. Prints it; exit `2` = nothing resolved, ask the user then re-run with the answer as the argument. Capture with `DOMAIN=$(bash "$SKILL_DIR/scripts/02-domain.sh") \|\| <handle exit>` — never `export DOMAIN=$(...)`, which masks the exit status and can leave `DOMAIN` empty |
 | 1 | `01-reset-state.sh` | Clears the previous run's local state (status files, staged DA/hub inputs, `product-urls.txt`). Never deletes DA or git content; every run is idempotent and overwrites only OF1-owned paths |
-| 3b | `03b-legacy-config.sh [remove\|keep]` | Lists tracked `of1/config/*.json` other than `config.json` (+ `cta-template.json` when `OF1_CTA_TEMPLATE=1`); `remove` does a scoped `git rm` + commit + push of exactly those files |
+| 3b | `03b-legacy-config.sh` | Any git-tracked `of1/config/*` = legacy setup: prints `Legacy OF1 setup found: run of1-skills:of1-migrate` and exits `3` (stop; never removes) |
 | 4 | `04-code-sync.sh` | Probes the branch preview (bounded curl, up to ~60 s); only WARNs if not 200 |
 | 5 | `05-aem-preview-auth.sh` | Probes AEM preview authorization (a separate grant from DA write); fails with a provisioning message on non-200 |
-| 6 | `06-hlxignore.sh` | Removes `.hlxignore` lines that block `of1` / `of1/config` (nothing else), commits + pushes. **Never add `of1/` to `.hlxignore`** |
-| 7 | `07-config-json.sh [<domain>]` | Resolves the domain itself (same logic as step 0, fails with exit 1 if empty), writes `of1/config/config.json` (`{ "domain": … }` only) and commits just that file |
+| 7 | `07-config-json.sh [<domain>]` | Resolves the domain itself (same logic as step 0, fails with exit 1 if empty), writes the DA sheet `/of1/config/config` (`key,value`; row `domain`) via `da-write.mjs` and previews it; nothing is committed to git |
 | 8 | `08-helix-query.sh` | Creates `helix-query.yaml` (indexing `/of1/knowledge/**` + `/templates/**` into `/query-index.json`) only if absent; warns, never edits, a customer's. `SKIP_HELIX_QUERY=1` skips it |
 | 9 | `09-repo-config.sh [<domain>]` | Resolves the domain itself (fails if empty), writes `$OF1_STATE_DIR/repo-config.json` |
 
@@ -66,7 +65,7 @@ Each step is a script in `$SKILL_DIR/scripts/`, run as `bash "$SKILL_DIR/scripts
 
 - **Step 0.** If `02-domain.sh` exits `2` (nothing resolved, interactive), ask the user for the production domain via `AskUserQuestion` and re-run it with the answer as the argument. With `OF1_NON_INTERACTIVE=1` it instead exits `1` with `FAIL: cannot determine DOMAIN — set DOMAIN or pass content-source=<domain>`; stop. Step 7 writes the domain to `config.json`.
 - **Step 2 (no script).** If `setup.json`'s `branch` is empty or `"main"`, tell the user: "⚠️ Currently on `{branch or 'a detached HEAD'}` — demo artifacts and DA content will be affected on this branch/state. Proceeding anyway per the hands-off branch model; check out the intended branch yourself if this isn't what you want." Then proceed regardless — never block.
-- **Step 3b.** Legacy files (`knowledge.json`, `personas.json`, `suggestions.json`, `brand-voice.json`, `templates.json`, …) come from an older integration; the worker no longer reads them and a git file beats a DA sheet at the same URL, so `personas.json`/`suggestions.json` **shadow** the author-editable DA sheets. Run `03b-legacy-config.sh` with no argument: with `OF1_NON_INTERACTIVE=1` it removes without asking; otherwise it lists them and exits `2` — explain the above, ask via `AskUserQuestion` **Remove them** / **Keep them**, and re-run with `remove` or `keep`. On Keep, warn that `of1-publish` check 1 will fail until they're gone (it re-asserts the same allowed set as the backstop).
+- **Step 3b.** Exit `3` means the repo still has git-tracked OF1 config (old setup). Stop the run and tell the user to run `of1-skills:of1-migrate`; do not remove files here.
 
 ### Why steps 7 and 8 exist
 

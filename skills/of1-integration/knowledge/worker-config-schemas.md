@@ -58,7 +58,7 @@ Example for a config-service site (the only override the skills write is `conten
 }
 ```
 
-`of1/config/` must be served: if `.hlxignore` excludes it, `of1-check-dependencies` fixes that.
+Config is authored in DA (`/of1/config/*` sheets), never committed to git.
 
 ---
 

@@ -4,6 +4,9 @@
 
 - `lib/env.sh`: `TENANT_ID` is now `<owner>/<repo>` (lowercase); new `PROXY_HOST`/`PROXY_BASE` (`<branch>--<repo>--<owner>.of1.live`). `of1_sync <worker> <org/repo> <out> [stage=preview]` posts `/api/tenants/<org>/<repo>/sync?stage=<stage>&ref=<branch>`.
 
+- `da-write.mjs live`: publishes a previewed path to the live index (`admin.hlx.page/live`). `07-config-json.sh` now writes the DA sheet `/of1/config/config` (`key,value`) instead of a git `config.json`; new `of1-build-cta-template/scripts/write-cta-template.sh` writes the `/of1/config/cta-template` sheet. Nothing under `of1/config/` is committed.
+- `03b-legacy-config.sh` stops with exit 3 (`Legacy OF1 setup found: run of1-skills:of1-migrate`) when any `of1/config/*` is tracked; `06-hlxignore.sh` removed. `of1-publish` check 1 fails on any tracked `of1/config/*`; check 7 reads `hasCtaTemplate` from `hub/status.json`.
+
 ## 0.3.3
 
 - Security: bearer/DA/AEM tokens no longer appear in curl's argument list (`ps`, `/proc/<pid>/cmdline`, xtrace). New shared `lib/curl-auth.sh` (`of1_curl_auth <TOKEN_VAR_NAME> <auth|auth+source> -- curl-args…`) feeds the `Authorization` (and `x-content-source-authorization`) headers through `curl -K -` on stdin; it takes the variable *name* so even a caller's `set -x` never shows the token, suspends xtrace inside, and refuses tokens outside `[A-Za-z0-9._~+/=-]+`.

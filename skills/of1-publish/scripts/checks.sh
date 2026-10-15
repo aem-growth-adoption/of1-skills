@@ -95,7 +95,8 @@ check_6() {
 
 check_7() {
   if [ "${OF1_CTA_TEMPLATE:-}" = "1" ]; then
-    [ -f of1/config/cta-template.json ] || { echo "✗ FAIL (check 7): of1/config/cta-template.json missing" >&2; exit 1; }
+    [ "$(jq -r '.config.hasCtaTemplate // false' "$HUB/status.json" 2>/dev/null)" = "true" ] \
+      || { echo "✗ FAIL (check 7): hasCtaTemplate is not true in hub/status.json — DA sheet /of1/config/cta-template missing or not synced" >&2; exit 1; }
     of1_proxy_post personalize "{\"id\":\"${TENANT_ID}\",\"elements\":{\"T0\":{\"tag\":\"h1\",\"text\":\"Welcome\"}},\"behaviorProfile\":{\"interests\":[],\"intent\":\"research\"}}"
     printf '%s\n' "$PROXY_BODY" > "$OF1_STATE_DIR/check-personalize.ndjson"
     grep -q '"type":"inject_cta"' "$OF1_STATE_DIR/check-personalize.ndjson" \

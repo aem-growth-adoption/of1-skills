@@ -11,9 +11,6 @@ cd "$OF1_DEMO_REPO" || exit 1
 
 HUB="$OF1_STATE_DIR/hub"
 mkdir -p "$HUB"
-# Bash array — never a space-joined string expanded unquoted (zsh doesn't word-split it).
-ALLOWED=(of1/config/config.json)
-[ "${OF1_CTA_TEMPLATE:-}" = "1" ] && ALLOWED+=(of1/config/cta-template.json)
 # The worker gates `ready` on these two flags only; every other /status flag is informational.
 GATED_FLAGS='["hasTemplates","hasContent"]'
 N_CHECKS=6; [ "${OF1_CTA_TEMPLATE:-}" = "1" ] && N_CHECKS=7
@@ -40,22 +37,15 @@ publish_hub() {
     echo "✓ hub unchanged — nothing to commit"
   fi
 }
-# assert_git_config — step 1 / check 1.
+# assert_git_config — step 1 / check 1. Config lives in DA: nothing under of1/config/ may be tracked.
 assert_git_config() {
   local EXTRA
-  EXTRA=$(git ls-files of1/config | while IFS= read -r f; do
-    ok=0; for a in "${ALLOWED[@]}"; do [ "$f" = "$a" ] && ok=1; done
-    [ "$ok" = 1 ] || echo "$f"
-  done)
+  EXTRA=$(git ls-files of1/config)
   if [ -n "$EXTRA" ]; then
-    echo "✗ FAIL (check 1): unexpected files tracked under of1/config/ — they shadow DA config or are no longer read:" >&2
+    echo "✗ FAIL (check 1): files tracked under of1/config/ — config lives in DA and git files shadow it:" >&2
     echo "$EXTRA" | sed 's/^/    /' >&2
-    echo "  Re-run of1-check-dependencies (step 3b removes legacy of1/config JSON: scoped git rm + commit + push), then re-run of1-publish." >&2
+    echo "  Run of1-skills:of1-migrate, then re-run of1-publish." >&2
     return 1
   fi
-  [ -f of1/config/config.json ] || { echo "✗ FAIL: of1/config/config.json missing — run of1-check-dependencies" >&2; return 1; }
-  if [ "${OF1_CTA_TEMPLATE:-}" = "1" ] && [ ! -f of1/config/cta-template.json ]; then
-    echo "✗ FAIL: OF1_CTA_TEMPLATE=1 but of1/config/cta-template.json missing — of1-build-cta-template did not run" >&2; return 1
-  fi
-  echo "✓ git config set OK: $(git ls-files of1/config | tr '\n' ' ')"
+  echo "✓ no of1/config files tracked in git"
 }
