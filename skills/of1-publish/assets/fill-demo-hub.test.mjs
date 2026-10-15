@@ -25,7 +25,8 @@ test('renderConfigLinks links each authored DA item', () => {
   ]) {
     assert.ok(html.includes(url), `missing ${url}`);
   }
-  assert.ok(html.includes('https://b--r--o.aem.page/of1/config/config.json'));
+  assert.ok(html.includes('https://da.live/sheet#/o/r/of1/config/config'));
+  assert.ok(!html.includes('Git'));
   assert.ok(!html.includes('personas.json'));
 });
 
@@ -199,4 +200,11 @@ test('CLI fails without repo-config.json', () => {
   });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /repo-config\.json/);
+});
+
+test('renderStatusPanel shows both stage summaries', () => {
+  const html = renderStatusPanel({ sync: { ok: true, synced: ['config'], content: { indexed: 5 } }, syncPublish: { ok: true, synced: [], content: null } });
+  assert.match(html, /Sync \(preview\)/);
+  assert.match(html, /Sync \(publish\)/);
+  assert.match(html, /content indexed: 5/);
 });

@@ -118,7 +118,7 @@ test('parseArgs rejects flags without a value', () => {
 });
 
 test('OWNED_PATHSPECS is pinned', () => {
-  assert.deepEqual(OWNED_PATHSPECS, ['blocks/of1', 'of1', 'deliverables', 'helix-query.yaml', '.hlxignore']);
+  assert.deepEqual(OWNED_PATHSPECS, ['blocks/of1', 'of1', 'deliverables', 'helix-query.yaml']);
 });
 
 test('shapeOfGenerate hasSections needs >=2 section events', () => {

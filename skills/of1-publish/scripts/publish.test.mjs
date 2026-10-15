@@ -16,8 +16,10 @@ d="$FAKE_DIR"
 if [ "$hasO" = 1 ]; then printf 200; exit 0; fi
 case "$url" in
   */list/o/r/templates) printf '%s\\n%s' "$(cat "$d/da-list.json")" "$(cat "$d/da-code")";;
+  */of1/config/config.json) cat "$d/cfg-sheet.json" 2>/dev/null || exit 22;;
   */query-index.json) cat "$d/qi.json" 2>/dev/null || exit 22;;
   */api/generate) echo "$url" >> "$d/gen-urls.log"; cat "$d/gen.ndjson" 2>/dev/null || exit 22; [ "$hasw" = 1 ] && printf '\\n%s' "$(cat "$d/gen-code" 2>/dev/null || echo 200)";;
+  */api/personalize) cat "$d/pers.ndjson" 2>/dev/null || exit 22; [ "$hasw" = 1 ] && printf '\\n200';;
   */sitemap.json) cat "$d/sitemap.json" 2>/dev/null || exit 22;;
   *) exit 22;;
 esac
@@ -45,70 +47,75 @@ function fixture({ cfg = { domain: 'x.com' }, tracked = ['of1/config/config.json
 const docs = (...n) => JSON.stringify(n.map((name) => ({ name, ext: 'html' })));
 const qi = (...p) => JSON.stringify({ data: p.map((path) => ({ path })) });
 
-test('02b: stale templates.names removed (and empty templates)', () => {
-  const f = fixture({ cfg: { domain: 'x.com', templates: { names: ['old'] } } });
-  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
-  const r = f.run('02b-index-overrides.sh');
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.equal(f.cfgNow().templates, undefined);
-  assert.match(r.stdout, /removed templates\.names \(superseded by the \/of1\/config\/template-list sheet/);
-});
-test('02b: config without names unchanged, no DA /templates listing request', () => {
-  const f = fixture();
-  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
-  const log = join(f.fake, 'curl.log');
-  writeFileSync(join(f.base, 'bin', 'curl'), `#!/bin/bash\necho "$@" >> "${log}"\n` + FAKE_CURL.split('\n').slice(1).join('\n'));
-  const r = f.run('02b-index-overrides.sh');
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.deepEqual(f.cfgNow(), { domain: 'x.com' });
-  assert.match(r.stdout, /unchanged/);
-  assert.ok(!existsSync(log) || !/\/list\/o\/r\/templates/.test(readFileSync(log, 'utf8')));
-});
-test('02b: templates.daPath preserved when names removed', () => {
-  const f = fixture({ cfg: { domain: 'x.com', templates: { daPath: '/tpl', names: ['old'] } } });
-  writeFileSync(join(f.fake, 'qi.json'), qi('/of1/knowledge/k'));
-  const r = f.run('02b-index-overrides.sh');
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.deepEqual(f.cfgNow().templates, { daPath: '/tpl' });
-});
-test('02b: knowledge fallback via sitemap still written', () => {
-  const f = fixture();
-  writeFileSync(join(f.fake, 'qi.json'), qi('/x'));
+const sheet = (rows) => JSON.stringify({ data: Object.entries(rows).map(([key, value]) => ({ key, value })) });
+const fakeWriter = (f) => {
+  const w = join(f.base, 'daw.sh');
+  writeFileSync(w, '#!/bin/bash\necho "$@" >> "$FAKE_DIR/daw.log"\nwhile [ $# -gt 0 ]; do [ "$1" = --rows ] && cp "$2" "$FAKE_DIR/rows-written.json"; shift; done\n');
+  chmodSync(w, 0o755);
+  return { OF1_DA_WRITE: w };
+};
+const dawFixture = (rows, qiPaths = []) => {
+  const f = fixture({ tracked: [] });
+  writeFileSync(join(f.fake, 'cfg-sheet.json'), sheet(rows));
+  writeFileSync(join(f.fake, 'qi.json'), qi(...qiPaths));
+  return f;
+};
+test('02b: sitemap fallback upserts indexPath through da-write sheet, nothing committed', () => {
+  const f = dawFixture({ domain: 'x.com' }, ['/x']);
   writeFileSync(join(f.fake, 'sitemap.json'), qi('/of1/knowledge/k'));
-  const r = f.run('02b-index-overrides.sh');
+  const r = f.run('02b-index-overrides.sh', [], fakeWriter(f));
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.equal(f.cfgNow().contentIngestion.indexPath, '/sitemap.json');
+  assert.match(readFileSync(join(f.fake, 'daw.log'), 'utf8'), /sheet .*--path of1\/config\/config --columns key,value/);
+  const rows = JSON.parse(readFileSync(join(f.fake, 'rows-written.json'), 'utf8'));
+  assert.deepEqual(rows, [{ key: 'domain', value: 'x.com' }, { key: 'contentIngestion.indexPath', value: '/sitemap.json' }]);
+  assert.equal(sh('git status --porcelain of1; git ls-files of1', f.repo).stdout.trim(), '');
 });
-test('02b: user-set indexPath untouched', () => {
-  const f = fixture({ cfg: { domain: 'x.com', contentIngestion: { indexPath: '/query-index.json?limit=2000' } } });
-  writeFileSync(join(f.fake, 'qi.json'), qi('/templates/a'));
-  const r = f.run('02b-index-overrides.sh');
+test('02b: user-set indexPath untouched; no write', () => {
+  const f = dawFixture({ domain: 'x.com', 'contentIngestion.indexPath': '/query-index.json?limit=2000' }, ['/templates/a']);
+  const r = f.run('02b-index-overrides.sh', [], fakeWriter(f));
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(f.cfgNow().contentIngestion.indexPath, '/query-index.json?limit=2000');
+  assert.ok(!existsSync(join(f.fake, 'daw.log')));
   assert.match(r.stdout, /user-set/);
+  assert.match(r.stdout, /unchanged/);
+});
+test('02b: non-sheet config fails with a hint', () => {
+  const f = fixture({ tracked: [] });
+  const r = f.run('02b-index-overrides.sh');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /not a config sheet/);
 });
 
-test('01: extra tracked file fails and is listed; config.json only passes', () => {
-  const bad = fixture({ tracked: ['of1/config/config.json', 'of1/config/personas.json'] });
+const hub = (f, name, o) => { mkdirSync(join(f.state, 'hub'), { recursive: true }); writeFileSync(join(f.state, 'hub', name), JSON.stringify(o)); };
+test('01: any tracked of1/config file fails and is listed; none passes', () => {
+  const bad = fixture();
   const r = bad.run('01-assert-git-config.sh');
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /of1\/config\/personas\.json/);
-  const ok = fixture();
+  assert.match(r.stderr, /of1\/config\/config\.json/);
+  assert.match(r.stderr, /of1-migrate/);
+  const ok = fixture({ tracked: [] });
   const r2 = ok.run('01-assert-git-config.sh');
   assert.equal(r2.status, 0, r2.stderr);
   assert.equal(JSON.parse(readFileSync(join(ok.state, 'of1-publish-status.json'), 'utf8')).status, 'running');
 });
-test('01: cta-template.json required only with OF1_CTA_TEMPLATE=1', () => {
+test('check 7: reads hasCtaTemplate from hub/status.json', () => {
   const f = fixture();
-  assert.equal(f.run('01-assert-git-config.sh').status, 0);
-  const r = f.run('01-assert-git-config.sh', [], { OF1_CTA_TEMPLATE: '1' });
+  hub(f, 'status.json', { ready: true, config: { hasCtaTemplate: false } });
+  const r = f.run('checks.sh', ['7'], { OF1_CTA_TEMPLATE: '1' });
   assert.equal(r.status, 1);
-  assert.match(r.stderr, /cta-template\.json missing/);
-  const g = fixture({ tracked: ['of1/config/config.json', 'of1/config/cta-template.json'] });
-  assert.equal(g.run('01-assert-git-config.sh', [], { OF1_CTA_TEMPLATE: '1' }).status, 0);
+  assert.match(r.stderr, /hasCtaTemplate/);
+  hub(f, 'status.json', { ready: true, config: { hasCtaTemplate: true } });
+  writeFileSync(join(f.fake, 'pers.ndjson'), '{"type":"inject_cta"}\n');
+  const ok = f.run('checks.sh', ['7'], { OF1_CTA_TEMPLATE: '1' });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /inject_cta/);
+});
+test('check 7: missing hub/status.json fails', () => {
+  const f = fixture();
+  const r = f.run('checks.sh', ['7'], { OF1_CTA_TEMPLATE: '1' });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /hasCtaTemplate/);
 });
 
-const hub = (f, name, o) => { mkdirSync(join(f.state, 'hub'), { recursive: true }); writeFileSync(join(f.state, 'hub', name), JSON.stringify(o)); };
 test('checks 2: indexed 0 fails; warning-only errors pass', () => {
   const f = fixture();
   hub(f, 'sync.json', { ok: true, errors: [], content: { indexed: 0 } });
@@ -119,6 +126,33 @@ test('checks 2: indexed 0 fails; warning-only errors pass', () => {
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /3 chunk/);
   hub(f, 'sync.json', { ok: true, errors: [{ file: 'brand-voice', error: 'empty document' }], content: { indexed: 3 } });
   assert.equal(f.run('checks.sh', ['2']).status, 1);
+});
+const pubSync = (f, o) => { hub(f, 'sync-preview.json', { ok: true, errors: [], content: { indexed: 3 } }); hub(f, 'sync-publish.json', o); };
+test('check 2: publish sync with only 404 warnings/empty passes; 502 error and 401 fail', () => {
+  const f = fixture({ tracked: [] });
+  pubSync(f, { ok: true, synced: [], errors: [{ file: 'query-index', warning: '404 not published' }], content: null });
+  let r = f.run('checks.sh', ['2']);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /publish sync ok/);
+  pubSync(f, { ok: true, synced: [], errors: [{ file: 'brand-voice', error: 'HTTP 502' }], content: null });
+  r = f.run('checks.sh', ['2']);
+  assert.equal(r.status, 1); assert.match(r.stderr, /publish sync errors/);
+  pubSync(f, { ok: false, error: 'sync rejected (HTTP 401)' });
+  assert.equal(f.run('checks.sh', ['2']).status, 1);
+  hub(f, 'sync-preview.json', { ok: true, errors: [], content: { indexed: 0 } });
+  hub(f, 'sync-publish.json', { ok: true, errors: [], content: null });
+  assert.equal(f.run('checks.sh', ['2']).status, 1);
+});
+test('04b: publishes sheets + pages only with OF1_PUBLISH_LIVE=1 via 04-sync', () => {
+  const f = syncFixture('200', '{"ok":true,"synced":[],"errors":[],"content":null}');
+  const w = fakeWriter(f);
+  let r = f.run('04-sync.sh', [], w);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!existsSync(join(f.fake, 'daw.log')), 'live must not be called');
+  for (const n of ['sync-preview.json', 'sync-publish.json', 'sync.json']) assert.ok(existsSync(join(f.state, 'hub', n)), n);
+  const argv = readFileSync(join(f.fake, 'sync-argv.log'), 'utf8');
+  assert.match(argv, /sync\?stage=preview/); assert.match(argv, /sync\?stage=publish/);
+  r = f.run('04-sync.sh', [], { ...w, OF1_PUBLISH_LIVE: '1' });
+  assert.equal(r.status, 0, r.stderr);
 });
 test('checks 3: not ready names gated flag; ready passes', () => {
   const f = fixture();
@@ -135,7 +169,7 @@ const PW = `#!/bin/bash
 printf '### Result\\nstub\\n### Ran\\n'
 `;
 test('checks 4: ends with REVIEW line; all does not claim check 4 passed', () => {
-  const f = fixture();
+  const f = fixture({ tracked: [] });
   writeFileSync(join(f.base, 'bin', 'playwright-cli'), PW); chmodSync(join(f.base, 'bin', 'playwright-cli'), 0o755);
   let r = f.run('checks.sh', ['4'], { OF1_STATE_DIR: f.state });
   assert.equal(r.status, 0, r.stderr);
@@ -177,7 +211,7 @@ test('finish.sh: final status, hub re-committed, prints values to copy', () => {
   assert.match(r.stdout, /Demo hub: https:\/\/main--r--o\.aem\.page\/deliverables\/index\.html/);
   assert.match(r.stdout, /OF1 page: https:\/\/main--r--o\.aem\.page\/of1/);
   assert.match(r.stdout, /DA config: https:\/\/da\.live\/#\/o\/r\/of1/);
-  assert.match(r.stdout, /Tenant: main--r--o/);
+  assert.match(r.stdout, /Tenant: o\/r/);
   const remote = sh(`git --git-dir=${f.base}/origin.git log --format=%s main`, f.repo).stdout;
   assert.ok((remote.match(/demo hub/g) || []).length >= 1);
 });
@@ -209,7 +243,7 @@ test('04-sync: DA token sent as Authorization header via stdin config, not argv,
   assert.match(readFileSync(join(f.fake, 'sync-stdin.log'), 'utf8'), /Authorization: Bearer SECRET-DA-TOKEN-123/);
   const argv = readFileSync(join(f.fake, 'sync-argv.log'), 'utf8'); // includes the DA probe call
   assert.doesNotMatch(argv, new RegExp(SECRET));
-  assert.match(argv, /main--r--o\/sync/);
+  assert.match(argv, /tenants\/o\/r\/sync\?stage=preview&ref=main/);
   assert.doesNotMatch(r.stdout + r.stderr, new RegExp(SECRET));
   const out = readFileSync(join(f.state, 'hub', 'sync.json'), 'utf8');
   assert.doesNotMatch(out, new RegExp(SECRET));
@@ -242,7 +276,7 @@ test('check 6: uses proxied tenant host; OF1_GENERATE_BASE_URL overrides', () =>
   writeFileSync(join(f.fake, 'gen.ndjson'), '{"type":"section"}\n{"type":"section"}\n');
   const r = f.run('checks.sh', ['6']);
   assert.equal(r.status, 0, r.stderr);
-  assert.equal(readFileSync(join(f.fake, 'gen-urls.log'), 'utf8').trim(), 'https://main--r--o.of1.live/api/generate');
+  assert.equal(readFileSync(join(f.fake, 'gen-urls.log'), 'utf8').trim(), 'https://prev--main--r--o.of1.live/api/generate\nhttps://main--r--o.of1.live/api/generate');
   f.run('checks.sh', ['6'], { OF1_GENERATE_BASE_URL: 'https://dev.example' });
   assert.match(readFileSync(join(f.fake, 'gen-urls.log'), 'utf8'), /https:\/\/dev\.example\/api\/generate/);
 });
@@ -253,6 +287,7 @@ test('check 6: proxy 401/404 fail with explanation; HTML or unreachable only war
     writeFileSync(join(f.fake, 'gen-code'), c);
     const r = f.run('checks.sh', ['6']);
     assert.equal(r.status, 1); assert.match(r.stderr, new RegExp(`HTTP ${c}.*edge proxy`));
+    assert.match(r.stderr, /prev--main--r--o/);
   }
   writeFileSync(join(f.fake, 'gen-code'), '200');
   writeFileSync(join(f.fake, 'gen.ndjson'), '<!DOCTYPE html><html></html>');
@@ -261,4 +296,123 @@ test('check 6: proxy 401/404 fail with explanation; HTML or unreachable only war
   rmSync(join(f.fake, 'gen.ndjson'));
   r = f.run('checks.sh', ['6']);
   assert.equal(r.status, 0); assert.match(r.stderr, /WARN \(check 6\)/);
+});
+
+const LIVE_CURL = `#!/bin/bash
+d="$FAKE_DIR"; url=""
+for a in "$@"; do case "$a" in http*) url="$a";; esac; done
+echo "$url" >> "$d/live-urls.log"
+case "$*" in *-K\\ -*) cat > /dev/null;; esac
+case "$url" in
+  */list/o/r/of1/knowledge) cat "$d/list-knowledge.json";;
+  */list/o/r/templates) cat "$d/list-templates.json";;
+  */list/o/r) echo '[]';;
+  */source/o/r/*) k=$(echo "\${url##*/source/o/r/}" | tr '/' '_'); if [ -f "$d/probe-$k" ]; then printf '%s' "$(cat "$d/probe-$k")"; else printf 404; fi;;
+  *) exit 22;;
+esac
+`;
+const liveFixture = (probes = {}) => {
+  const f = fixture({ tracked: [] });
+  writeFileSync(join(f.base, 'bin', 'curl'), LIVE_CURL); chmodSync(join(f.base, 'bin', 'curl'), 0o755);
+  writeFileSync(join(f.fake, 'list-knowledge.json'), docs('k1')); writeFileSync(join(f.fake, 'list-templates.json'), docs('t1'));
+  for (const [k, v] of Object.entries(probes)) writeFileSync(join(f.fake, `probe-${k}`), v);
+  const w = join(f.base, 'daw.sh');
+  writeFileSync(w, '#!/bin/bash\necho "$@" >> "$FAKE_DIR/daw.log"\ncase "$*" in *FAILME*) exit 1;; esac\n'); chmodSync(w, 0o755);
+  return { ...f, env: { OF1_DA_WRITE: w } };
+};
+test('04b: publishes present sheets/pages (200), skips 404, summary written', () => {
+  const f = liveFixture({ 'of1_config_config.json': '200', 'of1.html': '200' });
+  const r = f.run('04b-publish-live.sh', [], f.env);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const log = readFileSync(join(f.fake, 'daw.log'), 'utf8').trim().split('\n');
+  assert.ok(log.some((l) => /live .*--path of1\/config\/config\.json$/.test(l)));
+  assert.ok(log.some((l) => /live .*--path of1$/.test(l)));
+  assert.ok(log.some((l) => /--path of1\/knowledge\/k1$/.test(l)) && log.some((l) => /--path templates\/t1$/.test(l)));
+  assert.ok(!log.some((l) => /cta-template/.test(l)));
+  assert.deepEqual(JSON.parse(readFileSync(join(f.state, 'hub/publish-live.json'), 'utf8')), { ok: true, published: 4, failed: [] });
+});
+test('04b: 401 probe and a failed publish are counted, exit non-zero, check 2 fails on them', () => {
+  const f = liveFixture({ 'of1_config_config.json': '401', 'of1.html': '200' });
+  writeFileSync(join(f.fake, 'list-knowledge.json'), docs('FAILME'));
+  const r = f.run('04b-publish-live.sh', [], f.env);
+  assert.equal(r.status, 1);
+  const j = JSON.parse(readFileSync(join(f.state, 'hub/publish-live.json'), 'utf8'));
+  assert.equal(j.ok, false); assert.equal(j.failed.length, 2);
+  assert.match(j.failed.join('\n'), /of1\/config\/config\.json: probe HTTP 401/); assert.match(j.failed.join('\n'), /FAILME/);
+  pubSync(f, { ok: true, synced: [], errors: [], content: null });
+  const c = f.run('checks.sh', ['2']);
+  assert.equal(c.status, 1); assert.match(c.stderr, /publish live failed/);
+});
+test('04-sync with OF1_PUBLISH_LIVE=1: preview sync -> 04b -> publish sync, still syncs after 04b failure', () => {
+  const f = syncFixture('200', '{"ok":true,"synced":[],"errors":[],"content":null}');
+  const w = join(f.base, 'daw.sh');
+  writeFileSync(w, '#!/bin/bash\necho "live $*" >> "$FAKE_DIR/order.log"\nexit 1\n'); chmodSync(w, 0o755);
+  writeFileSync(join(f.base, 'bin', 'curl'), SYNC_CURL.replace('case "$*" in *-o\\ *) printf 200; exit 0;; esac', 'case "$*" in *"/sync"*) echo "$*" | grep -o "stage=[a-z]*" >> "$d/order.log";; esac\ncase "$*" in *-o\\ *) printf 200; exit 0;; esac'));
+  const r = f.run('04-sync.sh', [], { OF1_DA_WRITE: w, OF1_PUBLISH_LIVE: '1' });
+  assert.equal(r.status, 0, r.stderr);
+  const order = readFileSync(join(f.fake, 'order.log'), 'utf8').trim().split('\n');
+  const first = order.findIndex((l) => l === 'stage=preview'), live = order.findIndex((l) => l.startsWith('live ')), pub = order.findIndex((l) => l === 'stage=publish');
+  assert.ok(first >= 0 && live > first && pub > live, order.join('|'));
+  assert.equal(JSON.parse(readFileSync(join(f.state, 'hub/publish-live.json'), 'utf8')).ok, false);
+});
+test('check 6: live-host 404 is strict when the publish sync synced something, warning when unpublished', () => {
+  const f = fixture({ tracked: [] }); withHub(f);
+  writeFileSync(join(f.base, 'bin', 'curl'), FAKE_CURL.replace('*/api/generate) echo "$url" >> "$d/gen-urls.log";', '*/api/generate) echo "$url" >> "$d/gen-urls.log"; case "$url" in https://prev--*) ;; *) printf "x\\n404"; exit 0;; esac;'));
+  writeFileSync(join(f.fake, 'gen.ndjson'), '{"type":"section"}\n{"type":"section"}\n');
+  writeFileSync(join(f.fake, 'gen-code'), '200');
+  hub(f, 'sync-publish.json', { ok: true, synced: [], errors: [], content: null });
+  let r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stderr, /not live yet/);
+  hub(f, 'sync-publish.json', { ok: true, synced: [], errors: [], content: { indexed: 0 } });
+  r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stderr, /not live yet/);
+  hub(f, 'sync-publish.json', { ok: true, synced: ['config'], errors: [], content: { indexed: 2 } });
+  r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 1); assert.match(r.stderr, /HTTP 404/);
+});
+test('of1_sync: ref is URL-encoded', () => {
+  const f = syncFixture('200', '{"ok":true}');
+  const out = join(f.base, 'o.json');
+  spawnSync('bash', ['-c', `. ${skillDir}/../../lib/genweb.sh; DA_TOKEN=t BRANCH='feat/x y' of1_sync https://w o/r ${out} publish`], { encoding: 'utf8', env: { PATH: `${join(f.base, 'bin')}:${process.env.PATH}`, FAKE_DIR: f.fake } });
+  assert.match(readFileSync(join(f.fake, 'sync-argv.log'), 'utf8'), /sync\?stage=publish&ref=feat%2Fx%20y/);
+});
+
+test('mixed-case org/repo: sync URL path keeps original case, bodies use the lowercase id', () => {
+  const f = fixture({ tracked: [] });
+  writeFileSync(join(f.state, 'repo-config.json'), JSON.stringify({ owner: 'AdobeDocs', repo: 'Site', branch: 'main', domain: 'x.com' }));
+  writeFileSync(join(f.base, 'bin', 'curl'), `#!/bin/bash
+echo "$@" >> "$FAKE_DIR/all-argv.log"
+case "$*" in *-K\\ -*) cat > /dev/null;; esac
+case "$*" in *"/sync"*) printf '{"ok":true,"synced":[],"errors":[],"content":null}\\n200'; exit 0;; esac
+case "$*" in *"/api/generate"*) printf '{"type":"section"}\\n{"type":"section"}\\n200'; exit 0;; esac
+case "$*" in *-o\\ *) printf 200; exit 0;; esac
+exit 22
+`); chmodSync(join(f.base, 'bin', 'curl'), 0o755);
+  mkdirSync(join(f.state, 'hub'), { recursive: true });
+  assert.equal(f.run('04-sync.sh').status, 0);
+  const r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 0, r.stderr);
+  const argv = readFileSync(join(f.fake, 'all-argv.log'), 'utf8');
+  assert.match(argv, /tenants\/AdobeDocs\/Site\/sync\?stage=preview/);
+  assert.doesNotMatch(argv, /tenants\/adobedocs\/site\/sync/);
+  assert.match(argv, /"id":"adobedocs\/site"/);
+  assert.match(argv, /prev--main--site--adobedocs\.of1\.live/);
+});
+test('409 (legacy gen-web data): publish 04-sync stops with the admin message, check 2 names legacy-tenant-present', () => {
+  const f = syncFixture('409', '{"error":"Tenant not migrated"}');
+  const r = f.run('04-sync.sh');
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /Legacy gen-web data exists for o\/r\. An admin must either delete the legacy tenant \(DELETE \/api\/admin\/tenants\/<legacy id>\).*migrate-tenants\?tenant=o\/r/);
+  const j = JSON.parse(readFileSync(join(f.state, 'hub', 'sync-publish.json'), 'utf8'));
+  assert.equal(j.code, 'legacy-tenant-present');
+  hub(f, 'sync-preview.json', { ok: true, errors: [], content: { indexed: 3 } });
+  const c = f.run('checks.sh', ['2']);
+  assert.equal(c.status, 1); assert.match(c.stderr, /legacy-tenant-present/);
+});
+test('of1_sync: token outside the allowed charset is refused, never sent', () => {
+  const f = syncFixture('200', '{"ok":true}');
+  const out = join(f.base, 'o.json');
+  spawnSync('bash', ['-c', `. ${skillDir}/../../lib/genweb.sh; DA_TOKEN='bad token"' of1_sync https://w o/r ${out}`], { encoding: 'utf8', env: { PATH: `${join(f.base, 'bin')}:${process.env.PATH}`, FAKE_DIR: f.fake } });
+  assert.equal(JSON.parse(readFileSync(out, 'utf8')).ok, false);
+  assert.ok(!existsSync(join(f.fake, 'sync-argv.log')));
 });

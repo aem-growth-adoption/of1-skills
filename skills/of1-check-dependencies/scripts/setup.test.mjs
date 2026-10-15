@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, chmodSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, realpathSync, chmodSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,28 +30,47 @@ function fixture({ files = {}, env = {} } = {}) {
   return { base, state, repo, run, git, remote };
 }
 
-test('06: removes of1/config exclusion, keeps others, commits + pushes', () => {
-  const f = fixture({ files: { '.hlxignore': 'foo\nof1/config\nof1/knowledge/\n' } });
-  const r = f.run('06-hlxignore.sh');
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.equal(readFileSync(join(f.repo, '.hlxignore'), 'utf8'), 'foo\nof1/knowledge/\n');
-  assert.match(f.remote('log -1 --format=%s main'), /allow of1\/config/);
-});
-test('06: nothing to do when not blocked', () => {
-  const f = fixture({ files: { '.hlxignore': 'foo\n' } });
-  const r = f.run('06-hlxignore.sh');
-  assert.equal(r.status, 0);
-  assert.match(r.stdout, /does not block/);
-  assert.equal(f.git('rev-list --count HEAD'), '1');
-});
-test('07: writes config.json domain, commits only that file', () => {
+const stubWriter = (f) => {
+  const w = join(f.base, 'writer.sh');
+  writeFileSync(w, `#!/bin/bash\necho "$@" >> ${f.base}/writer.log\ncp "\${@: -1}" ${f.base}/rows.json\n`); chmodSync(w, 0o755);
+  return w;
+};
+test('07: uploads the config sheet to DA, no git commit', () => {
   const f = fixture();
-  writeFileSync(join(f.repo, 'other.txt'), 'staged'); f.git('add other.txt');
-  const r = f.run('07-config-json.sh', [], { DOMAIN: 'd.com' });
+  const before = f.git('rev-list --count HEAD');
+  const r = f.run('07-config-json.sh', [], { DOMAIN: 'd.com', OF1_DA_WRITE: stubWriter(f) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.deepEqual(JSON.parse(readFileSync(join(f.repo, 'of1/config/config.json'), 'utf8')), { domain: 'd.com' });
-  assert.equal(f.git('show --name-only --format= HEAD'), 'of1/config/config.json');
-  assert.equal(f.remote('rev-parse main'), f.git('rev-parse HEAD'));
+  assert.match(readFileSync(join(f.base, 'writer.log'), 'utf8'), /sheet --owner o --repo r --branch main --path of1\/config\/config --columns key,value/);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'domain', value: 'd.com' }]);
+  assert.equal(existsSync(join(f.repo, 'of1/config/config.json')), false);
+  assert.equal(f.git('rev-list --count HEAD'), before);
+});
+test('07: existing sheet kept, only a missing domain row is added; complete sheet not rewritten', () => {
+  const f = fixture();
+  const cb = join(f.base, 'cbin'); mkdirSync(cb, { recursive: true });
+  const sheet = join(f.base, 'sheet.json');
+  writeFileSync(join(cb, 'curl'), `#!/bin/bash\ncat ${sheet}\n`); chmodSync(join(cb, 'curl'), 0o755);
+  const path = { PATH: `${cb}:${process.env.PATH}` };
+  writeFileSync(sheet, JSON.stringify({ data: [{ key: 'contentIngestion.indexPath', value: '/s.json' }, { key: 'x', value: 'y' }] }));
+  let r = f.run('07-config-json.sh', [], { DOMAIN: 'd.com', OF1_DA_WRITE: stubWriter(f), ...path });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'contentIngestion.indexPath', value: '/s.json' }, { key: 'x', value: 'y' }, { key: 'domain', value: 'd.com' }]);
+  rmSync(join(f.base, 'writer.log'));
+  writeFileSync(sheet, JSON.stringify({ data: [{ key: 'domain', value: 'other.com' }, { key: 'x', value: 'y' }] }));
+  r = f.run('07-config-json.sh', [], { DOMAIN: 'd.com', OF1_DA_WRITE: stubWriter(f), ...path });
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /left untouched/);
+  assert.equal(existsSync(join(f.base, 'writer.log')), false);
+});
+test('cta: write-cta-template.sh uploads key,value rows', () => {
+  const f = fixture();
+  writeFileSync(join(f.state, 'repo-config.json'), JSON.stringify({ owner: 'o', repo: 'r', branch: 'main' }));
+  const cta = join(f.base, 'cta.json');
+  writeFileSync(cta, JSON.stringify({ html: '<div>{{title}}</div>', slots: ['title'], fallback: { title: 'T', description: 'D', buttonText: 'B' } }));
+  const script = join(skillDir, '../of1-build-cta-template/scripts/write-cta-template.sh');
+  const r = spawnSync('bash', [script, cta], { encoding: 'utf8', env: { PATH: process.env.PATH, OF1_STATE_DIR: f.state, OF1_DA_WRITE: stubWriter(f) } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(join(f.base, 'writer.log'), 'utf8'), /--path of1\/config\/cta-template --columns key,value/);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'html', value: '<div>{{title}}</div>' }, { key: 'fallback.title', value: 'T' }, { key: 'fallback.description', value: 'D' }, { key: 'fallback.buttonText', value: 'B' }]);
 });
 test('08: creates helix-query.yaml when absent', () => {
   const f = fixture();
@@ -76,23 +95,15 @@ test('08: SKIP_HELIX_QUERY=1 skips', () => {
   assert.equal(existsSync(join(f.repo, 'helix-query.yaml')), false);
 });
 const legacy = { 'of1/config/config.json': '{}', 'of1/config/personas.json': '{}', 'of1/config/cta-template.json': '{}', 'of1/config/knowledge.json': '{}' };
-test('03b remove: removes legacy, keeps config.json (and cta-template only when flagged)', () => {
-  let f = fixture({ files: legacy });
-  let r = f.run('03b-legacy-config.sh', ['remove']);
-  assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.equal(f.git('ls-files of1/config'), 'of1/config/config.json');
-  f = fixture({ files: legacy });
-  r = f.run('03b-legacy-config.sh', ['remove'], { OF1_CTA_TEMPLATE: '1' });
-  assert.equal(f.git('ls-files of1/config'), 'of1/config/cta-template.json\nof1/config/config.json'.split('\n').sort().join('\n'));
-  assert.equal(f.remote('rev-parse main'), f.git('rev-parse HEAD'));
-});
-test('03b: keep leaves files; no arg interactive exits 2; non-interactive removes', () => {
-  let f = fixture({ files: legacy });
-  assert.equal(f.run('03b-legacy-config.sh', ['keep']).status, 0);
+test('03b: tracked of1/config stops with exit 3 and the migrate message, no removal even non-interactive', () => {
+  const f = fixture({ files: legacy });
+  const r = f.run('03b-legacy-config.sh', [], { OF1_NON_INTERACTIVE: '1' });
+  assert.equal(r.status, 3);
+  assert.match(r.stderr, /^Legacy OF1 setup found: run of1-skills:of1-migrate$/m);
   assert.equal(f.git('ls-files of1/config').split('\n').length, 4);
-  assert.equal(f.run('03b-legacy-config.sh').status, 2);
-  assert.equal(f.run('03b-legacy-config.sh', [], { OF1_NON_INTERACTIVE: '1' }).status, 0);
-  assert.equal(f.git('ls-files of1/config'), 'of1/config/config.json');
+});
+test('03b: nothing tracked passes', () => {
+  assert.equal(fixture().run('03b-legacy-config.sh').status, 0);
 });
 test('09: writes documented fields', () => {
   const f = fixture();
@@ -128,18 +139,18 @@ test('01: resets local state files', () => {
   assert.equal(existsSync(join(f.state, 'setup.json')), true);
 });
 test('07/09: refuse empty domain (never write "domain": "")', () => {
-  for (const [s, p] of [['07-config-json.sh', 'of1/config/config.json'], ['09-repo-config.sh', null]]) {
+  for (const [s, p] of [['07-config-json.sh', 'config-rows.json'], ['09-repo-config.sh', null]]) {
     const f = fixture();
     const r = f.run(s, [], { DOMAIN: '' });
     assert.equal(r.status, 1, s + r.stderr);
     assert.match(r.stderr, /DOMAIN/);
-    assert.equal(existsSync(join(p ? f.repo : f.state, p || 'repo-config.json')), false);
+    assert.equal(existsSync(join(f.state, p || 'repo-config.json')), false);
   }
 });
 test('07/09: resolve domain themselves (argument, no exported DOMAIN)', () => {
   const f = fixture();
-  assert.equal(f.run('07-config-json.sh', ['arg.com']).status, 0);
-  assert.deepEqual(JSON.parse(readFileSync(join(f.repo, 'of1/config/config.json'), 'utf8')), { domain: 'arg.com' });
+  assert.equal(f.run('07-config-json.sh', ['arg.com'], { OF1_DA_WRITE: stubWriter(f) }).status, 0);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'domain', value: 'arg.com' }]);
   assert.equal(f.run('09-repo-config.sh', ['arg.com']).status, 0);
   assert.equal(JSON.parse(readFileSync(join(f.state, 'repo-config.json'), 'utf8')).domain, 'arg.com');
 });

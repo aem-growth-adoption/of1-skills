@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-# Step 3: push the git config.
+# Step 3: preview the config docs/sheets (config lives in DA; nothing is committed to git).
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
-# Only paths that exist (cta-template.json is absent when `OF1_CTA_TEMPLATE` is off).
-PUSH=()
-for f in "${ALLOWED[@]}"; do [ -f "$f" ] && PUSH+=("$f"); done
-git add -- "${PUSH[@]}"
-if ! git diff --cached --quiet -- "${PUSH[@]}"; then
-  git commit -m "feat: OF1 config for ${DOMAIN}" -- "${PUSH[@]}"
-  # Rebase onto the remote first so a concurrent push never rejects ours.
-  . "$LIB/git-push.sh"
-  git_push_rebased "$BRANCH" || exit 1
-fi
+. "$LIB/curl-auth.sh"
+for p in of1/config/config of1/config/cta-template of1/config/suggestions of1/config/template-list of1/config/personas of1/config/audiences; do
+  code=$(of1_curl_auth DA_TOKEN auth -- -s -o /dev/null -w '%{http_code}' "https://admin.da.live/source/${OWNER}/${REPO}/${p}.json")
+  [ "$code" = 200 ] || continue
+  of1_curl_auth DA_TOKEN auth -- -s -o /dev/null -X POST "https://admin.hlx.page/preview/${OWNER}/${REPO}/${BRANCH}/${p}.json" \
+    && echo "✓ previewed $p"
+done

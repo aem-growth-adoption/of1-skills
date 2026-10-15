@@ -10,7 +10,12 @@ of1_load_env() {
   DOMAIN=$(printf '%s\n' "$out" | sed -n 4p)
   PREVIEW_HOST="${BRANCH}--${REPO}--${OWNER}.aem.page"
   PREVIEW_BASE="https://${PREVIEW_HOST}"
-  TENANT_ID="${BRANCH}--${REPO}--${OWNER}"
+  TENANT_ID=$(printf '%s/%s' "$OWNER" "$REPO" | tr '[:upper:]' '[:lower:]')
   WORKER_URL="${OF1_GENWEB_URL:-https://of1-gen-web-service.franklin-prod.workers.dev}"
-  export OWNER REPO BRANCH DOMAIN PREVIEW_BASE TENANT_ID WORKER_URL PREVIEW_HOST
+  # Dev workers pair with the --dev proxy hosts; OF1_PROXY_SUFFIX (e.g. "--dev", "--alice", or empty) overrides.
+  local sfx
+  if [ -n "${OF1_PROXY_SUFFIX+x}" ]; then sfx="$OF1_PROXY_SUFFIX"; else case "$WORKER_URL" in *-dev.*|*-dev-*|*--dev*) sfx="--dev" ;; *) sfx="" ;; esac; fi
+  PROXY_HOST=$(printf '%s--%s--%s%s' "$BRANCH" "$REPO" "$OWNER" "$sfx" | tr '[:upper:]' '[:lower:]')
+  PROXY_BASE="https://${PROXY_HOST}.of1.live"
+  export OWNER REPO BRANCH DOMAIN PREVIEW_BASE TENANT_ID WORKER_URL PREVIEW_HOST PROXY_HOST PROXY_BASE
 }

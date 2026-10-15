@@ -23,7 +23,7 @@ result shape: [`docs/contract.md`](docs/contract.md).
 
 | Skill | Description |
 |-------|-------------|
-| `of1-check-dependencies` | Verify prerequisites — skills, tools, and repo state; write `repo-config.json` and the git `of1/config/config.json` (`{domain}`) |
+| `of1-check-dependencies` | Verify prerequisites — skills, tools, and repo state; write `repo-config.json` and the DA sheet `/of1/config/config` |
 | `of1-integration` | Introduce OF1 onto an existing EDS/Stardust site — the driver / entry point |
 | `of1-extract-design` | Extract design tokens (`DESIGN.json`) from the site's own preview URL, when not already present |
 | `of1-build-templates` | Author branded generative-search templates as DA documents under `/templates`, composed from the site's own blocks |
@@ -31,16 +31,14 @@ result shape: [`docs/contract.md`](docs/contract.md).
 | `of1-extract-brand-voice` | Extract the brand voice into the DA document `/of1/brand-voice` |
 | `of1-extract-content` | Publish the site's page content to DA `/of1/knowledge/**` (RAG) and infer personas into the DA sheet `/of1/config/personas` |
 | `of1-build-quick-suggestions` | Generate suggestion chips (DA sheet `/of1/config/suggestions`) and the `/of1` landing copy |
-| `of1-build-cta-template` | Only with `cta-template`: generate a branded CTA template (git `of1/config/cta-template.json`; read by the gen-web worker as `cta-template`, served via `/api/personalize` `inject_cta`; personas are read by the preview extension / edge proxy instead) |
-| `of1-publish` | Assert the git config set, sync the OF1 worker, generate the demo hub (DA edit links + status panel), and run the pre-launch checks |
+| `of1-build-cta-template` | Only with `cta-template`: generate a branded CTA template (DA sheet `of1/config/cta-template`; read by the gen-web worker as `cta-template`, served via `/api/personalize` `inject_cta`; personas are read by the preview extension / edge proxy instead) |
+| `of1-publish` | Assert no git config, sync the OF1 worker (preview + publish stage; `publish-live` publishes first), generate the demo hub (DA edit links + status panel), and run the pre-launch checks |
 
 Author-tunable config lives in DA (edit, preview, then sync — see
 `skills/of1-integration/knowledge/da-sync-app.md`). A run commits only
 `blocks/of1/`, new general-purpose `blocks/<name>/`, `helix-query.yaml` (only if
-absent), `.hlxignore` (only if it blocked `of1/config`), `of1/config/config.json`,
-`stardust/` + `PRODUCT.md` (only when extraction ran), and `deliverables/index.html`
-(+ `deliverables/brand-review.html` when extraction ran). Legacy `of1/config/*.json`
-files from an earlier integration are removed (`of1-check-dependencies` step 3b).
+absent), `stardust/` + `PRODUCT.md` (only when extraction ran), and `deliverables/index.html`
+(+ `deliverables/brand-review.html` when extraction ran). Config is never committed. A repo with git-tracked `of1/config/*` (older integration) makes `of1-check-dependencies` step 3b exit `3` (`Legacy OF1 setup found: run of1-skills:of1-migrate`); the run is reported `failed`. `of1-migrate` (own skill, `of1-migrate/SKILL.md`; batch: `assets/batch.mjs`) moves such a repo to DA sheets and the `org/repo` tenant. Tenant id = `org/repo`; proxy host `<branch>--<repo>--<owner>.of1.live`.
 Config shapes: `skills/of1-integration/knowledge/worker-config-schemas.md`.
 
 ## Usage
