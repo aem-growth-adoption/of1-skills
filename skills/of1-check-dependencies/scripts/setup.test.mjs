@@ -54,7 +54,7 @@ test('cta: write-cta-template.sh uploads key,value rows', () => {
   const r = spawnSync('bash', [script, cta], { encoding: 'utf8', env: { PATH: process.env.PATH, OF1_STATE_DIR: f.state, OF1_DA_WRITE: stubWriter(f) } });
   assert.equal(r.status, 0, r.stderr);
   assert.match(readFileSync(join(f.base, 'writer.log'), 'utf8'), /--path of1\/config\/cta-template --columns key,value/);
-  assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')).map((x) => x.key), ['html', 'fallback.title', 'fallback.description', 'fallback.buttonText']);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'html', value: '<div>{{title}}</div>' }, { key: 'fallback.title', value: 'T' }, { key: 'fallback.description', value: 'D' }, { key: 'fallback.buttonText', value: 'B' }]);
 });
 test('08: creates helix-query.yaml when absent', () => {
   const f = fixture();

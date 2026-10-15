@@ -124,7 +124,7 @@ function flatten(v, prefix, out) {
   return out;
 }
 
-export const OWNED_PATHSPECS = ['blocks/of1', 'of1', 'deliverables', 'helix-query.yaml', '.hlxignore'];
+export const OWNED_PATHSPECS = ['blocks/of1', 'of1', 'deliverables', 'helix-query.yaml'];
 
 export function diffShapes(a, b) {
   const fa = flatten(a, '', {});

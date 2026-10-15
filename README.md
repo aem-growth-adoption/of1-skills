@@ -23,7 +23,7 @@ result shape: [`docs/contract.md`](docs/contract.md).
 
 | Skill | Description |
 |-------|-------------|
-| `of1-check-dependencies` | Verify prerequisites — skills, tools, and repo state; write `repo-config.json` and the git `of1/config/config.json` (`{domain}`) |
+| `of1-check-dependencies` | Verify prerequisites — skills, tools, and repo state; write `repo-config.json` and the DA sheet `/of1/config/config` |
 | `of1-integration` | Introduce OF1 onto an existing EDS/Stardust site — the driver / entry point |
 | `of1-extract-design` | Extract design tokens (`DESIGN.json`) from the site's own preview URL, when not already present |
 | `of1-build-templates` | Author branded generative-search templates as DA documents under `/templates`, composed from the site's own blocks |
@@ -37,10 +37,8 @@ result shape: [`docs/contract.md`](docs/contract.md).
 Author-tunable config lives in DA (edit, preview, then sync — see
 `skills/of1-integration/knowledge/da-sync-app.md`). A run commits only
 `blocks/of1/`, new general-purpose `blocks/<name>/`, `helix-query.yaml` (only if
-absent), `.hlxignore` (only if it blocked `of1/config`), `of1/config/config.json`,
-`stardust/` + `PRODUCT.md` (only when extraction ran), and `deliverables/index.html`
-(+ `deliverables/brand-review.html` when extraction ran). Legacy `of1/config/*.json`
-files from an earlier integration are removed (`of1-check-dependencies` step 3b).
+absent), `stardust/` + `PRODUCT.md` (only when extraction ran), and `deliverables/index.html`
+(+ `deliverables/brand-review.html` when extraction ran). Config is never committed. A repo with git-tracked `of1/config/*` (older integration) makes `of1-check-dependencies` step 3b exit `3` (`Legacy OF1 setup found: run of1-skills:of1-migrate`); the run is reported `failed`.
 Config shapes: `skills/of1-integration/knowledge/worker-config-schemas.md`.
 
 ## Usage

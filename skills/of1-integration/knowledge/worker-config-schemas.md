@@ -3,7 +3,7 @@
 The OF1 worker reads tenant config from R2. A **sync** (`POST /api/tenants/<id>/sync`, tenant id
 `<branch>--<repo>--<owner>`) pulls each source from the site's preview host
 `https://<id>.aem.page` and stores it. Most author-tunable config is a **DA document or sheet**;
-only `config.json` (and, in pipeline mode, `cta-template.json`) is committed to git.
+nothing under `of1/config/` is committed to git (`config` and `cta-template` are DA sheets).
 
 > **DA config is shared per org/repo, not per branch.** DA keeps one content tree per
 > `<owner>/<repo>`; every branch's preview host reads the same `/of1/**` and
@@ -29,8 +29,7 @@ host, not DA source. `skills/of1-integration/assets/da-write.mjs` writes + previ
 
 **Never commit `of1/config/personas.json` or `of1/config/suggestions.json`.** A git file beats a DA
 sheet at the same path on EDS, so a committed file would shadow the authored sheet. `of1-publish`
-check 1 fails if any `of1/config/*.json` other than `config.json` (+ `cta-template.json` in pipeline
-mode) is tracked in git.
+check 1 fails if any `of1/config/*` is tracked in git.
 
 ---
 
@@ -62,7 +61,7 @@ Config is authored in DA (`/of1/config/*` sheets), never committed to git.
 
 ---
 
-## `cta-template.json` (git, only with `cta-template`)
+## `cta-template` (DA sheet `/of1/config/cta-template`, only with `cta-template`)
 
 Produced only when `OF1_CTA_TEMPLATE=1` (the `cta-template` argument). The gen-web worker reads it (synced as `cta-template`) and serves it
 to customer pages via `/api/personalize` (`inject_cta` event); personas are read by the preview extension / edge proxy, not the worker. Optional for the worker — not part of the ready gate.

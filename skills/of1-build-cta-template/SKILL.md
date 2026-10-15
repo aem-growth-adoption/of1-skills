@@ -39,7 +39,6 @@ Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `cta-t
 ```json
 {
   "html": "<div style=\"...\"><h2 style=\"...\">{{title}}</h2><p style=\"...\">{{description}}</p><a href=\"{{href}}\" style=\"...\">{{buttonText}}</a></div>",
-  "slots": ["title", "description", "buttonText"],
   "fallback": {
     "title": "...",
     "description": "...",
@@ -48,7 +47,7 @@ Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `cta-t
 }
 ```
 
-**Important:** The `{{href}}` placeholder is NOT a slot — it's resolved at runtime by the worker to the tenant's OF1 endpoint URL with `?personalize=1`. Do NOT include `href` in the `slots` array.
+**Important:** The `{{href}}` placeholder is not a fill-in field — it's resolved at runtime by the worker to the tenant's OF1 endpoint URL with `?personalize=1`.
 
 ## Process
 
@@ -79,7 +78,7 @@ Self-contained HTML block using **inline styles only** (no external CSS). Must i
 
 - `{{title}}` — personalized heading (5–10 words)
 - `{{description}}` — personalized body text (1 sentence)
-- `{{href}}` — resolved at runtime (NOT in slots)
+- `{{href}}` — resolved at runtime (not a fill-in field)
 - `{{buttonText}}` — personalized button label (2–4 words)
 
 ```html
@@ -118,7 +117,6 @@ bash "$SKILL_DIR/scripts/write-cta-template.sh" "$OF1_STATE_DIR/cta-template.jso
 - [ ] The CTA would not look out of place if screenshot alongside the actual site
 - [ ] Fallback content is specific to the brand/industry, not generic
 - [ ] HTML is valid, self-contained, uses only inline styles
-- [ ] `slots` array contains exactly `["title", "description", "buttonText"]` (NOT href)
 
 ## Example
 

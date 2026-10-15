@@ -7,6 +7,7 @@ automation harness) may rely on the following. Tested by `lib/contract.test.mjs`
 
 | Contract | Detail |
 |---|---|
+| Legacy setup | `of1-check-dependencies` exits `3` (`Legacy OF1 setup found: run of1-skills:of1-migrate`) when any `of1/config/*` is git-tracked; the driver writes `of1-integration-result.json` with `status: failed` and a summary naming `of1-skills:of1-migrate`. |
 | Status files | `$OF1_STATE_DIR/<skill>-status.json` with at least `status` (`running`, `done`, `review`, `failed`) and `skill`. One per skill: `of1-check-dependencies`, `of1-extract-design`, `of1-build-templates`, `of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-publish`. `of1-build-templates` phase files (`of1-build-templates-base-status.json`, `...-intent-*-status.json`) keep a different basename so they never collide with the skill's final file. |
 | Additive files | `of1-integration-result.json`. Callers must ignore file names they do not know. |
 | State dir | Skills write to `$OF1_STATE_DIR` when set. Callers that poll must set it explicitly; the default (`$PWD/.of1/state`) is not part of the contract. |

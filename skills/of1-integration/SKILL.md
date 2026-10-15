@@ -49,7 +49,7 @@ of this plugin that is the base directory the Skill tool reports when you load i
 
 ## 2. Verify dependencies + repo state (inline)
 
-Invoke the `of1-check-dependencies` skill with the Skill tool (not an Agent dispatch — this step is light and must run in your own context to read the verified state; export `SKILL_DIR` for it first). If it fails, surface the exact error, write the result file with `failed`, and stop.
+Invoke the `of1-check-dependencies` skill with the Skill tool (not an Agent dispatch — this step is light and must run in your own context to read the verified state; export `SKILL_DIR` for it first). If it fails, surface the exact error, write the result file with `failed`, and stop. Exit `3` (`Legacy OF1 setup found: run of1-skills:of1-migrate`) is a `failed` result whose summary names `of1-skills:of1-migrate`.
 
 After it succeeds, read `$OF1_STATE_DIR/setup.json` for `stateDir`/`of1Repo` and `$OF1_STATE_DIR/repo-config.json` for `owner`/`repo`/`branch`/`domain`. Use these for all subsequent steps.
 

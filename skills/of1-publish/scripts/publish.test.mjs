@@ -18,6 +18,7 @@ case "$url" in
   */list/o/r/templates) printf '%s\\n%s' "$(cat "$d/da-list.json")" "$(cat "$d/da-code")";;
   */query-index.json) cat "$d/qi.json" 2>/dev/null || exit 22;;
   */api/generate) echo "$url" >> "$d/gen-urls.log"; cat "$d/gen.ndjson" 2>/dev/null || exit 22; [ "$hasw" = 1 ] && printf '\\n%s' "$(cat "$d/gen-code" 2>/dev/null || echo 200)";;
+  */api/personalize) cat "$d/pers.ndjson" 2>/dev/null || exit 22; [ "$hasw" = 1 ] && printf '\\n200';;
   */sitemap.json) cat "$d/sitemap.json" 2>/dev/null || exit 22;;
   *) exit 22;;
 esac
@@ -88,6 +89,7 @@ test('02b: user-set indexPath untouched', () => {
   assert.match(r.stdout, /user-set/);
 });
 
+const hub = (f, name, o) => { mkdirSync(join(f.state, 'hub'), { recursive: true }); writeFileSync(join(f.state, 'hub', name), JSON.stringify(o)); };
 test('01: any tracked of1/config file fails and is listed; none passes', () => {
   const bad = fixture();
   const r = bad.run('01-assert-git-config.sh');
@@ -105,10 +107,19 @@ test('check 7: reads hasCtaTemplate from hub/status.json', () => {
   const r = f.run('checks.sh', ['7'], { OF1_CTA_TEMPLATE: '1' });
   assert.equal(r.status, 1);
   assert.match(r.stderr, /hasCtaTemplate/);
+  hub(f, 'status.json', { ready: true, config: { hasCtaTemplate: true } });
+  writeFileSync(join(f.fake, 'pers.ndjson'), '{"type":"inject_cta"}\n');
+  const ok = f.run('checks.sh', ['7'], { OF1_CTA_TEMPLATE: '1' });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.match(ok.stdout, /inject_cta/);
+});
+test('check 7: missing hub/status.json fails', () => {
+  const f = fixture();
+  const r = f.run('checks.sh', ['7'], { OF1_CTA_TEMPLATE: '1' });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /hasCtaTemplate/);
 });
 
-function hub(f, name, o) { return hubImpl(f, name, o); }
-const hubImpl = (f, name, o) => { mkdirSync(join(f.state, 'hub'), { recursive: true }); writeFileSync(join(f.state, 'hub', name), JSON.stringify(o)); };
 test('checks 2: indexed 0 fails; warning-only errors pass', () => {
   const f = fixture();
   hub(f, 'sync.json', { ok: true, errors: [], content: { indexed: 0 } });

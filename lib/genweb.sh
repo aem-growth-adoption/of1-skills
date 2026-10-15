@@ -9,14 +9,15 @@ of1_proxy_base() { printf '%s' "${OF1_GENERATE_BASE_URL:-${PROXY_BASE}}"; }
 # curl via `-K -` (stdin, printf is a builtin): never in argv/ps, never echoed or saved.
 # Never returns non-zero for sync errors: <out-file> always ends up valid JSON.
 of1_sync() {
-  local worker="$1" tenant="$2" out="$3" raw code body org repo stage="${4:-preview}"
+  local worker="$1" tenant="$2" out="$3" raw code body org repo stage="${4:-preview}" ref_q=""
   org="${tenant%%/*}"; repo="${tenant#*/}"
+  [ -n "${BRANCH:-}" ] && ref_q="&ref=$(jq -rn --arg b "$BRANCH" '$b|@uri')"
   if [ -z "${DA_TOKEN:-}" ]; then
     echo "✗ sync skipped: no DA token (set DA_TOKEN/ADOBE_IMS_TOKEN/OF1_TOKEN_FILE or provide .hlx/.da-token.json)" >&2
     printf '{"ok":false,"error":"no DA token"}\n' > "$out"; return 0
   fi
   raw=$(printf 'header = "Authorization: Bearer %s"\n' "$DA_TOKEN" \
-    | curl -s -K - -X POST -w '\n%{http_code}' "${worker}/api/tenants/${org}/${repo}/sync?stage=${stage}&ref=${BRANCH}")
+    | curl -s -K - -X POST -w '\n%{http_code}' "${worker}/api/tenants/${org}/${repo}/sync?stage=${stage}${ref_q}")
   code="${raw##*$'\n'}"; body="${raw%$'\n'*}"
   case "$code" in
     401|403)

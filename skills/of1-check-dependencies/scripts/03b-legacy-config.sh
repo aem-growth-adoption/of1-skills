@@ -4,7 +4,7 @@
 LEGACY=$(git ls-files of1/config)
 if [ -n "$LEGACY" ]; then
   echo "Legacy OF1 setup found: run of1-skills:of1-migrate" >&2
-  printf '    %s\n' $LEGACY >&2
+  git ls-files of1/config | sed 's/^/    /' >&2
   exit 3
 fi
 echo "✓ No of1/config files tracked in git"

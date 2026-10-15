@@ -6,7 +6,7 @@ SRC="${1:?usage: write-cta-template.sh <cta.json>}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../../../lib/env.sh"; of1_load_env || exit 1
 ROWS="${OF1_STATE_DIR:?OF1_STATE_DIR required}/cta-template-rows.json"
-jq -e '.html and .fallback.title and .fallback.description and .fallback.buttonText' "$SRC" >/dev/null \
+jq -e '[.html, .fallback.title, .fallback.description, .fallback.buttonText] | all(type == "string" and length > 0)' "$SRC" >/dev/null \
   || { echo "✗ FAIL: $SRC needs html and fallback.{title,description,buttonText}" >&2; exit 1; }
 jq -c '[{key:"html",value:.html},{key:"fallback.title",value:.fallback.title},
         {key:"fallback.description",value:.fallback.description},{key:"fallback.buttonText",value:.fallback.buttonText}]' "$SRC" > "$ROWS"
