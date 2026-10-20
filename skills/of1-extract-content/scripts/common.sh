@@ -16,7 +16,7 @@ if [ -n "$OF1_CONTENT_SOURCE" ]; then
   SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
 else
   # Default: crawl the site's own EDS preview.
-  SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
+  SOURCE_BASE="https://main--${REPO}--${OWNER}.aem.page"
 fi
 echo "Extracting from: $SOURCE_BASE" >&2
 

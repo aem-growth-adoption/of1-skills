@@ -52,7 +52,7 @@ test('write-doc: check exists/absent, skip writes nothing, overwrite calls da-wr
   assert.throws(() => readFileSync(join(f.fake, 'node.log')));
   assert.equal(f.run('write-doc.sh', ['overwrite']).status, 0);
   const log = readFileSync(join(f.fake, 'node.log'), 'utf8');
-  assert.match(log, /da-write\.mjs doc --owner o --repo r --branch main --path of1\/brand-voice --file .*brand-voice\.html/);
+  assert.match(log, /da-write\.mjs doc --owner o --repo r --path of1\/brand-voice --file .*brand-voice\.html/);
   assert.equal(f.run('write-doc.sh', ['bogus']).status, 2);
 });
 

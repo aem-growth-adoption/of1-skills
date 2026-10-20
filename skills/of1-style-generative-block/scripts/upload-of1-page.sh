@@ -3,7 +3,7 @@
 # Also run by of1-publish step 2.
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 # api-endpoint = the host the *deployed* page loads the SDK from AND calls /api/* on. It is the tenant's
-# proxied host ($PROXY_BASE, https://<ref>--<repo>--<org>[--dev].of1.live), never gen-web directly: gen-web
+# proxied host ($PROXY_BASE, https://main--<repo>--<org>[--dev].of1.live), never gen-web directly: gen-web
 # rejects anonymous browser calls and only the proxy holds the caller credential (it also serves /sdk/*).
 # OF1_API_ENDPOINT overrides (custom domain, or a worker for local experiments); it must be a bare https origin.
 API_ENDPOINT="${OF1_API_ENDPOINT:-$PROXY_BASE}"
@@ -40,7 +40,7 @@ esac
 
 # Trigger preview so the URL is live
 PREVIEW_RESP=$(of1_curl_auth DA_TOKEN auth+source -- -s -w "\n%{http_code}" -X POST \
-  "https://admin.hlx.page/preview/${OWNER}/${REPO}/${BRANCH}/of1")
+  "https://admin.hlx.page/preview/${OWNER}/${REPO}/main/of1")
 PREVIEW_STATUS=$(echo "$PREVIEW_RESP" | tail -1)
 case "$PREVIEW_STATUS" in
   2??) ;;

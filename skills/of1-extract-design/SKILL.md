@@ -13,7 +13,7 @@ Two callers, one procedure:
 - **A caller wanting design extraction first** — the target URL is the live external domain.
 - **of1-integration's extraction fallback** — invoked when no `DESIGN.json` exists yet for an
   existing EDS/Stardust site; the target URL is that site's own EDS preview URL
-  (`https://<branch>--<repo>--<owner>.aem.page`).
+  (`https://main--<repo>--<owner>.aem.page`).
 
 Everything below is identical either way — only the target URL argument changes.
 
@@ -30,7 +30,7 @@ Scripts live in `$SKILL_DIR/scripts/` (run `bash "$SKILL_DIR/scripts/<name>"`); 
 ## Inputs
 
 - **Target URL** (argument) — the live external domain (e.g. `https://frescopa.coffee`) when run
-  for a standalone extraction, or the site's own EDS preview URL (`https://<branch>--<repo>--<owner>.aem.page`)
+  for a standalone extraction, or the site's own EDS preview URL (`https://main--<repo>--<owner>.aem.page`)
   when run as of1-integration's extraction fallback.
 - `repo-config.json` (from step 2)
 
@@ -117,7 +117,7 @@ Logo SVG completeness, deliverable image paths, and image format rules follow th
 ## Completion
 
 ```bash
-REPORT_URL="https://$(jq -r '"\(.branch)--\(.repo)--\(.owner)"' "$OF1_STATE_DIR/repo-config.json").aem.page/deliverables/brand-review.html"
+REPORT_URL="https://$(jq -r '"main--\(.repo)--\(.owner)"' "$OF1_STATE_DIR/repo-config.json").aem.page/deliverables/brand-review.html"
 cat > "$OF1_STATE_DIR/of1-extract-design-status.json" <<EOF
 {
   "stage": 2,

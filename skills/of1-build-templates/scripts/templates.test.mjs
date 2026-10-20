@@ -151,7 +151,7 @@ test('write-template-list: filters/sorts names, writes rows, calls writer', () =
   assert.deepEqual(JSON.parse(readFileSync(join(f.state, 'template-list-rows.json'), 'utf8')), [{ name: 'alpha' }, { name: 'zeta' }]);
   assert.match(r.stderr, /bad name/);
   const args = readFileSync(join(f.fake, 'writer.args'), 'utf8');
-  assert.match(args, /sheet --owner o --repo r --branch main --path of1\/config\/template-list --columns name --rows .*template-list-rows\.json/);
+  assert.match(args, /sheet --owner o --repo r --path of1\/config\/template-list --columns name --rows .*template-list-rows\.json/);
 });
 test('write-template-list: fails on zero valid names and on writer failure', () => {
   const f = fixture();

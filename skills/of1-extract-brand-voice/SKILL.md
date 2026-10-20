@@ -25,7 +25,7 @@ Nothing is written to git — the brand voice lives only in DA at `/of1/brand-vo
 
 ## Source resolution — live site vs replica
 
-`common.sh` sets `SOURCE_BASE`: `https://${OF1_CONTENT_SOURCE}` (the REAL external site) when `OF1_CONTENT_SOURCE` is set, else the site's own EDS preview `https://${BRANCH}--${REPO}--${OWNER}.aem.page`. It is the root for every crawl below; everything else is identical either way.
+`common.sh` sets `SOURCE_BASE`: `https://${OF1_CONTENT_SOURCE}` (the REAL external site) when `OF1_CONTENT_SOURCE` is set, else the site's own EDS preview `https://main--${REPO}--${OWNER}.aem.page`. It is the root for every crawl below; everything else is identical either way.
 
 ## Inputs
 

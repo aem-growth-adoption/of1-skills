@@ -67,7 +67,7 @@ echo "DESIGN.json present: $HAS_DESIGN_JSON"
 
 If `HAS_DESIGN_JSON=false`, the extraction step runs the `of1-extract-design` skill (inline via
 the Skill tool) against the site's own EDS preview URL
-(`https://<branch>--<repo>--<owner>.aem.page`) to produce `stardust/current/DESIGN.json` (plus
+(`https://main--<repo>--<owner>.aem.page`) to produce `stardust/current/DESIGN.json` (plus
 `DESIGN.md`, screenshots, and `deliverables/brand-review.html`). If `true`, the extraction step
 is skipped entirely — of1-integration reports the extraction step's status as `"done"` either
 way. (`of1-extract-design` ends with status `review`; the driver treats that as approved and continues.)

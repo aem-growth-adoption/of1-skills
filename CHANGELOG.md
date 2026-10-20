@@ -1,8 +1,15 @@
 # Changelog
 
+## 0.4.2 (no ref)
+
+- The branch ref is not a tenant concept. `of1_sync` no longer sends `&ref=`; gen-web reads `main--<repo>--<org>`. `PROXY_HOST`, `PREVIEW_HOST`/`PREVIEW_BASE`, the demo hub, and Helix admin calls (`aemAction`, `aem_preview`, `da-write.mjs live`) use the literal `main`. `repo-config.json` `branch` stays readable (older state) but is ignored for URLs and no longer required.
+- `of1-migrate` and `of1-publish` stop with "OF1 setup runs from the main branch (checkout main)" off `main` (detached-HEAD guard kept). `of1-migrate-result.json` drops `ref`.
+- `batch.mjs` drops the `repo@branch` syntax and `--branch`; it clones the default branch (repos are expected to have OF1 on `main`).
+- `da-write.mjs`, `publish-knowledge-da.mjs`, `download-images.mjs` no longer take `--branch`.
+
 ## 0.4.1
 
-- `of1-style-generative-block`: the `/of1` page's `api-endpoint` is now the tenant's proxied host (`$PROXY_BASE`, `https://<ref>--<repo>--<org>[--dev].of1.live`), not the gen-web URL. Production gen-web rejects anonymous browser calls (401) and only the edge proxy holds the caller credential, so a page calling gen-web directly rendered no chips. `OF1_API_ENDPOINT` overrides (bare https origin, validated). `upload-of1-page.sh` fails if `<api-endpoint>/sdk/of1-client.js` is not 200.
+- `of1-style-generative-block`: the `/of1` page's `api-endpoint` is now the tenant's proxied host (`$PROXY_BASE`, `https://main--<repo>--<org>[--dev].of1.live`), not the gen-web URL. Production gen-web rejects anonymous browser calls (401) and only the edge proxy holds the caller credential, so a page calling gen-web directly rendered no chips. `OF1_API_ENDPOINT` overrides (bare https origin, validated). `upload-of1-page.sh` fails if `<api-endpoint>/sdk/of1-client.js` is not 200.
 - **Requires of1-edge-proxy with `/sdk/*` and tenant-origin CORS on the passthrough** (of1-edge-proxy #44 and #45) deployed. Pages written by 0.4.0 or earlier keep calling gen-web: re-run `of1-style-generative-block` (or `of1-publish`) to rewrite them.
 - Tests: new `upload-of1-page` cases (proxied default, dev suffix, override, unsafe override rejected, SDK gate); fixed the stale `domain` row assertion (`o/r`).
 

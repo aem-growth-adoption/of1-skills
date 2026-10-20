@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const script = path.join(path.dirname(fileURLToPath(import.meta.url)), 'download-images.mjs');
-const base = ['--owner', 'o', '--repo', 'r', '--branch', 'b'];
+const base = ['--owner', 'o', '--repo', 'r'];
 const run = (extra) => spawnSync(process.execPath, [script, ...base, ...extra], {
   encoding: 'utf8',
   env: { PATH: process.env.PATH },

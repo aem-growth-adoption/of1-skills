@@ -131,7 +131,7 @@ Fix failures and re-push before Completion. Per-section visual problems are the 
 After pushing, mark the step `review` and **STOP** — the user must open the OF1 page, try the chips, and approve (or request revisions) before the driver continues. `of1-publish` cannot start until both `of1-build-templates` (assemble) and this skill are approved.
 
 ```bash
-OF1_URL="https://$(jq -r '"\(.branch)--\(.repo)--\(.owner)"' "$OF1_STATE_DIR/repo-config.json").aem.page/of1"
+OF1_URL="https://$(jq -r '"main--\(.repo)--\(.owner)"' "$OF1_STATE_DIR/repo-config.json").aem.page/of1"
 cat > "$OF1_STATE_DIR/of1-style-generative-block-status.json" <<EOF
 { "stage": 3, "skill": "of1-style-generative-block", "status": "review",
   "deliverables": [ { "url": "${OF1_URL}", "label": "OF1 page" } ],

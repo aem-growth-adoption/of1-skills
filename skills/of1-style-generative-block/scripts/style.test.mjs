@@ -26,6 +26,7 @@ function fixture() {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'of1-sty-')));
   const [state, repo, bin, fake] = ['state', 'repo', 'bin', 'fake'].map((d) => join(base, d));
   [state, repo, bin, fake].forEach((p) => mkdirSync(p));
+  spawnSync('git', ['init', '-q', '-b', 'main', repo]);
   writeFileSync(join(state, 'repo-config.json'), JSON.stringify({ owner: 'o', repo: 'r', branch: 'main', domain: 'x.com' }));
   writeFileSync(join(bin, 'curl'), FAKE_CURL); chmodSync(join(bin, 'curl'), 0o755);
   const env = { PATH: `${bin}:${process.env.PATH}`, HOME: base, OF1_STATE_DIR: state, OF1_DEMO_REPO: repo,

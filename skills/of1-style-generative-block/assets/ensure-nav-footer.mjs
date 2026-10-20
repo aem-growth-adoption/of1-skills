@@ -50,8 +50,8 @@ async function putDoc(token, owner, repo, name, html) {
   if (!r.ok) fail(`PUT ${name}.html → HTTP ${r.status}`);
 }
 
-async function triggerPreview(token, owner, repo, branch, name) {
-  const err = await aemAction({ action: 'preview', owner, repo, branch, path: name, token });
+async function triggerPreview(token, owner, repo, name) {
+  const err = await aemAction({ action: 'preview', owner, repo, path: name, token });
   if (err) fail(`preview ${name} → ${err.match(/HTTP \d+/)?.[0] ?? err} (missing x-content-source-authorization or expired token?)`);
 }
 
@@ -112,7 +112,7 @@ function buildFooter(domain) {
 </div></main><footer></footer></body>`;
 }
 
-async function ensure(token, owner, repo, branch, name, previewBase, buildFn) {
+async function ensure(token, owner, repo, name, previewBase, buildFn) {
   // The header/footer blocks fetch the fragment via loadFragment(path) →
   // `${path}.plain.html`, so `.plain.html` is the URL that actually has to
   // resolve — check exactly that, not the bare doc.
@@ -123,7 +123,7 @@ async function ensure(token, owner, repo, branch, name, previewBase, buildFn) {
   }
   console.log(`  … /${name} missing — authoring a minimal branded ${name}`);
   await putDoc(token, owner, repo, name, buildFn());
-  await triggerPreview(token, owner, repo, branch, name);
+  await triggerPreview(token, owner, repo, name);
   if (!(await head200(fragUrl))) fail(`/${name}.plain.html still not 200 after PUT+preview — chrome will not render`);
   console.log(`  ✓ /${name} created and live`);
 }
@@ -132,19 +132,19 @@ async function main() {
   const stateDir = process.env.OF1_STATE_DIR;
   if (!stateDir) fail('OF1_STATE_DIR not set');
   const repoConfig = JSON.parse(fs.readFileSync(path.join(stateDir, 'repo-config.json'), 'utf8'));
-  const { owner, repo, branch, domain, repoDir } = repoConfig;
-  if (!owner || !repo || !branch) fail('repo-config.json missing owner/repo/branch');
+  const { owner, repo, domain, repoDir } = repoConfig;
+  if (!owner || !repo) fail('repo-config.json missing owner/repo');
 
   let token;
   try { token = await resolveToken(); } catch { fail('no DA token (set ADOBE_IMS_TOKEN or OF1_TOKEN_FILE)'); }
 
-  const previewBase = `https://${branch}--${repo}--${owner}.aem.page`;
+  const previewBase = `https://main--${repo}--${owner}.aem.page`;
   const rootDir = repoDir || '.';
   const slugs = discoverPages(rootDir);
 
   console.log(`Ensuring /nav and /footer for ${previewBase} (${slugs.length} content page(s) for nav)`);
-  await ensure(token, owner, repo, branch, 'nav', previewBase, () => buildNav(domain, slugs));
-  await ensure(token, owner, repo, branch, 'footer', previewBase, () => buildFooter(domain));
+  await ensure(token, owner, repo, 'nav', previewBase, () => buildNav(domain, slugs));
+  await ensure(token, owner, repo, 'footer', previewBase, () => buildFooter(domain));
   console.log('✓ Chrome fragments guaranteed.');
 }
 

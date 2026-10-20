@@ -7,7 +7,7 @@ if [ -n "${OF1_DA_WRITE:-}" ]; then WRITER=("$OF1_DA_WRITE"); else WRITER=(node 
 FAILED=(); N_OK=0
 note_fail() { FAILED+=("$1: $2"); echo "✗ $1: $2" >&2; }
 live() {
-  if "${WRITER[@]}" live --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" --path "$1"; then N_OK=$((N_OK + 1)); else note_fail "$1" "publish failed"; fi
+  if "${WRITER[@]}" live --owner "$OWNER" --repo "$REPO" --path "$1"; then N_OK=$((N_OK + 1)); else note_fail "$1" "publish failed"; fi
 }
 # present <da-source-path> -> 0 present, 1 absent (404), 2 probe error (401/403/5xx/network: recorded)
 present() {

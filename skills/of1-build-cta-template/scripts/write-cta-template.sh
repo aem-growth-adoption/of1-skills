@@ -12,6 +12,6 @@ jq -c '[{key:"html",value:.html},{key:"fallback.title",value:.fallback.title},
         {key:"fallback.description",value:.fallback.description},{key:"fallback.buttonText",value:.fallback.buttonText}]' "$SRC" > "$ROWS"
 if [ -n "${OF1_DA_WRITE:-}" ]; then WRITER=("$OF1_DA_WRITE")
 else WRITER=(node "$HERE/../../of1-integration/assets/da-write.mjs"); fi
-"${WRITER[@]}" sheet --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+"${WRITER[@]}" sheet --owner "$OWNER" --repo "$REPO" \
   --path of1/config/cta-template --columns key,value --rows "$ROWS" \
   || { echo "✗ FAIL: writing /of1/config/cta-template failed" >&2; exit 1; }

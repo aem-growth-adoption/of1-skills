@@ -1,13 +1,13 @@
-# Sourced by every of1-migrate script (bash). Runs in ONE EDS repo ($OF1_DEMO_REPO, branch = its current branch).
+# Sourced by every of1-migrate script (bash). Runs in ONE EDS repo ($OF1_DEMO_REPO, runs from main).
 SKILL_DIR="${SKILL_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 LIB="$SKILL_DIR/../../lib"
 : "${OF1_DEMO_REPO:?OF1_DEMO_REPO required}"; : "${OF1_STATE_DIR:?OF1_STATE_DIR required}"
 mkdir -p "$OF1_STATE_DIR/hub"
 cd "$OF1_DEMO_REPO" || exit 1
-[ "$(git rev-parse --abbrev-ref HEAD)" != HEAD ] || { echo "✗ FAIL: detached HEAD — check out the branch to migrate first (it is passed to the worker as ref)" >&2; exit 1; }
+. "$LIB/env.sh"; of1_require_main || exit 1
 if [ ! -f "$OF1_STATE_DIR/repo-config.json" ]; then
   _url=$(git remote get-url origin 2>/dev/null | sed -E 's#(\.git)?/?$##; s#.*[:/]([^/:]+)/([^/]+)$#\1 \2#')
-  jq -n --arg o "${_url% *}" --arg r "${_url#* }" --arg b "$(git rev-parse --abbrev-ref HEAD)" \
+  jq -n --arg o "${_url% *}" --arg r "${_url#* }" --arg b main \
     '{owner:$o, repo:$r, branch:$b, domain:""}' > "$OF1_STATE_DIR/repo-config.json"
 fi
 . "$LIB/env.sh"; . "$LIB/da-token.sh"; . "$LIB/curl-auth.sh"; . "$LIB/genweb.sh"

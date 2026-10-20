@@ -8,6 +8,7 @@ DA_TOKEN=$(da_resolve_token) \
 # Fail fast on an expired/invalid token (IMS tokens last ~3h) — before any write.
 da_probe_token "$OWNER" "$REPO" "$DA_TOKEN" || exit 1
 cd "$OF1_DEMO_REPO" || exit 1
+of1_require_main || exit 1
 
 HUB="$OF1_STATE_DIR/hub"
 mkdir -p "$HUB"
