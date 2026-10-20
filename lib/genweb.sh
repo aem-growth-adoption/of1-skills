@@ -7,18 +7,17 @@ of1_proxy_base() { printf '%s' "${OF1_GENERATE_BASE_URL:-${PROXY_BASE}}"; }
 [ -n "${BASH_SOURCE[0]:-}" ] && ! type of1_curl_auth >/dev/null 2>&1 && . "$(dirname "${BASH_SOURCE[0]}")/curl-auth.sh"
 
 # of1_sync <worker-url> <org/repo> <out-file> [stage=preview]
-# POST /api/tenants/<org>/<repo>/sync?stage=<stage>&ref=$BRANCH with `Authorization: Bearer $DA_TOKEN` (via of1_curl_auth: `-K -`, charset-validated).
+# POST /api/tenants/<org>/<repo>/sync?stage=<stage> (no ref: gen-web reads main--<repo>--<org>) with `Authorization: Bearer $DA_TOKEN` (via of1_curl_auth: `-K -`, charset-validated).
 # The URL path uses the ORIGINAL-case $OWNER/$REPO when set (gen-web authorizes against DA with the id as sent and lowercases the canonical id itself).
 # Never returns non-zero for sync errors: <out-file> always ends up valid JSON. HTTP 409 / "not migrated" -> {ok:false, code:"legacy-tenant-present"}.
 of1_sync() {
-  local worker="$1" tenant="$2" out="$3" raw code body org repo stage="${4:-preview}" ref_q=""
+  local worker="$1" tenant="$2" out="$3" raw code body org repo stage="${4:-preview}"
   org="${OWNER:-${tenant%%/*}}"; repo="${REPO:-${tenant#*/}}"
-  [ -n "${BRANCH:-}" ] && ref_q="&ref=$(jq -rn --arg b "$BRANCH" '$b|@uri')"
   if [ -z "${DA_TOKEN:-}" ]; then
     echo "✗ sync skipped: no DA token (set DA_TOKEN/ADOBE_IMS_TOKEN/OF1_TOKEN_FILE or provide .hlx/.da-token.json)" >&2
     printf '{"ok":false,"error":"no DA token"}\n' > "$out"; return 0
   fi
-  raw=$(of1_curl_auth DA_TOKEN auth -- -s -X POST -w '\n%{http_code}' "${worker}/api/tenants/${org}/${repo}/sync?stage=${stage}${ref_q}")
+  raw=$(of1_curl_auth DA_TOKEN auth -- -s -X POST -w '\n%{http_code}' "${worker}/api/tenants/${org}/${repo}/sync?stage=${stage}")
   code="${raw##*$'\n'}"; body="${raw%$'\n'*}"
   case "$code" in
     401|403)

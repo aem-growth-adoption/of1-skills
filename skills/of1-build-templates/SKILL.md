@@ -81,11 +81,11 @@ Selected by `OF1_TG_MODE`; the driver runs `base` → `intent × 5` (parallel) �
 
 ### Phase: `base`
 
-Start with `. "$SKILL_DIR/scripts/env.sh"` (defines `${OWNER}`, `${REPO}`, `${BRANCH}`; the preview host is `https://${BRANCH}--${REPO}--${OWNER}.aem.page`).
+Start with `. "$SKILL_DIR/scripts/env.sh"` (defines `${OWNER}`, `${REPO}`; the preview host is `https://main--${REPO}--${OWNER}.aem.page`).
 
 1. **Use cases → intents → block plan.** Read discovery + `knowledge-pages.json`; decide per intent the template shapes and block palette (reuse vs new). Size each template to its purpose (RULE 6) and list its ordered block sequence (lead → primary → supporting → CTA) so exploratory intents compose rich pages. Fix the **alignment intent** (usually `center`, RULE 5) and record it; where a reused block's CSS won't honor it, note the matching variant or flag that a centered new block is needed.
 2. **Inventory reusable blocks:** `export TENANT_REPO_DIR="$OF1_DEMO_REPO"; "$SKILL_DIR/assets/inventory.sh" "$TENANT_REPO_DIR"`. Read each `blocks/<name>/<name>.js` to confirm it is **positional** (reads `block.children` by index); exclude label/value-convention blocks.
-3. **Harvest known-good compositions.** For each usable block fetch the live pages' `.plain.html` (`https://{BRANCH}--{REPO}--{OWNER}.aem.page/{path}.plain.html`) and record a per-block fingerprint (row count, per-row cell count) — stronger evidence than the `.js` alone.
+3. **Harvest known-good compositions.** For each usable block fetch the live pages' `.plain.html` (`https://main--{REPO}--{OWNER}.aem.page/{path}.plain.html`) and record a per-block fingerprint (row count, per-row cell count) — stronger evidence than the `.js` alone.
 4. **Adapt the count to the vocabulary.** A 16-block site supports ~5 intents × ~3 variations; a 3-block site fewer, leaning on variants + `no-static-labels`/`key-value`. Don't blindly target 15.
 5. **Author planned NEW general blocks** (skip when reuse covers everything): positional `blocks/<name>/<name>.{js,css}`, brand tokens from `styles/styles.css` + `DESIGN.json` (path via `of1-integration/knowledge/design-tokens-resolution.md`). Then commit, push, and wait until the code bus serves them **before** any template previews them:
    ```bash
@@ -119,7 +119,7 @@ Run once after all 5 intent agents complete; first `. "$SKILL_DIR/scripts/env.sh
    ```bash
    bash "$SKILL_DIR/scripts/write-template-list.sh"   # DA sheet /of1/config/template-list, column `name`; aborts on 0 valid names / write failure
    ```
-2. **Verify the round-trip** per template: `https://{BRANCH}--{REPO}--{OWNER}.aem.page/templates/{name}.plain.html` must be 200 and each block's row/per-row cell counts must match the harvested fingerprint. A 404 means preview didn't materialize; a shape mismatch means markdown-intermediate mangling — fix before proceeding.
+2. **Verify the round-trip** per template: `https://main--{REPO}--{OWNER}.aem.page/templates/{name}.plain.html` must be 200 and each block's row/per-row cell counts must match the harvested fingerprint. A 404 means preview didn't materialize; a shape mismatch means markdown-intermediate mangling — fix before proceeding.
 3. **Check richness against purpose (RULE 6):**
    ```bash
    bash "$SKILL_DIR/scripts/verify-richness.sh"

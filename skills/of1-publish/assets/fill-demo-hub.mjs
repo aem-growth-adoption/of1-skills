@@ -9,7 +9,7 @@
 //   domain:   The demo domain name
 //
 // Reads ($OF1_STATE_DIR, default $PWD/.of1/state):
-//   repo-config.json                 owner/repo/branch (required)
+//   repo-config.json                 owner/repo (required); `branch` is legacy and ignored for URLs
 //   of1-discovery-output.md          demo focus + narrative (optional)
 //   pipeline-audit.json              audit panel (optional)
 //   of1-*-status.json                per-skill status ("what worked" panel)
@@ -482,7 +482,8 @@ function hasPrototypes(repoDir) {
 }
 
 export function buildHub({ repoConfig, domain, stateDir, repoDir, template, now = new Date() }) {
-  const { owner, repo, branch } = repoConfig;
+  const { owner, repo } = repoConfig;
+  const branch = 'main';
   const previewBase = `https://${branch}--${repo}--${owner}.aem.page`;
   const hubDir = path.join(stateDir, 'hub');
 
@@ -543,7 +544,7 @@ function main() {
     );
     return 1;
   }
-  const missing = ['owner', 'repo', 'branch'].filter((k) => !repoConfig[k]);
+  const missing = ['owner', 'repo'].filter((k) => !repoConfig[k]);
   if (missing.length) {
     console.error(`ERROR: ${repoConfigPath} is missing required field(s): [${missing.map((m) => `'${m}'`).join(', ')}]`);
     return 1;

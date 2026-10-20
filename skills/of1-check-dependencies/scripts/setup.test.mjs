@@ -40,7 +40,7 @@ test('07: uploads the config sheet to DA, no git commit', () => {
   const before = f.git('rev-list --count HEAD');
   const r = f.run('07-config-json.sh', [], { DOMAIN: 'd.com', OF1_DA_WRITE: stubWriter(f) });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(readFileSync(join(f.base, 'writer.log'), 'utf8'), /sheet --owner o --repo r --branch main --path of1\/config\/config --columns key,value/);
+  assert.match(readFileSync(join(f.base, 'writer.log'), 'utf8'), /sheet --owner o --repo r --path of1\/config\/config --columns key,value/);
   assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'domain', value: 'd.com' }]);
   assert.equal(existsSync(join(f.repo, 'of1/config/config.json')), false);
   assert.equal(f.git('rev-list --count HEAD'), before);

@@ -10,7 +10,7 @@ case "${1:-overwrite}" in
       echo exists; else echo absent; fi ;;
   skip) echo "kept existing /of1/brand-voice (not overwritten)" ;;
   overwrite)
-    node "$DA_WRITE" doc --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+    node "$DA_WRITE" doc --owner "$OWNER" --repo "$REPO" \
       --path of1/brand-voice --file "$OF1_STATE_DIR/brand-voice.html" ;;
   *) echo "usage: write-doc.sh check|overwrite|skip" >&2; exit 2 ;;
 esac

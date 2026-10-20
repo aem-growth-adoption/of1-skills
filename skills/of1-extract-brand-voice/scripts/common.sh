@@ -17,7 +17,7 @@ DA_WRITE="$SKILL_DIR/../of1-integration/assets/da-write.mjs"
 if [ -n "$OF1_CONTENT_SOURCE" ]; then
   SOURCE_BASE="https://${OF1_CONTENT_SOURCE}"
 else
-  SOURCE_BASE="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
+  SOURCE_BASE="https://main--${REPO}--${OWNER}.aem.page"
 fi
 echo "Extracting from: $SOURCE_BASE" >&2
 cd "$OF1_DEMO_REPO" || exit 1

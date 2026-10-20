@@ -9,7 +9,6 @@
 # checks its own inputs and returns non-zero instead of exiting.
 #
 # Required env vars: DA_TOKEN (DA write access), ORG, REPO.
-# Optional: BRANCH (preview ref for aem_preview; default "main").
 # Required for aem_preview only: AEM preview/publish rights on ORG — this is
 # a SEPARATE grant from DA_TOKEN's write access (see aem_preview below and
 # the design spec's "Blocked" finding). aem_preview fails loudly rather than
@@ -65,17 +64,14 @@ da_list() {
 # aem_preview <content-path>  e.g. aem_preview templates/comparison-a   (no leading
 # "/", no ".html"). Requires AEM write authorization, separate from DA_TOKEN.
 #
-# Ref: ${BRANCH:-main}. DA content is shared across branches — previewing a
-# content path on any ref makes it visible on every
-# <branch>--<repo>--<org>.aem.page preview host, so the ref only needs to be a
-# branch that exists.
+# Ref: always `main` (the Helix ref is not a tenant concept).
 #
 # Returns non-zero with a diagnostic on failure rather than reporting success
 # after a DA write that never became visible to the worker's sync. Only 401/403
 # are blamed on missing AEM preview rights; other statuses are reported as-is.
 aem_preview() {
   _da_require || return 1
-  local doc="$1" ref="${BRANCH:-main}" body code
+  local doc="$1" ref=main body code
   if [ -z "${AEM_TOKEN:-}" ]; then
     echo "aem_preview: AEM_TOKEN is required for preview" >&2
     return 1
@@ -88,7 +84,7 @@ aem_preview() {
     401|403)
       echo "aem_preview FAILED (${code}) for ${doc} — this account has DA write access but NOT AEM preview/publish rights on ${ORG}/${REPO}. A document written to DA without a successful preview is invisible to the worker's sync; do not report this template as ready." >&2 ;;
     404)
-      echo "aem_preview FAILED (404) for ${doc} on ref ${ref} — check the path (no leading '/', no '.html') and that branch '${ref}' exists." >&2 ;;
+      echo "aem_preview FAILED (404) for ${doc} on ref ${ref} — check the path (no leading '/', no '.html') and that the repo has a 'main' branch." >&2 ;;
     *)
       echo "aem_preview FAILED (${code}) for ${doc} on ref ${ref}: $(sed '$d' <<<"$body" | head -c 300)" >&2 ;;
   esac

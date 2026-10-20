@@ -34,7 +34,7 @@ test('write-sheet calls da-write sheet with suggestions columns/rows', () => {
   const r = f.run('write-sheet.sh');
   assert.equal(r.status, 0, r.stderr);
   const log = readFileSync(join(f.fake, 'node.log'), 'utf8');
-  assert.match(log, /da-write\.mjs sheet --owner o --repo r --branch main --path of1\/config\/suggestions --columns label,query --rows .*suggestions-rows\.json/);
+  assert.match(log, /da-write\.mjs sheet --owner o --repo r --path of1\/config\/suggestions --columns label,query --rows .*suggestions-rows\.json/);
 });
 
 test('read-inputs prints titles, personas, falls back to local brand voice', () => {

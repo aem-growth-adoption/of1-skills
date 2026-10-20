@@ -243,7 +243,8 @@ test('04-sync: DA token sent as Authorization header via stdin config, not argv,
   assert.match(readFileSync(join(f.fake, 'sync-stdin.log'), 'utf8'), /Authorization: Bearer SECRET-DA-TOKEN-123/);
   const argv = readFileSync(join(f.fake, 'sync-argv.log'), 'utf8'); // includes the DA probe call
   assert.doesNotMatch(argv, new RegExp(SECRET));
-  assert.match(argv, /tenants\/o\/r\/sync\?stage=preview&ref=main/);
+  assert.match(argv, /tenants\/o\/r\/sync\?stage=preview(\s|$)/);
+  assert.doesNotMatch(argv, /ref=/);
   assert.doesNotMatch(r.stdout + r.stderr, new RegExp(SECRET));
   const out = readFileSync(join(f.state, 'hub', 'sync.json'), 'utf8');
   assert.doesNotMatch(out, new RegExp(SECRET));
@@ -370,11 +371,12 @@ test('check 6: live-host 404 is strict when the publish sync synced something, w
   r = f.run('checks.sh', ['6']);
   assert.equal(r.status, 1); assert.match(r.stderr, /HTTP 404/);
 });
-test('of1_sync: ref is URL-encoded', () => {
+test('of1_sync: sends no ref even when BRANCH is set', () => {
   const f = syncFixture('200', '{"ok":true}');
   const out = join(f.base, 'o.json');
   spawnSync('bash', ['-c', `. ${skillDir}/../../lib/genweb.sh; DA_TOKEN=t BRANCH='feat/x y' of1_sync https://w o/r ${out} publish`], { encoding: 'utf8', env: { PATH: `${join(f.base, 'bin')}:${process.env.PATH}`, FAKE_DIR: f.fake } });
-  assert.match(readFileSync(join(f.fake, 'sync-argv.log'), 'utf8'), /sync\?stage=publish&ref=feat%2Fx%20y/);
+  assert.match(readFileSync(join(f.fake, 'sync-argv.log'), 'utf8'), /sync\?stage=publish(\s|$)/);
+  assert.doesNotMatch(readFileSync(join(f.fake, 'sync-argv.log'), 'utf8'), /ref=/);
 });
 
 test('mixed-case org/repo: sync URL path keeps original case, bodies use the lowercase id', () => {
@@ -415,4 +417,11 @@ test('of1_sync: token outside the allowed charset is refused, never sent', () =>
   spawnSync('bash', ['-c', `. ${skillDir}/../../lib/genweb.sh; DA_TOKEN='bad token"' of1_sync https://w o/r ${out}`], { encoding: 'utf8', env: { PATH: `${join(f.base, 'bin')}:${process.env.PATH}`, FAKE_DIR: f.fake } });
   assert.equal(JSON.parse(readFileSync(out, 'utf8')).ok, false);
   assert.ok(!existsSync(join(f.fake, 'sync-argv.log')));
+});
+
+test('off main: publish stops with the main-branch message', () => {
+  const f = fixture();
+  sh('git checkout -qb feat', f.repo);
+  const r = f.run('01-assert-git-config.sh');
+  assert.equal(r.status, 1); assert.match(r.stderr, /OF1 setup runs from the main branch \(checkout main\)/);
 });

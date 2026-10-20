@@ -42,7 +42,7 @@ node scripts/baseline/baseline.mjs capture --tenant <host-label> --repo-dir <pat
 node scripts/baseline/baseline.mjs diff docs/baseline/of1-site-da-first.shape.json <file>
 ```
 
-`--tenant` is the preview **host label** `<branch>--<repo>--<owner>` (it builds `https://<label>.aem.page`), not the worker tenant id, which is `<org>/<repo>` (`$TENANT_ID`). See `docs/baseline/README.md`.
+`--tenant` is the preview **host label** `main--<repo>--<owner>` (it builds `https://<label>.aem.page`), not the worker tenant id, which is `<org>/<repo>` (`$TENANT_ID`). See `docs/baseline/README.md`.
 
 ## Conventions
 

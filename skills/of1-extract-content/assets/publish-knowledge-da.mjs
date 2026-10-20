@@ -7,7 +7,7 @@
 // Input:  $OF1_STATE_DIR/knowledge-pages.json  (array of {slug?,url?,title,blocks})
 // Output: of1/knowledge/{slug}.html (DA) + EDS preview per page
 //
-// Usage: node publish-knowledge-da.mjs --owner O --repo R --branch B
+// Usage: node publish-knowledge-da.mjs --owner O --repo R
 //        [--pages $OF1_STATE_DIR/knowledge-pages.json] [--knowledge-dir of1/knowledge]
 //        [--token-file path] [--concurrency 8]
 //
@@ -87,15 +87,15 @@ async function uploadDoc(html, token, owner, repo, docPath) {
   return briefError(await daUpload({ owner, repo, path: docPath, content: html, contentType: 'text/html', token }), 'upload');
 }
 
-async function triggerPreview(token, owner, repo, branch, resourcePath) {
-  return briefError(await aemAction({ action: 'preview', owner, repo, branch, path: resourcePath, token }), 'preview');
+async function triggerPreview(token, owner, repo, resourcePath) {
+  return briefError(await aemAction({ action: 'preview', owner, repo, path: resourcePath, token }), 'preview');
 }
 
 // Publish to LIVE — the EDS query-index indexer builds only from published
 // pages, so preview alone leaves /of1/knowledge out of query-index.json and
 // the worker's content-RAG discovers nothing.
-async function triggerLive(token, owner, repo, branch, resourcePath) {
-  return briefError(await aemAction({ action: 'live', owner, repo, branch, path: resourcePath, token }), 'live');
+async function triggerLive(token, owner, repo, resourcePath) {
+  return briefError(await aemAction({ action: 'live', owner, repo, path: resourcePath, token }), 'live');
 }
 
 export function parseArgs(argv) {
@@ -108,7 +108,6 @@ export function parseArgs(argv) {
     const a = argv[i];
     if (a === '--owner') args.owner = argv[++i];
     else if (a === '--repo') args.repo = argv[++i];
-    else if (a === '--branch') args.branch = argv[++i];
     else if (a === '--pages') args.pages = argv[++i];
     else if (a === '--knowledge-dir') args.knowledgeDir = argv[++i];
     else if (a === '--token-file') args.tokenFile = argv[++i];
@@ -131,16 +130,16 @@ async function publishEntry(entry, token, args, seen, imageMap) {
   const html = renderContentDoc(entry, imageMap || {});
   const upErr = await uploadDoc(html, token, args.owner, args.repo, docPath);
   if (upErr) return { slug, ok: false, err: upErr };
-  const prevErr = await triggerPreview(token, args.owner, args.repo, args.branch, resourcePath);
+  const prevErr = await triggerPreview(token, args.owner, args.repo, resourcePath);
   if (prevErr) return { slug, ok: false, err: prevErr };
-  const liveErr = await triggerLive(token, args.owner, args.repo, args.branch, resourcePath);
+  const liveErr = await triggerLive(token, args.owner, args.repo, resourcePath);
   if (liveErr) return { slug, ok: false, err: liveErr };
   return { slug, ok: true, resourcePath: `/${resourcePath}` };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (!args.owner || !args.repo || !args.branch) throw new Error('Missing required --owner / --repo / --branch');
+  if (!args.owner || !args.repo) throw new Error('Missing required --owner / --repo');
   const token = await resolveToken({ tokenFile: args.tokenFile });
   const manifestPath = args.pages;
   if (!fs.existsSync(manifestPath)) throw new Error(`${manifestPath} not found — capture step must run first`);

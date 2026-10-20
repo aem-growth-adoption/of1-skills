@@ -11,7 +11,6 @@
 //   node download-images.mjs \
 //     --owner aem-growth-adoption \
 //     --repo <repo> \
-//     --branch wknd-2 \
 //     --input image-manifest.json \
 //     [--output image-mapping.json] \
 //     [--max-per-product 5] \
@@ -99,7 +98,7 @@ function detectContentType(bytes) {
 
 function parseArgs(argv) {
   const args = {
-    input: null, owner: null, repo: null, branch: null,
+    input: null, owner: null, repo: null,
     output: 'image-mapping.json', maxPerProduct: 5, workers: DEFAULT_WORKERS,
     tokenFile: null, mountDir: '/mnt/da',
   };
@@ -109,7 +108,6 @@ function parseArgs(argv) {
       case '--input': args.input = raw[++i]; break;
       case '--owner': args.owner = raw[++i]; break;
       case '--repo': args.repo = raw[++i]; break;
-      case '--branch': args.branch = raw[++i]; break;
       case '--output': args.output = raw[++i]; break;
       case '--max-per-product': {
         const rawVal = raw[++i];
@@ -136,8 +134,8 @@ function parseArgs(argv) {
         process.exit(1);
     }
   }
-  if (!args.owner || !args.repo || !args.branch || !args.input) {
-    console.error('Required: --owner, --repo, --branch, --input');
+  if (!args.owner || !args.repo || !args.input) {
+    console.error('Required: --owner, --repo, --input');
     process.exit(1);
   }
   return args;
@@ -162,16 +160,16 @@ async function downloadImage(url) {
 }
 
 // Ingest the uploaded media file into EDS's Media Bus so it resolves at
-// {branch}--{repo}--{owner}.aem.page/media/{filename}. Without this, the
+// main--{repo}--{owner}.aem.page/media/{filename}. Without this, the
 // file only exists in DA's source store — content.da.live is not a public
 // delivery endpoint (auth-gated) and the aem.page path 404s until previewed.
-async function triggerPreview(token, owner, repo, branch, filename) {
-  return briefError(await aemAction({ action: 'preview', owner, repo, branch, path: `media/${filename}`, token }), 'preview');
+async function triggerPreview(token, owner, repo, filename) {
+  return briefError(await aemAction({ action: 'preview', owner, repo, path: `media/${filename}`, token }), 'preview');
 }
 
-async function upload(data, contentType, token, owner, repo, branch, filename, mountDir) {
+async function upload(data, contentType, token, owner, repo, filename, mountDir) {
   if (mountDir) {
-    const mountPath = path.join(mountDir, branch, 'media', filename);
+    const mountPath = path.join(mountDir, 'main', 'media', filename);
     // Narrow the try to the filesystem write only. If the write succeeds but
     // triggerPreview later fails, we must NOT fall through and re-upload a file
     // that is already on the mount (finding 51).
@@ -184,7 +182,7 @@ async function upload(data, contentType, token, owner, repo, branch, filename, m
       // mount unavailable — fall through to the API path
     }
     if (wrote) {
-      const err = await triggerPreview(token, owner, repo, branch, filename);
+      const err = await triggerPreview(token, owner, repo, filename);
       return ['mount', err || null];
     }
   }
@@ -195,12 +193,12 @@ async function upload(data, contentType, token, owner, repo, branch, filename, m
   if (upErr) return ['api', upErr.includes(' ERROR ') ? briefError(upErr, 'upload') : upErr.replace(/^FAIL upload \S+ /, '')];
   // File is uploaded to DA's source store but not yet in the Media Bus —
   // request a preview so it becomes reachable at the site's /media/ path.
-  const previewErr = await triggerPreview(token, owner, repo, branch, filename);
+  const previewErr = await triggerPreview(token, owner, repo, filename);
   if (previewErr) return ['api', previewErr];
   return ['api', null];
 }
 
-async function processOne(task, token, owner, repo, branch, mountDir) {
+async function processOne(task, token, owner, repo, mountDir) {
   const { productId, n, url } = task;
   const { data, err: dlErr } = await downloadImage(url);
   if (dlErr) {
@@ -208,7 +206,7 @@ async function processOne(task, token, owner, repo, branch, mountDir) {
   }
   const { mime: contentType, ext } = detectContentType(data);
   const filename = `product-${productId}-${n}.${ext}`;
-  const [method, upErr] = await upload(data, contentType, token, owner, repo, branch, filename, mountDir);
+  const [method, upErr] = await upload(data, contentType, token, owner, repo, filename, mountDir);
   if (upErr) {
     return { product_id: productId, n, ok: false, stage: 'upload', err: upErr };
   }
@@ -255,7 +253,7 @@ async function main() {
 
   const run = semaphore(args.workers);
   const results = await Promise.all(
-    tasks.map((task) => run(() => processOne(task, token, args.owner, args.repo, args.branch, mountDir))),
+    tasks.map((task) => run(() => processOne(task, token, args.owner, args.repo, mountDir))),
   );
 
   for (const r of results) {
@@ -274,7 +272,7 @@ async function main() {
   const mapping = {};
   for (const r of results) {
     if (r.ok) {
-      const url = `https://${args.branch}--${args.repo}--${args.owner}.aem.page/media/${r.filename}`;
+      const url = `https://main--${args.repo}--${args.owner}.aem.page/media/${r.filename}`;
       if (!mapping[r.product_id]) mapping[r.product_id] = [];
       mapping[r.product_id].push({ n: r.n, url });
     }

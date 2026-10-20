@@ -26,7 +26,7 @@ Personas sheet columns (DA `/of1/config/personas`): `id,name,description,keyword
 
 ## Source resolution — live site vs replica
 
-`common.sh` sets `SOURCE_BASE`: `https://${OF1_CONTENT_SOURCE}` (the REAL external site, e.g. `frescopa.coffee`) when `OF1_CONTENT_SOURCE` is set, else the site's own EDS preview `https://${BRANCH}--${REPO}--${OWNER}.aem.page`. It is the root for every crawl; everything else is identical either way. Step 8's image re-hosting always targets the EDS replica regardless of source.
+`common.sh` sets `SOURCE_BASE`: `https://${OF1_CONTENT_SOURCE}` (the REAL external site, e.g. `frescopa.coffee`) when `OF1_CONTENT_SOURCE` is set, else the site's own EDS preview `https://main--${REPO}--${OWNER}.aem.page`. It is the root for every crawl; everything else is identical either way. Step 8's image re-hosting always targets the EDS replica regardless of source.
 
 ## Process
 

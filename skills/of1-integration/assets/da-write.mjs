@@ -2,10 +2,10 @@
 // da-write.mjs — Write an OF1 DA doc or sheet, then EDS-preview it.
 //
 // Usage:
-//   node da-write.mjs doc   --owner O --repo R --branch B --path of1/brand-voice --file <html>
-//   node da-write.mjs sheet --owner O --repo R --branch B --path of1/config/personas \
+//   node da-write.mjs doc   --owner O --repo R --path of1/brand-voice --file <html>
+//   node da-write.mjs sheet --owner O --repo R --path of1/config/personas \
 //                           --columns a,b,c --rows <json-file>
-//   node da-write.mjs live  --owner O --repo R --branch B --path of1/config/config.json
+//   node da-write.mjs live  --owner O --repo R --path of1/config/config.json
 //
 // doc   → POST multipart admin.da.live/source/O/R/<path>.html, then
 //         POST admin.hlx.page/preview/O/R/B/<path>
@@ -56,7 +56,7 @@ function normalizePath(p) {
 
 // Upload `content` to DA and preview it. Returns { ok, message }; never throws
 // on HTTP/network failure.
-export async function writeDa({ kind, owner, repo, branch, path: p, content, token, fetchImpl = globalThis.fetch }) {
+export async function writeDa({ kind, owner, repo, path: p, content, token, fetchImpl = globalThis.fetch }) {
   if (kind !== 'doc' && kind !== 'sheet') throw new Error(`Unknown kind "${kind}" (expected doc|sheet)`);
   const base = normalizePath(p);
   const ext = kind === 'doc' ? 'html' : 'json';
@@ -67,16 +67,16 @@ export async function writeDa({ kind, owner, repo, branch, path: p, content, tok
   const upErr = await daUpload({ owner, repo, path: sourcePath, content, contentType: mime, token, fetchImpl });
   if (upErr) return { ok: false, message: upErr };
 
-  const prevErr = await aemAction({ action: 'preview', owner, repo, branch, path: previewPath, token, fetchImpl });
+  const prevErr = await aemAction({ action: 'preview', owner, repo, path: previewPath, token, fetchImpl });
   if (prevErr) return { ok: false, message: prevErr };
 
   return { ok: true, message: `✓ ${previewPath} previewed` };
 }
 
 // Publish an already-previewed path to the live index.
-export async function publishLive({ owner, repo, branch, path: p, token, fetchImpl = globalThis.fetch }) {
+export async function publishLive({ owner, repo, path: p, token, fetchImpl = globalThis.fetch }) {
   const livePath = String(p).replace(/^\/+/, '');
-  const err = await aemAction({ action: 'live', owner, repo, branch, path: livePath, token, fetchImpl });
+  const err = await aemAction({ action: 'live', owner, repo, path: livePath, token, fetchImpl });
   return err ? { ok: false, message: err } : { ok: true, message: `✓ ${livePath} published live` };
 }
 
@@ -87,7 +87,6 @@ function parseArgs(argv) {
     const a = rest[i];
     if (a === '--owner') args.owner = rest[++i];
     else if (a === '--repo') args.repo = rest[++i];
-    else if (a === '--branch') args.branch = rest[++i];
     else if (a === '--path') args.path = rest[++i];
     else if (a === '--file') args.file = rest[++i];
     else if (a === '--columns') args.columns = rest[++i];
@@ -95,7 +94,7 @@ function parseArgs(argv) {
     else throw new Error(`Unknown argument: ${a}`);
   }
   if (!['doc', 'sheet', 'live'].includes(kind)) throw new Error('First argument must be "doc", "sheet" or "live"');
-  for (const k of ['owner', 'repo', 'branch', 'path']) if (!args[k]) throw new Error(`Missing --${k}`);
+  for (const k of ['owner', 'repo', 'path']) if (!args[k]) throw new Error(`Missing --${k}`);
   if (kind === 'doc' && !args.file) throw new Error('Missing --file');
   if (kind === 'sheet' && (!args.columns || !args.rows)) throw new Error('Missing --columns / --rows');
   return args;

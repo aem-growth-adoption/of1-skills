@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Step 4: Code Sync check (warn only).
 . "$(dirname "${BASH_SOURCE[0]}")/00-load-setup.sh"
-PREVIEW_URL="https://${BRANCH}--${REPO}--${OWNER}.aem.page/"
+PREVIEW_URL="https://main--${REPO}--${OWNER}.aem.page/"
 # Bound every probe: an unbounded curl here can hang install-dependencies. Cap
 # the wait to ~60s total — this check only WARNs on non-200 and proceeds
 # regardless (Code Sync may still be catching up), so a long block only risks

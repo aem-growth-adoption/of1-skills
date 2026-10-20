@@ -15,7 +15,7 @@ function tmpdir() {
 }
 
 test('renderConfigLinks links each authored DA item', () => {
-  const html = renderConfigLinks({ owner: 'o', repo: 'r', previewBase: 'https://b--r--o.aem.page' });
+  const html = renderConfigLinks({ owner: 'o', repo: 'r', previewBase: 'https://main--r--o.aem.page' });
   for (const url of [
     'https://da.live/edit#/o/r/of1/brand-voice',
     'https://da.live/sheet#/o/r/of1/config/personas',
@@ -167,8 +167,8 @@ test('buildHub renders DA links + status panel from staged state, no legacy JSON
   assert.ok(!html.includes('config-review.html'));
   assert.ok(!/\{\{[A-Z_]+\}\}/.test(html), 'unreplaced placeholder');
   assert.ok(html.includes('https://da.live/edit#/o/r/templates/explore-hero'));
-  assert.ok(html.includes('https://b--r--o.aem.page/about'));
-  assert.ok(!html.includes('https://b--r--o.aem.page/nav"'));
+  assert.ok(html.includes('https://main--r--o.aem.page/about'));
+  assert.ok(!html.includes('https://main--r--o.aem.page/nav"'));
   assert.ok(html.includes('https://da.live/edit#/o/r/of1/knowledge/pricing'));
   assert.ok(html.includes('indexed: 12'));
   assert.ok(html.includes('9 pages'));

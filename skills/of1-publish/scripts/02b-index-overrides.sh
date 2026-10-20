@@ -56,7 +56,7 @@ fi
 
 if [ "$(jq -S . <<<"$ROWS_NEW")" != "$(jq -S . <<<"$ROWS")" ]; then
   printf '%s\n' "$ROWS_NEW" > "$ROWS_FILE"
-  "${WRITER[@]}" sheet --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+  "${WRITER[@]}" sheet --owner "$OWNER" --repo "$REPO" \
     --path of1/config/config --columns key,value --rows "$ROWS_FILE" || exit 1
   echo "✓ config sheet updated + previewed"
 else

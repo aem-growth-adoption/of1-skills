@@ -56,18 +56,18 @@ function fixture({ legacy = true, cfg = { domain: 'x.com', contentIngestion: { i
   return { base, state, repo, fake, run, result, tracked, full };
 }
 
-test('legacy repo: sheets written, both syncs with ref, git config removed last, migrated', () => {
+test('legacy repo: sheets written, both syncs without ref, git config removed last, migrated', () => {
   const f = fixture();
   const r = f.full();
   assert.equal(r.status, 0, r.stderr + r.stdout);
   const res = f.result();
-  assert.equal(res.status, 'migrated'); assert.equal(res.tenant, 'o/r'); assert.equal(res.ref, 'main');
+  assert.equal(res.status, 'migrated'); assert.equal(res.tenant, 'o/r'); assert.ok(!('ref' in res));
   assert.deepEqual(res.checks, { 2: true, 3: true, 6: true });
   const daw = readFileSync(join(f.fake, 'daw.log'), 'utf8');
   assert.match(daw, /--path of1\/config\/config /); assert.match(daw, /--path of1\/config\/cta-template /);
   assert.deepEqual(JSON.parse(readFileSync(join(f.fake, 'rows-config.json'), 'utf8')), [{ key: 'domain', value: 'x.com' }, { key: 'contentIngestion.indexPath', value: '/sitemap.json' }]);
   const urls = readFileSync(join(f.fake, 'urls.log'), 'utf8');
-  assert.match(urls, /tenants\/o\/r\/sync\?stage=preview&ref=main/); assert.match(urls, /tenants\/o\/r\/sync\?stage=publish&ref=main/);
+  assert.match(urls, /tenants\/o\/r\/sync\?stage=preview$/m); assert.match(urls, /tenants\/o\/r\/sync\?stage=publish$/m); assert.doesNotMatch(urls, /ref=/);
   assert.equal(f.tracked(), '');
   assert.match(sh(`git --git-dir=${f.base}/origin.git log -1 --format=%s main`, f.repo).stdout, /move OF1 config to DA/);
 });
@@ -268,21 +268,28 @@ test('rollback: HEAD moved during the failed push -> migration commit is reverte
   assert.match(f.tracked(), /of1\/config\/config\.json/);
   assert.match(sh('git log --format=%s -3', f.repo).stdout, /Revert "chore: move OF1 config to DA/);
 });
-test('batch: repo@branch entries and --branch default are cloned from that branch', () => {
+test('batch: always clones the default branch; no --branch option', () => {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'of1-batch-')));
   const d = join(base, 'orgs', 'site.git'); mkdirSync(d, { recursive: true });
   sh(`git init -q -b main . && git config user.email a@b && git config user.name t && echo x > a && git add -A && git commit -qm i && git checkout -qb dev && mkdir -p of1/config && echo {} > of1/config/config.json && git add -A && git commit -qm legacy && git checkout -q main`, d);
   const bin = join(skillDir, 'assets/batch.mjs');
-  writeFileSync(join(base, 'repos.txt'), 'site\nsite@dev\n');
+  writeFileSync(join(base, 'repos.txt'), 'site\n');
   let r = spawnSync('node', [bin, '--org', 'acme', '--repos', join(base, 'repos.txt')], { encoding: 'utf8', env: { ...process.env, OF1_BATCH_CLONE_BASE: join(base, 'orgs') } });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /acme\/site\talready-new/); assert.match(r.stdout, /acme\/site@dev\twould-migrate/);
-  writeFileSync(join(base, 'repos.txt'), 'site\n');
+  assert.match(r.stdout, /acme\/site\talready-new/);
   r = spawnSync('node', [bin, '--org', 'acme', '--repos', join(base, 'repos.txt'), '--branch', 'dev'], { encoding: 'utf8', env: { ...process.env, OF1_BATCH_CLONE_BASE: join(base, 'orgs') } });
-  assert.match(r.stdout, /acme\/site\twould-migrate/);
+  assert.equal(r.status, 2); assert.match(r.stderr, /Unknown argument: --branch/);
   fakeGh(base, 'site\n');
   r = spawnSync('node', [bin, '--org', 'acme', '--repos', 'auto'], { encoding: 'utf8', env: batchEnv(base) });
-  assert.match(r.stdout, /note: only each default branch is examined/);
+  assert.match(r.stdout, /note: only each default branch is examined; repos are expected to have OF1 on main/);
+});
+test('off main: stops with the main-branch message; detached HEAD keeps its own guard', () => {
+  const f = fixture();
+  sh('git checkout -qb feat', f.repo);
+  const r = f.run('01-detect.sh');
+  assert.equal(r.status, 1); assert.match(r.stderr, /OF1 setup runs from the main branch \(checkout main\)/);
+  sh('git checkout -q --detach', f.repo);
+  assert.match(f.run('01-detect.sh').stderr, /detached HEAD/);
 });
 test('bash -n on every migrate script', () => {
   for (const s of ['common', '01-detect', '02-config-to-da', '03-remove-git-config', '04-sync', '05-verify', '06-report'])

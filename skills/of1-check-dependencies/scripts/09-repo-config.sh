@@ -16,7 +16,7 @@ cat > "$OF1_STATE_DIR/repo-config.json" <<EOT
   "repoDir": "${REPO_DIR}",
   "domain": "${DOMAIN}",
   "repoUrl": "https://github.com/${OWNER}/${REPO}",
-  "previewUrl": "https://${BRANCH}--${REPO}--${OWNER}.aem.page/",
+  "previewUrl": "https://main--${REPO}--${OWNER}.aem.page/",
   "daSource": "da://${OWNER}/${REPO}"
 }
 EOT

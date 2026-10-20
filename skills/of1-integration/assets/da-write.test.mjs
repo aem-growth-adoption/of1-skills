@@ -64,7 +64,7 @@ function fakeFetch(statusFor) {
   return { impl, calls };
 }
 
-const base = { owner: 'O', repo: 'R', branch: 'B', token: 'T' };
+const base = { owner: 'O', repo: 'R', token: 'T' };
 
 test('writeDa sheet: uploads .json then previews with both auth headers', async () => {
   const { impl, calls } = fakeFetch(() => 200);
@@ -74,7 +74,7 @@ test('writeDa sheet: uploads .json then previews with both auth headers', async 
   assert.equal(calls[0].opts.method, 'POST');
   assert.equal(calls[0].opts.headers.Authorization, 'Bearer T');
   assert.match(calls[0].opts.headers['Content-Type'], /^multipart\/form-data; boundary=/);
-  assert.equal(calls[1].url, 'https://admin.hlx.page/preview/O/R/B/of1/config/personas.json');
+  assert.equal(calls[1].url, 'https://admin.hlx.page/preview/O/R/main/of1/config/personas.json');
   assert.equal(calls[1].opts.method, 'POST');
   assert.equal(calls[1].opts.headers.Authorization, 'Bearer T');
   assert.equal(calls[1].opts.headers['x-content-source-authorization'], 'Bearer T');
@@ -86,7 +86,7 @@ test('writeDa doc: uploads .html and previews extensionless path', async () => {
   assert.equal(res.ok, true);
   assert.equal(res.message, '✓ of1/brand-voice previewed');
   assert.equal(calls[0].url, 'https://admin.da.live/source/O/R/of1/brand-voice.html');
-  assert.equal(calls[1].url, 'https://admin.hlx.page/preview/O/R/B/of1/brand-voice');
+  assert.equal(calls[1].url, 'https://admin.hlx.page/preview/O/R/main/of1/brand-voice');
 });
 
 test('writeDa reports preview 403 on a sheet write', async () => {
@@ -125,7 +125,7 @@ test('CLI: sheet preview 403 → stderr FAIL line, exit 1', () => {
   fs.writeFileSync(preload, `globalThis.fetch = async (u) => ({ ok: !u.includes('/preview/'), status: u.includes('/preview/') ? 403 : 200 });\n`);
   const r = spawnSync(process.execPath, [
     '--import', preload, SCRIPT, 'sheet',
-    '--owner', 'O', '--repo', 'R', '--branch', 'B',
+    '--owner', 'O', '--repo', 'R',
     '--path', 'of1/config/suggestions', '--columns', 'label,query', '--rows', rows,
   ], { encoding: 'utf8', env: { ...process.env, DA_TOKEN: 'T' } });
   assert.equal(r.status, 1);
@@ -141,7 +141,7 @@ test('CLI: doc success → stdout ✓ line, exit 0', () => {
   fs.writeFileSync(preload, `globalThis.fetch = async () => ({ ok: true, status: 200 });\n`);
   const r = spawnSync(process.execPath, [
     '--import', preload, SCRIPT, 'doc',
-    '--owner', 'O', '--repo', 'R', '--branch', 'B',
+    '--owner', 'O', '--repo', 'R',
     '--path', 'of1/brand-voice', '--file', file,
   ], { encoding: 'utf8', env: { ...process.env, DA_TOKEN: 'T' } });
   assert.equal(r.status, 0, r.stderr);
@@ -158,7 +158,7 @@ test('CLI: runs when invoked through a symlink', () => {
   fs.writeFileSync(preload, `globalThis.fetch = async () => ({ ok: true, status: 200 });\n`);
   const r = spawnSync(process.execPath, [
     '--import', preload, link, 'doc',
-    '--owner', 'O', '--repo', 'R', '--branch', 'B',
+    '--owner', 'O', '--repo', 'R',
     '--path', 'of1/brand-voice', '--file', file,
   ], { encoding: 'utf8', env: { ...process.env, DA_TOKEN: 'T' } });
   assert.equal(r.status, 0, r.stderr);
@@ -191,7 +191,7 @@ test('CLI: rows containing a comma in an array item → exit 1, mentions comma',
   fs.writeFileSync(preload, `globalThis.fetch = async () => { throw new Error('should not fetch'); };\n`);
   const r = spawnSync(process.execPath, [
     '--import', preload, SCRIPT, 'sheet',
-    '--owner', 'O', '--repo', 'R', '--branch', 'B',
+    '--owner', 'O', '--repo', 'R',
     '--path', 'of1/config/personas', '--columns', 'id,keywords', '--rows', rows,
   ], { encoding: 'utf8', env: { ...process.env, DA_TOKEN: 'T' } });
   assert.equal(r.status, 1);
@@ -203,7 +203,7 @@ test('publishLive: POSTs admin.hlx.page/live with both auth headers', async () =
   const res = await publishLive({ ...base, path: '/of1/config/config.json', fetchImpl: impl });
   assert.equal(res.ok, true);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, 'https://admin.hlx.page/live/O/R/B/of1/config/config.json');
+  assert.equal(calls[0].url, 'https://admin.hlx.page/live/O/R/main/of1/config/config.json');
   assert.equal(calls[0].opts.method, 'POST');
   assert.equal(calls[0].opts.headers.Authorization, 'Bearer T');
   assert.equal(calls[0].opts.headers['x-content-source-authorization'], 'Bearer T');

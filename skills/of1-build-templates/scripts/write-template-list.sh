@@ -12,7 +12,7 @@ jq -c '[.[] | select(test("^[a-z0-9][a-z0-9-_]*$"; "i")) | {name: .}] | sort_by(
   || { echo "ABORT: no valid template names to list — nothing written" >&2; exit 1; }
 if [ -n "${OF1_DA_WRITE:-}" ]; then WRITER=("$OF1_DA_WRITE")
 else WRITER=(node "$SKILL_DIR/../of1-integration/assets/da-write.mjs"); fi
-"${WRITER[@]}" sheet --owner "$OWNER" --repo "$REPO" --branch "$BRANCH" \
+"${WRITER[@]}" sheet --owner "$OWNER" --repo "$REPO" \
   --path of1/config/template-list --columns name --rows "$ROWS" \
   || { echo "ABORT: writing /of1/config/template-list failed" >&2; exit 1; }
 echo "✓ /of1/config/template-list: $(jq -r 'map(.name) | join(", ")' "$ROWS")"

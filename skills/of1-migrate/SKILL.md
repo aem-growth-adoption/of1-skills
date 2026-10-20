@@ -8,21 +8,21 @@ user-invocable: true
 
 Moves one repo's OF1 config from git into DA sheets, syncs the new tenant (`org/repo`, both stages), verifies, and only then removes the git config. Run it from a top-level context in the EDS repo checkout.
 
-- The **branch is the current checkout branch**; it is passed to the worker as `ref`. Never merges or switches branches.
+- OF1 setup runs from the **`main` branch** (the Helix ref is not a tenant concept; no `ref` is sent). Any other checked-out branch stops with "OF1 setup runs from the main branch (checkout main)". Never merges or switches branches.
 - Never calls admin APIs. gen-web keeps using its legacy layout while legacy data exists for the repo: the publish sync then returns HTTP 409 `Tenant not migrated`, and the run stops with `legacy-tenant-present` (git config untouched). An admin must delete the legacy tenant (`DELETE /api/admin/tenants/<legacy id>`, the next sync recreates it from DA) or run `POST /api/admin/migrate-tenants?tenant=<org>/<repo>`; then re-run.
 - Idempotent: a failed run leaves the git config in place; fix and repeat. Removal (step 3) runs **last**.
 
 ## Env
 
-`OF1_DEMO_REPO` (repo path), `OF1_STATE_DIR` (state dir), `SKILL_DIR` (this skill), a DA token (`ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE`), optional `OF1_PUBLISH_LIVE=1` (argument `publish-live`: publish config sheets and pages live before the publish sync), `OF1_GENWEB_URL`. If `repo-config.json` is missing it is derived from `git remote origin` and the current branch.
+`OF1_DEMO_REPO` (repo path), `OF1_STATE_DIR` (state dir), `SKILL_DIR` (this skill), a DA token (`ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE`), optional `OF1_PUBLISH_LIVE=1` (argument `publish-live`: publish config sheets and pages live before the publish sync), `OF1_GENWEB_URL`. If `repo-config.json` is missing it is derived from `git remote origin`.
 
 ## Steps (run in this order: 01, 02, 04, 05, 03, 06)
 
 | Script | What it does |
 |---|---|
-| `01-detect.sh` | Finds git-tracked `of1/config/*` (local checkout or `origin/<branch>`) or a triple `TENANT_ID` in `repo-config.json`. Nothing: writes `status: already-new` and stops (exit 0). Warns about untracked `of1/config` files |
+| `01-detect.sh` | Finds git-tracked `of1/config/*` (local checkout or `origin/main`) or a triple `TENANT_ID` in `repo-config.json`. Nothing: writes `status: already-new` and stops (exit 0). Warns about untracked `of1/config` files |
 | `02-config-to-da.sh` | Reads git `config.json` (nested keys become dotted rows, `templates.names`/`contentIngestion.includePaths` comma-joined) and `cta-template.json`, writes the DA sheets `of1/config/config` and `of1/config/cta-template` (`key,value`) and previews them. Fails, naming the key, on values a sheet cannot hold losslessly (other arrays, null, `{}`, `"123"`/`"true"` strings, dotted keys) |
-| `04-sync.sh` | Preview sync, optional live publish (`publish-live.json`), publish sync (`ref=<branch>`) |
+| `04-sync.sh` | Preview sync, optional live publish (`publish-live.json`), publish sync (no `ref`) |
 | `05-verify.sh` | Runs publish checks 2, 3 and 6; all must pass (writes the `migrate-verified` marker) |
 | `03-remove-git-config.sh` | LAST: `git rm of1/config`, commit by pathspec, `git_push_rebased`. Refuses without the verified marker; a failed push undoes the local removal |
 | `06-report.sh` | Writes `$OF1_STATE_DIR/of1-migrate-result.json`; exit 1 unless migrated |
@@ -44,7 +44,7 @@ bash "$SKILL_DIR/scripts/06-report.sh"
 `$OF1_STATE_DIR/of1-migrate-result.json`:
 
 ```json
-{ "status": "migrated|already-new|failed", "repo": "org/repo", "ref": "main",
+{ "status": "migrated|already-new|failed", "repo": "org/repo",
   "tenant": "org/repo", "checks": {"2": true, "3": true, "6": true},
   "errors": [{"step": "check 2", "error": "..."}] }
 ```

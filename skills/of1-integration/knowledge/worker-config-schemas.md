@@ -1,11 +1,11 @@
 # OF1 Worker — Tenant Config Sources
 
-The OF1 worker reads tenant config from R2. A **sync** (`POST /api/tenants/<org>/<repo>/sync?stage=preview|publish&ref=<branch>`; tenant id
+The OF1 worker reads tenant config from R2. A **sync** (`POST /api/tenants/<org>/<repo>/sync?stage=preview|publish`; no `ref`, the worker reads `main`; tenant id
 `<org>/<repo>`, lowercase) pulls each source from the site's preview host
-`https://<ref>--<repo>--<org>.aem.page` (stage `preview`) or `.aem.live` (stage `publish`) and stores it. Most author-tunable config is a **DA document or sheet**;
+`https://main--<repo>--<org>.aem.page` (stage `preview`) or `.aem.live` (stage `publish`) and stores it. Most author-tunable config is a **DA document or sheet**;
 nothing under `of1/config/` is committed to git (`config` and `cta-template` are DA sheets).
 
-> **DA config is shared per org/repo, not per branch.** DA keeps one content tree per
+> **DA config is shared per org/repo, not per branch (the ref is always `main`).** DA keeps one content tree per
 > `<owner>/<repo>`; every branch's preview host reads the same `/of1/**` and
 > `/templates/**`. The tenant id is `org/repo` (no branch), so the config is per repo. The supported model is therefore **one EDS repo per site/demo** — two
 > demos on different branches of the same repo would overwrite each other's DA config.
@@ -131,7 +131,7 @@ Columns `label`, `query` — one row per chip, 8–12 rows (the block shows a ra
 
 | Row | Value |
 |---|---|
-| `api-endpoint` | the tenant's proxied host `$PROXY_BASE` (`https://<ref>--<repo>--<org>[--dev].of1.live`; `$OF1_API_ENDPOINT` overrides). The block loads `<api-endpoint>/sdk/*` and calls `/api/*` there; gen-web is not called directly because it rejects anonymous browser calls and only the proxy holds the caller credential |
+| `api-endpoint` | the tenant's proxied host `$PROXY_BASE` (`https://main--<repo>--<org>[--dev].of1.live`; `$OF1_API_ENDPOINT` overrides). The block loads `<api-endpoint>/sdk/*` and calls `/api/*` there; gen-web is not called directly because it rejects anonymous browser calls and only the proxy holds the caller credential |
 | `domain` | tenant id `<org>/<repo>` (`$TENANT_ID`) |
 | `engine` | literal `da-blocks-slots` |
 | `title` | optional — landing `<h1>` |

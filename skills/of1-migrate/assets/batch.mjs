@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // batch.mjs — migrate many repos of one org to the new tenant system.
-//   node batch.mjs --org <org> --repos <file|auto> [--dry-run | --no-dry-run] [--yes] [--out <dir>] [--branch <b>]
-// --repos <file>: one `repo` or `repo@branch` per line (branch default: --branch, else the repo's default branch); auto: `gh repo list <org>` (names only).
+//   node batch.mjs --org <org> --repos <file|auto> [--dry-run | --no-dry-run] [--yes] [--out <dir>]
+// --repos <file>: one `repo` per line (always the default branch; repos are expected to have OF1 on `main`, others stop with "OF1 setup runs from the main branch"); auto: `gh repo list <org>` (names only).
 // Default is --dry-run: each repo is cloned (shallow) into a temp dir, detect only, no writes anywhere.
 // --no-dry-run additionally runs the of1-migrate steps in each clone (needs ADOBE_IMS_TOKEN / OF1_TOKEN_FILE) and
 // requires --repos <file> or --yes (auto lists the org's non-fork, non-archived repos). Per-repo result JSON goes to --out (default ./of1-migrate-results).
@@ -15,14 +15,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const skillDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function parseArgs(argv) {
-  const a = { dryRun: true, yes: false, branch: null, out: './of1-migrate-results' };
+  const a = { dryRun: true, yes: false, out: './of1-migrate-results' };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--org') a.org = argv[++i];
     else if (argv[i] === '--repos') a.repos = argv[++i];
     else if (argv[i] === '--dry-run') a.dryRun = true;
     else if (argv[i] === '--no-dry-run') a.dryRun = false;
     else if (argv[i] === '--yes') a.yes = true;
-    else if (argv[i] === '--branch') a.branch = argv[++i];
     else if (argv[i] === '--out') a.out = argv[++i];
     else throw new Error(`Unknown argument: ${argv[i]}`);
   }
@@ -70,23 +69,22 @@ export function runBatch(args, env = process.env, log = console.log) {
   const repos = listRepos(args.repos, args.org);
   if (args.repos === 'auto') {
     log(`resolved repos (${repos.length}, forks and archived excluded): ${repos.join(', ')}`);
-    log(`note: only ${args.branch ? `branch ${args.branch}` : 'each default branch'} is examined; other branches of these repos are not (use --repos <file> with repo@branch)`);
+    log('note: only each default branch is examined; repos are expected to have OF1 on main');
   }
   if (!args.dryRun) mkdirSync(args.out, { recursive: true });
   const counts = {};
   for (const entry of repos) {
     const tmp = mkdtempSync(join(tmpdir(), 'of1-migrate-'));
-    const [name, atBranch] = entry.split('@');
-    const repo = name, branch = atBranch || args.branch;
+    const repo = entry;
     let status, detail = null;
     try {
-      const c = spawnSync('git', ['clone', '-q', '--depth', '1', ...(branch ? ['--branch', branch] : []), `${base}/${repo}.git`, join(tmp, repo)], { encoding: 'utf8' });
+      const c = spawnSync('git', ['clone', '-q', '--depth', '1', `${base}/${repo}.git`, join(tmp, repo)], { encoding: 'utf8' });
       if (c.status !== 0) status = 'clone-failed';
       else if (args.dryRun) status = detect(join(tmp, repo)).legacy ? 'would-migrate' : 'already-new';
       else {
         const m = migrateClone(join(tmp, repo), { ...env, OF1_DEMO_REPO: join(tmp, repo), OF1_STATE_DIR: join(tmp, 'state') });
         status = m.status; detail = m.result;
-        writeFileSync(join(args.out, `${entry.replace('@', '__')}.json`), JSON.stringify({ repo: `${args.org}/${repo}`, branch: branch || null, ...detail, status }, null, 2));
+        writeFileSync(join(args.out, `${entry}.json`), JSON.stringify({ repo: `${args.org}/${repo}`, ...detail, status }, null, 2));
       }
     } catch (e) { status = `error: ${e.message}`; }
     finally { rmSync(tmp, { recursive: true, force: true }); }
