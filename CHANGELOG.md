@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Docs only (no version bump): removed superseded knowledge-only specs/plans (2026-08-27, 2026-08-28, 2026-09-07; history keeps them); cleanup spec/plan statuses set to Implemented.
+
 ## 0.4.2 (no ref)
 
 - The branch ref is not a tenant concept. `of1_sync` no longer sends `&ref=`; gen-web reads `main--<repo>--<org>`. `PROXY_HOST`, `PREVIEW_HOST`/`PREVIEW_BASE`, the demo hub, and Helix admin calls (`aemAction`, `aem_preview`, `da-write.mjs live`) use the literal `main`. `repo-config.json` `branch` stays readable (older state) but is ignored for URLs and no longer required.
