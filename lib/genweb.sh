@@ -30,10 +30,41 @@ of1_sync() {
   esac
   if printf '%s' "$body" | jq -e 'type == "object"' >/dev/null 2>&1; then
     printf '%s\n' "$body" > "$out"
+    if jq -e 'any(.errors[]?; .content == "phase" and ((.error // "") | test("subrequest"; "i")))' "$out" >/dev/null 2>&1; then
+      echo "↻ content phase hit the ~50-subrequest cap — re-running it in batches" >&2
+      of1_sync_content_batches "$worker" "$org" "$repo" "$stage" "$out"
+    fi
   else
     echo "✗ sync returned a non-JSON response (HTTP ${code:-none})" >&2
     jq -n --arg e "sync returned non-JSON response (HTTP ${code:-none})" '{ok:false, error:$e}' > "$out"
   fi
+  return 0
+}
+
+# of1_sync_content_batches <worker-url> <org> <repo> <stage> <out-file>
+# One sync call may issue only ~50 subrequests (index + one per page + embeddings), so a bigger
+# content set fails the content phase. Re-run just that phase in slices (file=content&offset=N&limit=40),
+# resuming at the returned `next` until `done`, then fold the final content + slice errors into <out-file>
+# (dropping the cap error). Never returns non-zero for sync errors: they land in <out-file>.errors.
+of1_sync_content_batches() {
+  local worker="$1" org="$2" repo="$3" stage="$4" out="$5" off=0 n=0 raw code body next last="" errs="[]" fail=""
+  while [ "$n" -lt 50 ]; do
+    raw=$(of1_curl_auth DA_TOKEN auth -- -s -X POST -w '\n%{http_code}' "${worker}/api/tenants/${org}/${repo}/sync?stage=${stage}&file=content&offset=${off}&limit=40")
+    code="${raw##*$'\n'}"; body="${raw%$'\n'*}"
+    if ! printf '%s' "$body" | jq -e 'type == "object"' >/dev/null 2>&1; then fail="content batch at offset ${off} returned non-JSON (HTTP ${code:-none})"; break; fi
+    errs=$(printf '%s' "$body" | jq -c --argjson e "$errs" '$e + (.errors // [])')
+    last="$body"
+    printf '%s' "$body" | jq -e '.content.done == true' >/dev/null 2>&1 && break
+    next=$(printf '%s' "$body" | jq -r '.content.next // empty')
+    if [ -z "$next" ] || [ "$next" -le "$off" ]; then fail="content batches stopped at offset ${off} without finishing"; break; fi
+    off="$next"; n=$((n + 1))
+  done
+  [ "$n" -ge 50 ] && fail="content batches did not finish after 50 slices"
+  [ -z "$last" ] && last='{"content":null}'
+  jq --argjson last "$last" --argjson errs "$errs" --arg fail "$fail" \
+    '.content = $last.content | .errors = ([.errors // [] | .[] | select((.content == "phase") | not)] + $errs + (if $fail == "" then [] else [{content: "batch", error: $fail}] end))' \
+    "$out" > "$out.tmp" && mv "$out.tmp" "$out"
+  [ -z "$fail" ] || echo "✗ $fail" >&2
   return 0
 }
 

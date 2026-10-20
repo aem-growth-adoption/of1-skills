@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3
+
+- `of1_sync` (shared by `of1-publish` and `of1-migrate`) now handles sites too big for one sync call. A single gen-web sync may issue only ~50 subrequests (site index + one fetch per page + embeddings), so a larger `/of1/knowledge/**` set failed the content phase with `Too many subrequests by single Worker invocation` and `content: null` (silently leaving the index stale). When that error appears, the content phase is re-run in slices (`file=content&offset=N&limit=40`, resuming at the returned `next`, never `offset+limit`) until `done`, and the final `content` plus any slice errors are folded into `hub/sync-<stage>.json`. Normal-size sites still make exactly one call. A slice that does not advance, non-JSON answer, or 50 slices without `done` stops with an `errors[]` entry `{content: "batch"}` (check 2 fails on it).
+- Operational note: a large index needs a few minutes before Vectorize makes the new vectors queryable (small syncs take ~20 s); wait before running the pre-launch generation checks or a demo.
+- Tests: `lib/sync-batch.test.mjs` (single call untouched, batching resumes at `next`, slice/unrelated errors kept, other content errors don't batch, stuck batches stop).
+
 ## Unreleased
 
 - Docs only (no version bump): removed superseded knowledge-only specs/plans (2026-08-27, 2026-08-28, 2026-09-07; history keeps them); cleanup spec/plan statuses set to Implemented.
