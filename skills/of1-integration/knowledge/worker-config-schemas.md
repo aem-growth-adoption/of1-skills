@@ -131,7 +131,7 @@ Columns `label`, `query` — one row per chip, 8–12 rows (the block shows a ra
 
 | Row | Value |
 |---|---|
-| `api-endpoint` | worker URL (`$OF1_GENWEB_URL` or prod) |
+| `api-endpoint` | the tenant's proxied host `$PROXY_BASE` (`https://<ref>--<repo>--<org>[--dev].of1.live`; `$OF1_API_ENDPOINT` overrides). The block loads `<api-endpoint>/sdk/*` and calls `/api/*` there; gen-web is not called directly because it rejects anonymous browser calls and only the proxy holds the caller credential |
 | `domain` | tenant id `<org>/<repo>` (`$TENANT_ID`) |
 | `engine` | literal `da-blocks-slots` |
 | `title` | optional — landing `<h1>` |

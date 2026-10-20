@@ -89,7 +89,7 @@ Idempotent, **never overwrites** an existing chrome doc; on a missing one it aut
 bash "$SKILL_DIR/scripts/upload-of1-page.sh"
 ```
 
-PUTs the `/of1` doc (a `metadata` block + an `of1` block table: `api-endpoint`, `domain`, `engine` = `da-blocks-slots`, plus `title`/`subtitle`/`placeholder` rows from `$OF1_STATE_DIR/of1-landing.json` when present, HTML-escaped), triggers the preview, then gates: `/of1.plain.html` must return 200 **and** contain the `engine` row (a bare 200 could be a stale/foreign page). Exits 1 on any failure — **do not continue until it passes**. `of1-publish` step 2 runs this same script.
+PUTs the `/of1` doc (a `metadata` block + an `of1` block table: `api-endpoint` = the tenant's proxied host `$PROXY_BASE` (override: `OF1_API_ENDPOINT`, a bare https origin; never gen-web directly), `domain`, `engine` = `da-blocks-slots`, plus `title`/`subtitle`/`placeholder` rows from `$OF1_STATE_DIR/of1-landing.json` when present, HTML-escaped), triggers the preview, then gates: `/of1.plain.html` must return 200 **and** contain the `engine` row (a bare 200 could be a stale/foreign page). Also gates that `<api-endpoint>/sdk/of1-client.js` returns 200. Exits 1 on any failure — **do not continue until it passes**. `of1-publish` step 2 runs this same script.
 
 **Never include a `<title>` tag in the DA HTML** — EDS renders it as visible content.
 
@@ -121,7 +121,7 @@ Opens `/of1` with playwright, prints `header OK`/`footer OK`/`of1 block OK`/`sea
 |---|---|
 | `HEADER/FOOTER MISSING` | `/nav` or `/footer` missing — re-run Step 4 |
 | `OF1 BLOCK MISSING` | `blocks/of1/of1.js` not pushed, or the block table's `th` isn't exactly `of1` |
-| `SEARCH UI MISSING` | SDK didn't load — `api-endpoint` row must reach a worker (`<worker>/sdk/of1-client.js` 200); check console |
+| `SEARCH UI MISSING` | SDK didn't load — `api-endpoint` row must be a host that serves `/sdk/of1-client.js` (200) and proxies `/api/*`: the tenant's proxied host `$PROXY_BASE`; check console (CORS or 401 on `/api/suggest` means the page called gen-web directly or the proxy is older than the `/sdk` + CORS release) |
 | Unstyled links / system font | `styles/styles.css` not deployed yet, or preview is stale |
 
 Fix failures and re-push before Completion. Per-section visual problems are the templates' CSS (`of1-build-templates`), not this skill.

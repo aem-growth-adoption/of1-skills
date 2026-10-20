@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1
+
+- `of1-style-generative-block`: the `/of1` page's `api-endpoint` is now the tenant's proxied host (`$PROXY_BASE`, `https://<ref>--<repo>--<org>[--dev].of1.live`), not the gen-web URL. Production gen-web rejects anonymous browser calls (401) and only the edge proxy holds the caller credential, so a page calling gen-web directly rendered no chips. `OF1_API_ENDPOINT` overrides (bare https origin, validated). `upload-of1-page.sh` fails if `<api-endpoint>/sdk/of1-client.js` is not 200.
+- **Requires of1-edge-proxy with `/sdk/*` and tenant-origin CORS on the passthrough** (of1-edge-proxy #44 and #45) deployed. Pages written by 0.4.0 or earlier keep calling gen-web: re-run `of1-style-generative-block` (or `of1-publish`) to rewrite them.
+- Tests: new `upload-of1-page` cases (proxied default, dev suffix, override, unsafe override rejected, SDK gate); fixed the stale `domain` row assertion (`o/r`).
+
 ## 0.4.0 (new tenant system)
 
 - Breaking/contract: tenant id is `org/repo`, config is DA sheets, sync is stage-aware, new skill `of1-migrate`, `OF1_PUBLISH_LIVE` / `publish-live`. Callers (e.g. of1-demo-skills) must require of1-skills >= 0.4.0.
