@@ -72,6 +72,24 @@ test('cta: write-cta-template.sh uploads key,value rows', () => {
   assert.match(readFileSync(join(f.base, 'writer.log'), 'utf8'), /--path of1\/config\/cta-template --columns key,value/);
   assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'html', value: '<div>{{title}}</div>' }, { key: 'fallback.title', value: 'T' }, { key: 'fallback.description', value: 'D' }, { key: 'fallback.buttonText', value: 'B' }]);
 });
+test('cta: write-cta-template.sh refuses a hard-coded font-family (it breaks on real-domain pages) and writes nothing', () => {
+  const f = fixture();
+  writeFileSync(join(f.state, 'repo-config.json'), JSON.stringify({ owner: 'o', repo: 'r', branch: 'main' }));
+  const script = join(skillDir, '../of1-build-cta-template/scripts/write-cta-template.sh');
+  const run = (html) => {
+    const cta = join(f.base, 'cta2.json');
+    writeFileSync(cta, JSON.stringify({ html, fallback: { title: 'T', description: 'D', buttonText: 'B' } }));
+    return spawnSync('bash', [script, cta], { encoding: 'utf8', env: { PATH: process.env.PATH, OF1_STATE_DIR: f.state, OF1_DA_WRITE: stubWriter(f) } });
+  };
+  for (const bad of ['<h2 style="color:#fff;font-family:amag_display, Arial">{{title}}</h2>', "<p style='FONT-FAMILY : Roboto'>{{description}}</p>"]) {
+    const r = run(bad);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /font-family/);
+    assert.match(r.stderr, /host page|inherit/i);
+  }
+  assert.equal(existsSync(join(f.base, 'writer.log')), false);
+  assert.equal(run('<h2 style="color:#fff;font-weight:700">{{title}}</h2>').status, 0);
+});
 test('08: creates helix-query.yaml when absent', () => {
   const f = fixture();
   const r = f.run('08-helix-query.sh');

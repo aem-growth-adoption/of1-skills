@@ -6,7 +6,7 @@ user-invocable: true
 
 # CTA Template Builder
 
-Analyze a website's visual design system (fonts, colors, button styles, spacing) and generate a branded HTML CTA template with slot placeholders. The template is used by the OF1 extension to inject a personalized call-to-action that looks native to the site.
+Analyze a website's visual design system (colors, button styles, spacing) and generate a branded HTML CTA template with slot placeholders. The template is used by the OF1 extension to inject a personalized call-to-action that looks native to the site.
 
 ## Env — the driver exports these (see `of1-check-dependencies`)
 
@@ -20,7 +20,7 @@ cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
 
-Read existing design tokens (from the extraction step, `of1-extract-design` / `stardust:extract`) — use for colors, fonts, button styles, border-radius. Only WebFetch the site if you need CTA-specific details not in the tokens. **Resolve the spec via the shared resolver** (`of1-integration/knowledge/design-tokens-resolution.md`) — `DESIGN.json` may live at `stardust/current/` OR project root (`./`), and `styles/styles.css` is a valid token source for a live site:
+Read existing design tokens (from the extraction step, `of1-extract-design` / `stardust:extract`) — use for colors, button styles, border-radius (not fonts: the host page supplies those). Only WebFetch the site if you need CTA-specific details not in the tokens. **Resolve the spec via the shared resolver** (`of1-integration/knowledge/design-tokens-resolution.md`) — `DESIGN.json` may live at `stardust/current/` OR project root (`./`), and `styles/styles.css` is a valid token source for a live site:
 ```bash
 DESIGN_JSON=""
 if   [ -f stardust/current/DESIGN.json ]; then DESIGN_JSON="stardust/current/DESIGN.json"
@@ -65,7 +65,7 @@ real site by `stardust:extract`, so prefer it over re-deriving from HTML. Read:
 ### 2. Determine the CTA visual treatment
 
 - **Background:** usually dark (matches hero/footer tone) or a prominent section style
-- **Heading:** brand font, white or light color, bold weight, ~2rem
+- **Heading:** white or light color, bold weight, ~2rem. **Do not set `font-family`**: the CTA is also injected into pages served from the tenant's real domain, where the EDS replica's font names (e.g. `amag_display`) do not exist and the browser falls back to Arial. With no `font-family` the host page's own heading and body fonts apply on every page (`write-cta-template.sh` rejects a `font-family`)
 - **Description:** lighter/muted color, regular weight, ~1.1rem
 - **Button:** brand's actual button style (color, radius, padding, text-transform)
 - **Container:** 3–4rem vertical padding, 2rem horizontal, text-align center
@@ -74,7 +74,7 @@ The CTA should look like a native section on the site — not a generic overlay.
 
 ### 3. Build the HTML template
 
-Self-contained HTML block using **inline styles only** (no external CSS). Must include exactly these placeholders:
+Self-contained HTML block using **inline styles only** (no external CSS, no `font-family`). Must include exactly these placeholders:
 
 - `{{title}}` — personalized heading (5–10 words)
 - `{{description}}` — personalized body text (1 sentence)
@@ -83,9 +83,9 @@ Self-contained HTML block using **inline styles only** (no external CSS). Must i
 
 ```html
 <div style="[background, padding, text-align, margin, border-radius]">
-  <h2 style="[color, font-family, font-size, font-weight, margin, line-height]">{{title}}</h2>
-  <p style="[color, font-family, font-size, margin, max-width, line-height]">{{description}}</p>
-  <a href="{{href}}" style="[display, background, color, font-family, font-size, font-weight, padding, border-radius, text-decoration, text-transform]">{{buttonText}}</a>
+  <h2 style="[color, font-size, font-weight, margin, line-height]">{{title}}</h2>
+  <p style="[color, font-size, margin, max-width, line-height]">{{description}}</p>
+  <a href="{{href}}" style="[display, background, color, font-size, font-weight, padding, border-radius, text-decoration, text-transform]">{{buttonText}}</a>
 </div>
 ```
 
@@ -111,7 +111,7 @@ bash "$SKILL_DIR/scripts/write-cta-template.sh" "$OF1_STATE_DIR/cta-template.jso
 
 ## Quality checklist
 
-- [ ] Template uses the site's actual font family (not generic sans-serif unless that IS the site's font)
+- [ ] Template sets **no** `font-family` anywhere (the host page's fonts apply; sizes, weights, colours and spacing carry the brand look)
 - [ ] Button style matches the site's real button design (color, radius, text-transform)
 - [ ] Background color is appropriate (typically dark, matching the site's dark sections)
 - [ ] The CTA would not look out of place if screenshot alongside the actual site
@@ -121,7 +121,7 @@ bash "$SKILL_DIR/scripts/write-cta-template.sh" "$OF1_STATE_DIR/cta-template.jso
 ## Example
 
 **Frescopa (frescopa.coffee):**
-- Deep-wine bg (#58181D), Baskerville heading + Roboto body, teal pill button (#00647D), rounded card with generous padding
+- Deep-wine bg (#58181D), teal pill button (#00647D), rounded card with generous padding (no font-family: the page's own Baskerville / Roboto apply)
 - Fallback: "Find Your Perfect Brew" / "Discover handcrafted coffee and machines tailored to your taste." / "Explore Now"
 
 ## Completion
