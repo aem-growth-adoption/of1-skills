@@ -92,11 +92,15 @@ gen_one() {
   if printf '%s' "$RESPONSE" | head -c 200 | grep -qiE '^[[:space:]]*<(!doctype|html)'; then
     echo "⚠ WARN (check 6): $base/api/generate returned HTML, not NDJSON — proxied host not available; generation smoke test NOT run" >&2; return 0
   fi
+  # The da-blocks-slots engine streams a whole page as ONE section (several blocks in its html); older
+  # flows streamed one section per block. Accept either: >=2 sections, or 1 section with >=2 blocks.
   SECTIONS=$(printf '%s\n' "$RESPONSE" | jq -R 'fromjson? | select(.type == "section")' | jq -s 'length')
+  BLOCKS=$(printf '%s\n' "$RESPONSE" | jq -R -s -r '[split("\n")[] | fromjson? | select(.type == "section") | (.html // "") | [scan("<div class=\"[A-Za-z]")] | length] | add // 0')
   GEN_ERRORS=$(printf '%s\n' "$RESPONSE" | jq -R -c 'fromjson? | select(.type == "error")')
   if [ -n "$GEN_ERRORS" ]; then echo "✗ FAIL (check 6): $label generation streamed error event(s):" >&2; printf '%s\n' "$GEN_ERRORS" >&2; return 1
   elif [ "$SECTIONS" -ge 2 ]; then echo "✓ $label generation returned ${SECTIONS} sections"
-  else echo "✗ FAIL (check 6): $label generation returned ${SECTIONS} sections (expected ≥2)" >&2; printf '%s\n' "$RESPONSE" | head -20; return 1; fi
+  elif [ "$SECTIONS" -eq 1 ] && [ "${BLOCKS:-0}" -ge 2 ]; then echo "✓ $label generation returned 1 section with ${BLOCKS} blocks"
+  else echo "✗ FAIL (check 6): $label generation returned ${SECTIONS} sections / ${BLOCKS:-0} blocks (expected >=2 sections or 1 section with >=2 blocks)" >&2; printf '%s\n' "$RESPONSE" | head -20; return 1; fi
 }
 check_6() {
   local rc=0

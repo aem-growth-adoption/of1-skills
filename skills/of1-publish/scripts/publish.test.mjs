@@ -281,6 +281,23 @@ test('check 6: uses proxied tenant host; OF1_GENERATE_BASE_URL overrides', () =>
   f.run('checks.sh', ['6'], { OF1_GENERATE_BASE_URL: 'https://dev.example' });
   assert.match(readFileSync(join(f.fake, 'gen-urls.log'), 'utf8'), /https:\/\/dev\.example\/api\/generate/);
 });
+const pageSection = (blocks) => JSON.stringify({ type: 'section', format: 'html', index: 0, html: Array.from({ length: blocks }, (_, i) => `<div class="b${i}"><div><div>x</div></div></div>`).join('') });
+test('check 6: one section carrying a whole page (>=2 blocks) passes — the da-blocks-slots engine emits a single section', () => {
+  const f = fixture(); withHub(f);
+  writeFileSync(join(f.fake, 'gen.ndjson'), `${pageSection(4)}\n{"type":"done"}\n`);
+  const r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /generation returned 1 section with 4 blocks/);
+});
+test('check 6: a single thin section (<2 blocks) or no section still fails', () => {
+  const f = fixture(); withHub(f);
+  writeFileSync(join(f.fake, 'gen.ndjson'), `${pageSection(1)}\n`);
+  let r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 1); assert.match(r.stderr, /FAIL \(check 6\).*expected >=2 sections or 1 section with >=2 blocks/);
+  writeFileSync(join(f.fake, 'gen.ndjson'), '{"type":"done"}\n');
+  r = f.run('checks.sh', ['6']);
+  assert.equal(r.status, 1); assert.match(r.stderr, /returned 0 sections/);
+});
 test('check 6: proxy 401/404 fail with explanation; HTML or unreachable only warns', () => {
   const f = fixture(); withHub(f);
   writeFileSync(join(f.fake, 'gen.ndjson'), '{"error":"x"}');

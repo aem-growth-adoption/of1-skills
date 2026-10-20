@@ -13,6 +13,7 @@
 | [2026-10-12-of1-skills-cleanup-2-driver](superpowers/plans/2026-10-12-of1-skills-cleanup-2-driver.md) | plan | Implemented |  |
 | [2026-10-12-of1-skills-cleanup-3-slim](superpowers/plans/2026-10-12-of1-skills-cleanup-3-slim.md) | plan | Implemented |  |
 | New tenant system (`org/repo` tenant ids, config as DA sheets, preview/publish stages, `of1-migrate`) | work | Implemented on `feat/new-tenant-system` (PR pending) |  |
+| Template realism: harvest real blocks + images, compose from them, verify images, check 6 accepts one-section pages (0.5.0) | work | Implemented on `feat/templates-real-blocks` (PR pending) |  |
 | [2026-08-31-of1-build-templates-da-blocks-slots-migration](superpowers/specs/2026-08-31-of1-build-templates-da-blocks-slots-migration.md) | spec | Implemented |  |
 | [2026-10-05-da-first-config-design](superpowers/specs/2026-10-05-da-first-config-design.md) | spec | Implemented (PRs #11, #12) |  |
 | [2026-10-09-of1-skills-cleanup-design](superpowers/specs/2026-10-09-of1-skills-cleanup-design.md) | spec | Implemented (PRs #13-#17) |  |

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0
+
+Found by running the AMAG demo end to end in a real browser (generated pages looked nothing like the site; images were broken).
+
+- **`of1-build-templates` no longer invents images or layouts.**
+  - New `assets/harvest-sections.mjs`: fetches the migrated pages' `.plain.html` (from `/sitemap.json` / `/query-index.json`, minus OF1/templates/nav/fragments, or `--paths`), splits out every top-level block with absolute URLs, and pools the real content images into `$OF1_STATE_DIR/of1-build-templates-harvest.json`. The base phase uses it instead of the old per-block fingerprint harvest.
+  - New `assets/compose-template.mjs`: composes a template document from harvested blocks (`keepRows`, exact-text `replace`, `images` from the pool, `ctaHref: "/of1"`), keeping structure, variants and colour cells as authored. Fails on unknown blocks, text it cannot find, or a placeholder image. The intent phase composes with it; hand-written markup is only the fallback for a block type the site does not have.
+  - New RULES 8-9: never invent an image; compose from the site's own authored blocks.
+- **New assemble step 3b `scripts/verify-images.sh` (+ `assets/template-images.mjs`)**: aborts on placeholder / invented / unusable images (`placehold.co`, `picsum.photos`, `about:error`, `example-*.jpg`, a bare `media_1.png`) and on any template image that does not answer `200 image/*` (relative URLs resolve against the template's preview path). This was the cause of broken `about:error` hero images, and of white-on-white hero headlines.
+- **`of1-publish` check 6 accepts a whole page in one section.** The da-blocks-slots engine streams one `section` event holding the whole page, so the old "at least 2 `section` events" rule failed healthy sites. Now: >=2 sections, or 1 section with >=2 blocks; 0 sections, a single thin section, or any `error` event still fail.
+- Tests: `template-images`, `harvest-sections`, `compose-template` unit tests; `verify-images` script tests (fake curl); new check 6 cases. 311 tests pass.
+
 ## 0.4.3
 
 - `of1_sync` (shared by `of1-publish` and `of1-migrate`) now handles sites too big for one sync call. A single gen-web sync may issue only ~50 subrequests (site index + one fetch per page + embeddings), so a larger `/of1/knowledge/**` set failed the content phase with `Too many subrequests by single Worker invocation` and `content: null` (silently leaving the index stale). When that error appears, the content phase is re-run in slices (`file=content&offset=N&limit=40`, resuming at the returned `next`, never `offset+limit`) until `done`, and the final `content` plus any slice errors are folded into `hub/sync-<stage>.json`. Normal-size sites still make exactly one call. A slice that does not advance, non-JSON answer, or 50 slices without `done` stops with an `errors[]` entry `{content: "batch"}` (check 2 fails on it).
