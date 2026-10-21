@@ -57,7 +57,7 @@ The worker pulls each source from `https://main--{repo}--{owner}.aem.page` (stag
 
 | # | Check | Hint when it fails |
 |---|-------|--------------------|
-| 1 | Nothing tracked under `of1/config/` | Run `of1-migrate` |
+| 1 | `config.json` / `cta-template.json` not tracked under `of1/config/` | Run `of1-migrate` |
 | 2 | Preview sync strict: `ok: true`, no non-warning `errors`, `content.indexed > 0`. Publish sync: `ok: true` and every error a warning (404s, an unpublished site and empty results pass; 401/403/5xx fail) | `brand-voice: empty document` = doc not previewed; indexed 0 = knowledge pages not in the index (check `helix-query.yaml` / config-service index, `.hlxignore`, and that pages are published live); see step 2b |
 | 3 | `/status` has `ready: true` (only `hasTemplates`/`hasContent` gate it; `hasBrandVoice`/`hasSuggestions` should still be true) | Re-run `of1-build-templates` / content steps, then step 4 |
 | 4 | `/of1` renders header, footer, the `of1` block, the authored title (from `of1-landing.json`) and >=1 chip | Default title: step 2 ran before `of1-build-quick-suggestions`. No chips: suggestions sheet not previewed. No header/footer: `/nav` `/footer` missing (`of1-style-generative-block` step 4). No block: `blocks/of1/` not pushed |

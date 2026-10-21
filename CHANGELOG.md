@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4
+
+- `of1-migrate` no longer deletes every file under `of1/config`. Step 3 removes only what step 2 converted (`config.json`, `cta-template.json`; recorded in `migrate-converted.txt`); other tracked files (e.g. `signals.json`, `context-endpoints.json`, which the edge proxy fetches from git at runtime) stay. Step 1 lists all tracked files as `convert` / `keep`; the result JSON gets `keptInGit` and `warnings` (legacy catalogs the worker no longer reads can be deleted by hand; proxy-read files stay). A repo with only kept files is `already-new`. Rollback is restricted to the removed files. `batch.mjs` prints `keptInGit` counts.
+- `of1-check-dependencies` step 3b and `of1-publish` check 1 now only flag a tracked `config.json` / `cta-template.json`.
+- `of1-check-dependencies` stops (exit 1, `OF1 setup runs from the main branch (checkout main)`) off `main` at the start of `verify.sh` and in `00-load-setup.sh`, before any DA write, commit or push; it no longer only warns.
+
 ## 0.4.3
 
 - `of1_sync` (shared by `of1-publish` and `of1-migrate`) now handles sites too big for one sync call. A single gen-web sync may issue only ~50 subrequests (site index + one fetch per page + embeddings), so a larger `/of1/knowledge/**` set failed the content phase with `Too many subrequests by single Worker invocation` and `content: null` (silently leaving the index stale). When that error appears, the content phase is re-run in slices (`file=content&offset=N&limit=40`, resuming at the returned `next`, never `offset+limit`) until `done`, and the final `content` plus any slice errors are folded into `hub/sync-<stage>.json`. Normal-size sites still make exactly one call. A slice that does not advance, non-JSON answer, or 50 slices without `done` stops with an `errors[]` entry `{content: "batch"}` (check 2 fails on it).

@@ -20,7 +20,7 @@ function fixture() {
   const base = tmp();
   const repo = join(base, 'repo');
   mkdirSync(repo);
-  spawnSync('git', ['init', '-q'], { cwd: repo });
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
   for (const f of ['scripts/aem.js', 'scripts/scripts.js', 'styles/styles.css']) write(join(repo, f));
   const home = join(base, 'home');
   for (const s of SKILLS) write(join(home, '.claude/skills', s, 'SKILL.md'), '# x\n');
@@ -63,4 +63,13 @@ test('no SLICC remnants in skills/docs-excluded tree', () => {
     'skills', 'README.md', 'AGENTS.md', '.claude-plugin', '--glob', '!verify.test.mjs'],
   { cwd: root, encoding: 'utf8' });
   assert.equal(r.status, 1, r.stdout);
+});
+
+test('non-main branch stops at the start with the main-branch message and writes no state', () => {
+  const f = fixture();
+  spawnSync('git', ['checkout', '-q', '-b', 'feature'], { cwd: f.repo });
+  const r = run(f.repo, f, { ADOBE_IMS_TOKEN: 'x' });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout + r.stderr, /OF1 setup runs from the main branch \(checkout main\)/);
+  assert.ok(!existsSync(join(f.repo, '.of1/state/setup.json')));
 });

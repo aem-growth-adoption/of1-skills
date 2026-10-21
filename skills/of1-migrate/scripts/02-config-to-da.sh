@@ -26,6 +26,8 @@ else
   jq -n --arg d "$DOMAIN" '[{key:"domain", value:$d}]' > "$ROWS"
 fi
 write_sheet config "$ROWS"
+CONV="$OF1_STATE_DIR/migrate-converted.txt"; : > "$CONV"
+{ [ -f of1/config/config.json ] || git cat-file -e origin/main:of1/config/config.json 2>/dev/null; } && echo of1/config/config.json >> "$CONV"
 CTA=of1/config/cta-template.json
 if [ ! -f "$CTA" ] && git cat-file -e "origin/main:$CTA" 2>/dev/null; then git show "origin/main:$CTA" > "$OF1_STATE_DIR/migrate-remote-cta.json"; CTA="$OF1_STATE_DIR/migrate-remote-cta.json"; fi
 if [ -f "$CTA" ]; then
@@ -34,6 +36,6 @@ if [ -f "$CTA" ]; then
   jq -c '[{key:"html",value:.html},{key:"fallback.title",value:.fallback.title},{key:"fallback.description",value:.fallback.description},{key:"fallback.buttonText",value:.fallback.buttonText}]' \
     "$CTA" > "$OF1_STATE_DIR/migrate-cta-rows.json"
   write_sheet cta-template "$OF1_STATE_DIR/migrate-cta-rows.json"
-  touch "$OF1_STATE_DIR/migrate-cta"
+  touch "$OF1_STATE_DIR/migrate-cta"; echo of1/config/cta-template.json >> "$CONV"
 fi
 echo "✓ config sheets written to DA + previewed"

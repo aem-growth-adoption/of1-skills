@@ -102,6 +102,9 @@ test('03b: tracked of1/config stops with exit 3 and the migrate message, no remo
   assert.match(r.stderr, /^Legacy OF1 setup found: run of1-skills:of1-migrate$/m);
   assert.equal(f.git('ls-files of1/config').split('\n').length, 4);
 });
+test('03b: only non-migratable of1/config files tracked passes', () => {
+  assert.equal(fixture({ files: { 'of1/config/signals.json': '{}' } }).run('03b-legacy-config.sh').status, 0);
+});
 test('03b: nothing tracked passes', () => {
   assert.equal(fixture().run('03b-legacy-config.sh').status, 0);
 });
@@ -159,4 +162,22 @@ test('01: clears product-urls.txt', () => {
   writeFileSync(join(f.state, 'product-urls.txt'), 'x');
   f.run('01-reset-state.sh');
   assert.equal(existsSync(join(f.state, 'product-urls.txt')), false);
+});
+test('non-main branch: a write step stops before any write, commit or push', () => {
+  const f = fixture();
+  f.git('checkout -q -b feature');
+  const before = f.git('rev-parse HEAD');
+  const r = f.run('08-helix-query.sh');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /OF1 setup runs from the main branch \(checkout main\)/);
+  assert.equal(existsSync(join(f.repo, 'helix-query.yaml')), false);
+  assert.equal(f.git('rev-parse HEAD'), before);
+  assert.equal(f.remote('branch --list feature'), '');
+});
+test('detached HEAD keeps its own message; main proceeds', () => {
+  const f = fixture();
+  f.git('checkout -q --detach');
+  assert.match(f.run('08-helix-query.sh').stderr, /detached HEAD/);
+  f.git('checkout -q main');
+  assert.equal(f.run('08-helix-query.sh').status, 0);
 });

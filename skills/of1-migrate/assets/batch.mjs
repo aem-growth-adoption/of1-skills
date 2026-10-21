@@ -39,10 +39,13 @@ export function listRepos(spec, org) {
   return readFileSync(spec, 'utf8').split('\n').map((s) => s.trim()).filter((s) => s && !s.startsWith('#'));
 }
 
+const CONVERTED = ['of1/config/config.json', 'of1/config/cta-template.json'];
+
 export function detect(dir) {
   const r = spawnSync('git', ['ls-files', 'of1/config'], { cwd: dir, encoding: 'utf8' });
   const tracked = r.stdout.split('\n').filter(Boolean);
-  return { legacy: tracked.length > 0, tracked };
+  const convert = tracked.filter((f) => CONVERTED.includes(f));
+  return { legacy: convert.length > 0, tracked, convert, keep: tracked.filter((f) => !CONVERTED.includes(f)) };
 }
 
 const STEPS = ['01-detect.sh', '02-config-to-da.sh', '04-sync.sh', '05-verify.sh', '03-remove-git-config.sh', '06-report.sh'];
@@ -73,26 +76,29 @@ export function runBatch(args, env = process.env, log = console.log) {
   }
   if (!args.dryRun) mkdirSync(args.out, { recursive: true });
   const counts = {};
+  let keptTotal = 0;
   for (const entry of repos) {
     const tmp = mkdtempSync(join(tmpdir(), 'of1-migrate-'));
     const repo = entry;
-    let status, detail = null;
+    let status, detail = null, kept = [];
     try {
       const c = spawnSync('git', ['clone', '-q', '--depth', '1', `${base}/${repo}.git`, join(tmp, repo)], { encoding: 'utf8' });
       if (c.status !== 0) status = 'clone-failed';
-      else if (args.dryRun) status = detect(join(tmp, repo)).legacy ? 'would-migrate' : 'already-new';
+      else if (args.dryRun) { const d = detect(join(tmp, repo)); status = d.legacy ? 'would-migrate' : 'already-new'; kept = d.keep; }
       else {
         const m = migrateClone(join(tmp, repo), { ...env, OF1_DEMO_REPO: join(tmp, repo), OF1_STATE_DIR: join(tmp, 'state') });
-        status = m.status; detail = m.result;
+        status = m.status; detail = m.result; kept = m.result?.keptInGit ?? [];
         writeFileSync(join(args.out, `${entry}.json`), JSON.stringify({ repo: `${args.org}/${repo}`, ...detail, status }, null, 2));
       }
     } catch (e) { status = `error: ${e.message}`; }
     finally { rmSync(tmp, { recursive: true, force: true }); }
     counts[status] = (counts[status] || 0) + 1;
-    log(`${args.org}/${entry}\t${status}`);
+    keptTotal += kept.length;
+    log(`${args.org}/${entry}\t${status}${kept.length ? `\tkeptInGit=${kept.length}` : ''}`);
+    for (const w of detail?.warnings ?? []) log(`    warning: ${w}`);
     for (const e of detail?.errors ?? []) log(`    ${e.step}: ${String(e.error).split('\n')[0]}`);
   }
-  log(`summary (${args.dryRun ? 'dry-run' : 'run'}): ${Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ') || 'no repos'}`);
+  log(`summary (${args.dryRun ? 'dry-run' : 'run'}): ${Object.entries(counts).map(([k, v]) => `${k}=${v}`).join(' ') || 'no repos'}${keptTotal ? ` keptInGit=${keptTotal}` : ''}`);
   return counts;
 }
 

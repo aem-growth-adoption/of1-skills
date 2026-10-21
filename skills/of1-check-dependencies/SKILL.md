@@ -43,8 +43,10 @@ existing** — it is not written by `verify.sh`; Part 2 writes it.
 
 It also resolves `owner`/`repo` (from `git config remote.origin.url`) and
 `branch` (from `git branch --show-current`) and writes them into
-`setup.json`. It **warns** (does not fail) if `branch` is empty (detached
-HEAD) or `main`.
+`setup.json`. **First of all** (before anything is written) it requires the
+checkout to be on `main`: on any other branch it exits `1` with `OF1 setup runs
+from the main branch (checkout main)` (detached HEAD: its own message). Every
+Part 2 step re-checks this through `00-load-setup.sh`.
 
 ## Part 2 — repo state (after verify.sh succeeds)
 
@@ -54,7 +56,7 @@ Each step is a script in `$SKILL_DIR/scripts/`, run as `bash "$SKILL_DIR/scripts
 |---|---------|--------------|
 | 0 | `02-domain.sh [<domain>]` | Resolves `DOMAIN`, first match wins: env `DOMAIN`; `.domain` of an existing `$OF1_STATE_DIR/repo-config.json`; `OF1_CONTENT_SOURCE`; first `https://` host in `fstab.yaml`/`README.md` that is not `aem.live\|aem.page\|hlx.*\|github.com`; then the argument. Prints it; exit `2` = nothing resolved, ask the user then re-run with the answer as the argument. Capture with `DOMAIN=$(bash "$SKILL_DIR/scripts/02-domain.sh") \|\| <handle exit>` — never `export DOMAIN=$(...)`, which masks the exit status and can leave `DOMAIN` empty |
 | 1 | `01-reset-state.sh` | Clears the previous run's local state (status files, staged DA/hub inputs, `product-urls.txt`). Never deletes DA or git content; every run is idempotent and overwrites only OF1-owned paths |
-| 3b | `03b-legacy-config.sh` | Any git-tracked `of1/config/*` = legacy setup: prints `Legacy OF1 setup found: run of1-skills:of1-migrate` and exits `3` (stop; never removes) |
+| 3b | `03b-legacy-config.sh` | Git-tracked `of1/config/config.json` or `cta-template.json` = legacy setup (other tracked files there are left alone): prints `Legacy OF1 setup found: run of1-skills:of1-migrate` and exits `3` (stop; never removes) |
 | 4 | `04-code-sync.sh` | Probes the `main` preview (bounded curl, up to ~60 s); only WARNs if not 200 |
 | 5 | `05-aem-preview-auth.sh` | Probes AEM preview authorization (a separate grant from DA write); fails with a provisioning message on non-200 |
 | 7 | `07-config-json.sh [<domain>]` | Resolves the domain itself (same logic as step 0, fails with exit 1 if empty), writes the DA sheet `/of1/config/config` (`key,value`; row `domain`) via `da-write.mjs` and previews it; nothing is committed to git |
@@ -64,7 +66,7 @@ Each step is a script in `$SKILL_DIR/scripts/`, run as `bash "$SKILL_DIR/scripts
 ### Decisions the scripts cannot make
 
 - **Step 0.** If `02-domain.sh` exits `2` (nothing resolved, interactive), ask the user for the production domain via `AskUserQuestion` and re-run it with the answer as the argument. With `OF1_NON_INTERACTIVE=1` it instead exits `1` with `FAIL: cannot determine DOMAIN — set DOMAIN or pass content-source=<domain>`; stop. Step 7 writes the domain to `config.json`.
-- **Step 2 (no script).** If `setup.json`'s `branch` is empty or `"main"`, tell the user: "⚠️ Currently on `{branch or 'a detached HEAD'}` — demo artifacts and DA content will be affected on this branch/state. Proceeding anyway per the hands-off branch model; check out the intended branch yourself if this isn't what you want." Then proceed regardless — never block.
+- **Branch.** Not on `main` = hard stop (`OF1 setup runs from the main branch (checkout main)`); tell the user to check out `main` and re-run. Nothing was written.
 - **Step 3b.** Exit `3` means the repo still has git-tracked OF1 config (old setup). Stop the run and tell the user to run `of1-skills:of1-migrate`; do not remove files here.
 
 ### Why steps 7 and 8 exist

@@ -1,6 +1,6 @@
 ---
 name: of1-migrate
-description: Migrate an EDS repo from the legacy OF1 setup (git-tracked of1/config/*, triple tenant id) to the new tenant system (config as DA sheets, tenant id org/repo). Run when of1-check-dependencies stops with "Legacy OF1 setup found".
+description: Migrate an EDS repo from the legacy OF1 setup (git-tracked of1/config/config.json / cta-template.json, triple tenant id) to the new tenant system (config as DA sheets, tenant id org/repo). Run when of1-check-dependencies stops with "Legacy OF1 setup found".
 user-invocable: true
 ---
 
@@ -20,11 +20,11 @@ Moves one repo's OF1 config from git into DA sheets, syncs the new tenant (`org/
 
 | Script | What it does |
 |---|---|
-| `01-detect.sh` | Finds git-tracked `of1/config/*` (local checkout or `origin/main`) or a triple `TENANT_ID` in `repo-config.json`. Nothing: writes `status: already-new` and stops (exit 0). Warns about untracked `of1/config` files |
+| `01-detect.sh` | Lists every git-tracked `of1/config/*` (local checkout or `origin/main`) marked `convert` (`config.json`, `cta-template.json`) or `keep` (everything else), or finds a triple `TENANT_ID` in `repo-config.json`. Nothing to convert (kept-only repos included): writes `status: already-new` and stops (exit 0). Warns about untracked `of1/config` files |
 | `02-config-to-da.sh` | Reads git `config.json` (nested keys become dotted rows, `templates.names`/`contentIngestion.includePaths` comma-joined) and `cta-template.json`, writes the DA sheets `of1/config/config` and `of1/config/cta-template` (`key,value`) and previews them. Fails, naming the key, on values a sheet cannot hold losslessly (other arrays, null, `{}`, `"123"`/`"true"` strings, dotted keys) |
 | `04-sync.sh` | Preview sync, optional live publish (`publish-live.json`), publish sync (no `ref`) |
 | `05-verify.sh` | Runs publish checks 2, 3 and 6; all must pass (writes the `migrate-verified` marker) |
-| `03-remove-git-config.sh` | LAST: `git rm of1/config`, commit by pathspec, `git_push_rebased`. Refuses without the verified marker; a failed push undoes the local removal |
+| `03-remove-git-config.sh` | LAST: `git rm` only the files 02 converted (list in `migrate-converted.txt`), commit by pathspec, `git_push_rebased`. Refuses without the verified marker; a failed push undoes the local removal. Other tracked `of1/config` files (e.g. `signals.json`, `context-endpoints.json`, which the edge proxy reads from git) stay |
 | `06-report.sh` | Writes `$OF1_STATE_DIR/of1-migrate-result.json`; exit 1 unless migrated |
 
 Run each as `bash "$SKILL_DIR/scripts/<name>"`; stop at the first non-zero exit except `06-report.sh`, which you always run last (also on failure).
@@ -46,7 +46,8 @@ bash "$SKILL_DIR/scripts/06-report.sh"
 ```json
 { "status": "migrated|already-new|failed", "repo": "org/repo",
   "tenant": "org/repo", "checks": {"2": true, "3": true, "6": true},
-  "errors": [{"step": "check 2", "error": "..."}] }
+  "errors": [{"step": "check 2", "error": "..."}],
+  "keptInGit": ["of1/config/signals.json"], "warnings": ["..."] }
 ```
 
 ## Failure flow
@@ -55,7 +56,8 @@ bash "$SKILL_DIR/scripts/06-report.sh"
 - Check 2 fails: read `hub/sync-*.json`; fix the cause (knowledge pages not previewed, index) and re-run from `04-sync.sh`.
 - The git config is deleted only after checks 2, 3, 6 pass, so any failed run can simply be repeated.
 - After `migrated`, re-run `of1-publish` (its check 1 now passes).
+- `keptInGit` lists tracked `of1/config` files left in place. `warnings` flags legacy catalogs the worker no longer reads (brand-voice, personas, suggestions, products, knowledge, knowledge-pages, use-cases, of1-endpoint, templates `.json`: delete by hand) and `signals.json` / `context-endpoints.json` (still read by the proxy from git: they stay).
 
 ## Batch
 
-`node "$SKILL_DIR/assets/batch.mjs" --org <org> --repos <file|auto> [--dry-run] [--out <dir>]` clones each repo (shallow, temp dir, git credentials only) and prints one line per repo plus a summary. `auto` lists the org's repos without forks and archived ones and prints the list. Default `--dry-run` only detects (`would-migrate` / `already-new`). `--no-dry-run` runs the steps in each clone and needs `--repos <file>` or `--yes`; each repo's result JSON (with errors) is kept in `--out` (default `./of1-migrate-results`).
+`node "$SKILL_DIR/assets/batch.mjs" --org <org> --repos <file|auto> [--dry-run] [--out <dir>]` clones each repo (shallow, temp dir, git credentials only) and prints one line per repo (with `keptInGit=<n>` and warnings) plus a summary (total `keptInGit`). `auto` lists the org's repos without forks and archived ones and prints the list. Default `--dry-run` only detects (`would-migrate` / `already-new`). `--no-dry-run` runs the steps in each clone and needs `--repos <file>` or `--yes`; each repo's result JSON (with errors) is kept in `--out` (default `./of1-migrate-results`).
