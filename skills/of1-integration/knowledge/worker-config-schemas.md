@@ -157,6 +157,8 @@ Per-block writing rules the worker adds to the generation prompt for every slot 
 
 Header names are case-insensitive and extra columns are ignored, so the sheet can grow. Rows that fail a rule are dropped. Text is collapsed to a single line (newlines and runs of whitespace become one space) because it is placed in an LLM prompt. A duplicate `block` row: the last one wins.
 
+Switching it off: empty the rows (an empty sheet clears the guide). Deleting the sheet does not clear the preview copy, which keeps the last synced guide (same as `suggestions`); a publish-stage full sync drops it.
+
 Used by both `/api/generative` (`{{generate:}}` slots) and the page generation flow (`/api/generate`). Reached by the worker only after a preview and sync, like every DA item.
 
 ## `/of1/strategy` (DA document, optional)
