@@ -18,6 +18,7 @@ nothing under `of1/config/` is committed to git (`config` and `cta-template` are
 | `/of1/config/personas` | DA sheet | `of1-extract-content` | — (not synced; read by the extension / edge proxy) |
 | `/of1/config/suggestions` | DA sheet | `of1-build-quick-suggestions` | `suggestions` |
 | `/of1` page, `of1` block rows | DA document | `of1-style-generative-block` Step 5 | — (read by the client SDK) |
+| `/of1/config/block-guide` | DA sheet (optional) | authors | `block-guide` |
 | `/of1/strategy` | DA document (optional) | authors | `strategy` |
 | `/of1/config/template-list` | DA sheet (single column `name`) | `of1-build-templates` | `templates` |
 | `/templates/*` | DA documents | `of1-build-templates` | `templates` |
@@ -143,6 +144,20 @@ Columns `label`, `query` — one row per chip, 8–12 rows (the block shows a ra
 `of1-style-generative-block` Step 5, re-run by `of1-publish` so the landing rows are present.
 
 ---
+
+## `/of1/config/block-guide` (DA sheet, optional)
+
+Per-block writing rules the worker adds to the generation prompt for every slot or block of that type. Block-only: audience or persona guidance belongs in `/of1/config/personas`, not here. Synced as `block-guide`; not part of the ready gate (no sheet means prompts are unchanged).
+
+| Column | Required | Notes |
+|---|---|---|
+| `block` | yes | Block name as authored in the page (`hero-carousel`, `cards`, any tenant block). Lowercase kebab-case, max 41 characters; other values are dropped |
+| `guidance` | yes | How to write content for that block. Max 500 characters |
+| `limits` | no | Hard limits, e.g. `headline max 8 words, 1 CTA`. Max 500 characters |
+
+Header names are case-insensitive and extra columns are ignored, so the sheet can grow. Rows that fail a rule are dropped. Text is collapsed to a single line (newlines and runs of whitespace become one space) because it is placed in an LLM prompt. A duplicate `block` row: the last one wins.
+
+Used by both `/api/generative` (`{{generate:}}` slots) and the page generation flow (`/api/generate`). Reached by the worker only after a preview and sync, like every DA item.
 
 ## `/of1/strategy` (DA document, optional)
 
