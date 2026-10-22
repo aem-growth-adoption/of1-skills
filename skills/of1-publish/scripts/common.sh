@@ -38,15 +38,15 @@ publish_hub() {
     echo "✓ hub unchanged — nothing to commit"
   fi
 }
-# assert_git_config — step 1 / check 1. Config lives in DA: config.json / cta-template.json must not be tracked (other of1/config files are left by of1-migrate).
+# assert_git_config — step 1 / check 1. Config lives in DA: config.json / cta-template.json / signals.json / llmquestions.json / context-endpoints.json must not be tracked (other of1/config files are left by of1-migrate).
 assert_git_config() {
   local EXTRA
-  EXTRA=$(git ls-files -- of1/config/config.json of1/config/cta-template.json)
+  EXTRA=$(git ls-files -- of1/config/config.json of1/config/cta-template.json of1/config/signals.json of1/config/llmquestions.json of1/config/context-endpoints.json)
   if [ -n "$EXTRA" ]; then
     echo "✗ FAIL (check 1): config files tracked in git — config lives in DA and git files shadow it:" >&2
     echo "$EXTRA" | sed 's/^/    /' >&2
     echo "  Run of1-skills:of1-migrate, then re-run of1-publish." >&2
     return 1
   fi
-  echo "✓ no config.json / cta-template.json tracked in git"
+  echo "✓ no config.json / cta-template.json / signals.json / llmquestions.json / context-endpoints.json tracked in git"
 }

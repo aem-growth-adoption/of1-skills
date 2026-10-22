@@ -39,7 +39,7 @@ export function listRepos(spec, org) {
   return readFileSync(spec, 'utf8').split('\n').map((s) => s.trim()).filter((s) => s && !s.startsWith('#'));
 }
 
-const CONVERTED = ['of1/config/config.json', 'of1/config/cta-template.json'];
+const CONVERTED = ['config', 'cta-template', 'signals', 'llmquestions', 'context-endpoints'].map((n) => `of1/config/${n}.json`);
 
 export function detect(dir) {
   const r = spawnSync('git', ['ls-files', 'of1/config'], { cwd: dir, encoding: 'utf8' });
@@ -80,11 +80,11 @@ export function runBatch(args, env = process.env, log = console.log) {
   for (const entry of repos) {
     const tmp = mkdtempSync(join(tmpdir(), 'of1-migrate-'));
     const repo = entry;
-    let status, detail = null, kept = [];
+    let status, detail = null, kept = [], conv = 0;
     try {
       const c = spawnSync('git', ['clone', '-q', '--depth', '1', `${base}/${repo}.git`, join(tmp, repo)], { encoding: 'utf8' });
       if (c.status !== 0) status = 'clone-failed';
-      else if (args.dryRun) { const d = detect(join(tmp, repo)); status = d.legacy ? 'would-migrate' : 'already-new'; kept = d.keep; }
+      else if (args.dryRun) { const d = detect(join(tmp, repo)); status = d.legacy ? 'would-migrate' : 'already-new'; kept = d.keep; conv = d.convert.length; }
       else {
         const m = migrateClone(join(tmp, repo), { ...env, OF1_DEMO_REPO: join(tmp, repo), OF1_STATE_DIR: join(tmp, 'state') });
         status = m.status; detail = m.result; kept = m.result?.keptInGit ?? [];
@@ -94,7 +94,7 @@ export function runBatch(args, env = process.env, log = console.log) {
     finally { rmSync(tmp, { recursive: true, force: true }); }
     counts[status] = (counts[status] || 0) + 1;
     keptTotal += kept.length;
-    log(`${args.org}/${entry}\t${status}${kept.length ? `\tkeptInGit=${kept.length}` : ''}`);
+    log(`${args.org}/${entry}\t${status}${status === 'would-migrate' ? `\tconvert=${conv}` : ''}${kept.length ? `\tkeptInGit=${kept.length}` : ''}`);
     for (const w of detail?.warnings ?? []) log(`    warning: ${w}`);
     for (const e of detail?.errors ?? []) log(`    ${e.step}: ${String(e.error).split('\n')[0]}`);
   }

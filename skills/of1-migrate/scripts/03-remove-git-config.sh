@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 3 (runs LAST, after 05 verified): git rm only the files 02 converted (of1/config/config.json, cta-template.json), commit by pathspec, push rebased. Never merges branches.
+# Step 3 (runs LAST, after 05 verified): git rm only the files 02 converted (config, cta-template, signals, llmquestions, context-endpoints under of1/config), commit by pathspec, push rebased. Never merges branches.
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 [ -f "$OF1_STATE_DIR/migrate-verified" ] || fail 03 "verification has not passed — refusing to remove the git config"
 CONVERTED=(); while IFS= read -r l; do [ -z "$l" ] || CONVERTED+=("$l"); done < <(cat "$OF1_STATE_DIR/migrate-converted.txt" 2>/dev/null)

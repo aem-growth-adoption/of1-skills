@@ -103,8 +103,14 @@ test('03b: tracked of1/config stops with exit 3 and the migrate message, no remo
   assert.equal(f.git('ls-files of1/config').split('\n').length, 4);
 });
 test('03b: only non-migratable of1/config files tracked passes', () => {
-  assert.equal(fixture({ files: { 'of1/config/signals.json': '{}' } }).run('03b-legacy-config.sh').status, 0);
+  assert.equal(fixture({ files: { 'of1/config/brand-voice.json': '{}' } }).run('03b-legacy-config.sh').status, 0);
 });
+for (const n of ['signals', 'llmquestions', 'context-endpoints']) {
+  test(`03b: tracked ${n}.json is legacy (exit 3)`, () => {
+    const r = fixture({ files: { [`of1/config/${n}.json`]: '{}' } }).run('03b-legacy-config.sh');
+    assert.equal(r.status, 3); assert.match(r.stderr, new RegExp(`of1/config/${n}\\.json`));
+  });
+}
 test('03b: nothing tracked passes', () => {
   assert.equal(fixture().run('03b-legacy-config.sh').status, 0);
 });
