@@ -19,6 +19,8 @@
 
 ## Unreleased
 
+- `of1-build-cta-template`: the CTA template no longer sets `font-family`. It hard-coded the EDS replica's font names (`amag_display`, `amag_text`), which do not exist on pages the edge proxy serves from the tenant's real domain, so the injected CTA rendered in Arial there. With no `font-family` the host page's own fonts apply on every page. `write-cta-template.sh` now rejects html containing `font-family`. Existing tenants: re-generate or edit the DA sheet `/of1/config/cta-template` (remove the `font-family:…;` declarations), preview, publish and sync. No version bump (rides the next release).
+
 - Docs only (no version bump): removed superseded knowledge-only specs/plans (2026-08-27, 2026-08-28, 2026-09-07; history keeps them); cleanup spec/plan statuses set to Implemented.
 
 ## 0.4.2 (no ref)
