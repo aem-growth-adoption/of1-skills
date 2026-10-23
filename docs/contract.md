@@ -26,7 +26,7 @@ no other skill parses arguments.
 | `content-source=<domain>` | `OF1_CONTENT_SOURCE` | unset | `of1-extract-brand-voice` / `of1-extract-content` crawl `https://<domain>`. Unset: crawl the site's own preview URL. |
 | `non-interactive` | `OF1_NON_INTERACTIVE` | off | No skill asks questions: overwrite `/of1/brand-voice`, remove legacy `of1/config/*.json`, skip confirmation steps. |
 | `cta-template` | `OF1_CTA_TEMPLATE` | off | Run `of1-build-cta-template` (DA sheet), enable publish check 7. |
-| `publish-live` | `OF1_PUBLISH_LIVE` | off | `of1-publish` publishes config sheets and pages live (`da-write.mjs live`) before the publish-stage sync. |
+| `publish-live` | `OF1_PUBLISH_LIVE` | off | `of1-publish` publishes config sheets and pages live (`da-write.mjs live`) before the publish-stage sync. Sheets: `config`, `cta-template`, `suggestions`, `template-list`, `personas`, `audiences`, `signals`, `llmquestions`, `context-endpoints` (each only when present in DA). The edge proxy reads `signals`, `llmquestions`, `context-endpoints` at request time from the stage origin (aem.page for `prev--` hosts, aem.live for publish hosts), so without `publish-live` the publish host gets 404 for them. |
 
 Always required, not new: `OF1_DEMO_REPO` (absolute path to the EDS repo, derived from
 the git toplevel of the cwd when unset) and a DA token (`ADOBE_IMS_TOKEN` or `OF1_TOKEN_FILE`).

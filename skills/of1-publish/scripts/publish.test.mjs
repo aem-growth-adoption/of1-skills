@@ -331,6 +331,7 @@ case "$url" in
   */list/o/r/templates) cat "$d/list-templates.json";;
   */list/o/r) echo '[]';;
   */source/o/r/*) k=$(echo "\${url##*/source/o/r/}" | tr '/' '_'); if [ -f "$d/probe-$k" ]; then printf '%s' "$(cat "$d/probe-$k")"; else printf 404; fi;;
+  https://admin.hlx.page/preview/*) ;;
   *) exit 22;;
 esac
 `;
@@ -446,4 +447,36 @@ test('off main: publish stops with the main-branch message', () => {
   sh('git checkout -qb feat', f.repo);
   const r = f.run('01-assert-git-config.sh');
   assert.equal(r.status, 1); assert.match(r.stderr, /OF1 setup runs from the main branch \(checkout main\)/);
+});
+
+const PROXY_SHEETS = ['signals', 'llmquestions', 'context-endpoints'];
+const FETCH_LOG = `import { appendFileSync } from 'node:fs';
+globalThis.fetch = async (u) => { appendFileSync(process.env.FAKE_DIR + '/fetch-urls.log', String(u) + '\\n'); return new Response('{}', { status: 200 }); };
+`;
+test('03: previews the proxy sheets (signals, llmquestions, context-endpoints) when present; absent ones skipped', () => {
+  const f = liveFixture({ 'of1_config_config.json': '200', 'of1_config_signals.json': '200', 'of1_config_context-endpoints.json': '200' });
+  const r = f.run('03-push-config.sh');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const urls = readFileSync(join(f.fake, 'live-urls.log'), 'utf8');
+  for (const n of ['config', 'signals', 'context-endpoints']) {
+    assert.match(urls, new RegExp(`^https://admin\\.hlx\\.page/preview/o/r/main/of1/config/${n}\\.json$`, 'm'), n);
+  }
+  assert.doesNotMatch(urls, /admin\.hlx\.page\/preview\/o\/r\/main\/of1\/config\/llmquestions/);
+  assert.match(urls, /admin\.da\.live\/source\/o\/r\/of1\/config\/llmquestions\.json/);
+});
+test('04b: publishes the proxy sheets live (admin.hlx.page/live ... .json); absent ones skipped without failure', () => {
+  const f = liveFixture({ 'of1_config_signals.json': '200', 'of1_config_llmquestions.json': '200' });
+  const pre = join(f.base, 'fetch-log.mjs'); writeFileSync(pre, FETCH_LOG);
+  const r = f.run('04b-publish-live.sh', [], { NODE_OPTIONS: `--import=${pre}` });
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const urls = readFileSync(join(f.fake, 'fetch-urls.log'), 'utf8');
+  for (const n of ['signals', 'llmquestions']) {
+    assert.match(urls, new RegExp(`^https://admin\\.hlx\\.page/live/o/r/main/of1/config/${n}\\.json$`, 'm'), n);
+  }
+  assert.doesNotMatch(urls, /context-endpoints/);
+  assert.deepEqual(JSON.parse(readFileSync(join(f.state, 'hub/publish-live.json'), 'utf8')), { ok: true, published: 4, failed: [] });
+  const all = liveFixture(Object.fromEntries(PROXY_SHEETS.map((n) => [`of1_config_${n}.json`, '200'])));
+  assert.equal(all.run('04b-publish-live.sh', [], all.env).status, 0);
+  const log = readFileSync(join(all.fake, 'daw.log'), 'utf8');
+  for (const n of PROXY_SHEETS) assert.match(log, new RegExp(`live .*--path of1/config/${n}\\.json$`, 'm'), n);
 });

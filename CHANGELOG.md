@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- **`of1-publish` previews and publishes the edge-proxy sheets.** The edge proxy reads `of1/config/signals`, `of1/config/llmquestions` and `of1/config/context-endpoints` at request time from the stage origin (aem.page for `prev--` hosts, aem.live for publish hosts). Step 3 (`03-push-config.sh`) previewed and step 4b (`04b-publish-live.sh`, `publish-live`) published only `config`, `cta-template`, `suggestions`, `template-list`, `personas`, `audiences`, so these three were never published (also after `of1-migrate`, which writes + previews them and publishes through 4b) and the publish host's proxy got 404. Both lists now include them; absent sheets are still skipped (404 probe), so sites without them are unaffected.
+- Tests: publish step 3 previews / step 4b publishes the three (`admin.hlx.page/{preview,live}/…/<sheet>.json`), absent ones skipped; migrate with `publish-live` publishes the converted sheets.
+
 ## 0.5.0
 
 Found by running the AMAG demo end to end in a real browser (generated pages looked nothing like the site; images were broken).
