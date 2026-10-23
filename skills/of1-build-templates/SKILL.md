@@ -52,6 +52,9 @@ slot-specific, single-template block.**
    Starting recipes: **recommendation** `hero`/`featured` pick → framing `columns` → alternatives `cards` → CTA (4); **comparison** `hero`/`featured` → `comparison-grid` (2, fine) or + option `cards` + CTA (2–4); **deep-dive** `hero`/`featured` → `comparison-grid.simple` spec sheet (1–3); **budget** `featured` best-value → priced `cards` → price-breakdown `comparison-grid` → CTA (4); **discovery** `hero`/`featured` → filter/framing `columns` → browse `cards` → CTA (4). Keep alignment consistent (rule 5). `assemble` **rejects** an empty template and **warns** when an exploratory one has < 3 blocks.
 7. **Wire any search / query input to `/of1`.** A template's search input, "ask a question" field, or search-styled CTA must navigate to `/of1` (typed text as `?q=<encoded>`) — a raw `<input>` that goes nowhere is a dead end. Prefer a whole-cell `<a href="/of1">` CTA (a real link the worker keeps `static`), or a `<form action="/of1" method="get">` with the field named `q`. Never leave it unbound or point it at the brand's original search endpoint.
 
+8. **Never invent an image.** A template's images are what a generated page shows when the worker has no better real image, so a made-up URL (`placehold.co`, `picsum.photos`, `https://<site>/example-hero.jpg`, a bare `media_1.png`, `about:error`) shows up as a broken or stock picture, and a missing hero image hides the white headline on white. Use only images from the harvested pool (`of1-build-templates-harvest.json` `.images[]`: real, absolute, already hosted on the site). `scripts/verify-images.sh` (assemble) aborts on any placeholder or non-resolving image.
+9. **Compose from the site's own authored blocks, never from imagination.** The migrated pages already contain decorated-ready compositions with real photos and copy. Start every template from a harvested block (`compose-template.mjs`), change only the text and the images, and keep structure, variants and colour cells as authored. Hand-written markup with placeholder copy looks nothing like the site.
+
 ## The da-blocks-slots authored-template contract
 
 An authored template is a normal EDS document. What the worker requires (`materialize-da-templates.js`, `block-tree.js`, `slot-address.js`, `slot-splice.js`):
@@ -85,7 +88,11 @@ Start with `. "$SKILL_DIR/scripts/env.sh"` (defines `${OWNER}`, `${REPO}`; the p
 
 1. **Use cases → intents → block plan.** Read discovery + `knowledge-pages.json`; decide per intent the template shapes and block palette (reuse vs new). Size each template to its purpose (RULE 6) and list its ordered block sequence (lead → primary → supporting → CTA) so exploratory intents compose rich pages. Fix the **alignment intent** (usually `center`, RULE 5) and record it; where a reused block's CSS won't honor it, note the matching variant or flag that a centered new block is needed.
 2. **Inventory reusable blocks:** `export TENANT_REPO_DIR="$OF1_DEMO_REPO"; "$SKILL_DIR/assets/inventory.sh" "$TENANT_REPO_DIR"`. Read each `blocks/<name>/<name>.js` to confirm it is **positional** (reads `block.children` by index); exclude label/value-convention blocks.
-3. **Harvest known-good compositions.** For each usable block fetch the live pages' `.plain.html` (`https://main--{REPO}--{OWNER}.aem.page/{path}.plain.html`) and record a per-block fingerprint (row count, per-row cell count) — stronger evidence than the `.js` alone.
+3. **Harvest the site's real authored blocks and images** (RULES 8-9). One command fetches the migrated pages' `.plain.html` (pages from `/sitemap.json` or `/query-index.json`, minus OF1/templates/nav/fragments; `--paths /a,/b` to choose, `--max` caps at 12), splits out every top-level block with absolute URLs, and pools the real content images:
+   ```bash
+   node "$SKILL_DIR/assets/harvest-sections.mjs" --base "https://main--${REPO}--${OWNER}.aem.page" --out "$OF1_STATE_DIR/of1-build-templates-harvest.json"
+   ```
+   Output: `.blocks.<name>[]` (`page`, `classes`, `rows`, `images`, `text`, `html`) and `.images[]` (`url`, `alt`, `page`). Also record per-block fingerprints (row count, per-row cell count) from it for the assemble round-trip check. Prefer pages that show the products/services the site is about; pass `--paths` for them.
 4. **Adapt the count to the vocabulary.** A 16-block site supports ~5 intents × ~3 variations; a 3-block site fewer, leaning on variants + `no-static-labels`/`key-value`. Don't blindly target 15.
 5. **Author planned NEW general blocks** (skip when reuse covers everything): positional `blocks/<name>/<name>.{js,css}`, brand tokens from `styles/styles.css` + `DESIGN.json` (path via `of1-integration/knowledge/design-tokens-resolution.md`). Then commit, push, and wait until the code bus serves them **before** any template previews them:
    ```bash
@@ -97,8 +104,12 @@ Start with `. "$SKILL_DIR/scripts/env.sh"` (defines `${OWNER}`, `${REPO}`; the p
 
 First `. "$SKILL_DIR/scripts/env.sh"` (validates intent, sets `${INTENT}`, `${OWNER}`, `${REPO}`, `da_put`). Precondition: `$OF1_TG_INTENT` ∈ {`comparison`, `recommendation`, `deep-dive`, `budget`, `discovery`} (else exit 2) and `base` has finished (`of1-build-templates-plan.json` exists, new blocks deployed). For each template variation the plan calls for:
 
-1. **Compose the document** from the planned blocks with realistic example content per the contract above: image-role cells where a real image should be swapped, label/value rows for spec/price tables, single-hyphen variants. Honor the plan's alignment intent (RULE 5), size to purpose (RULE 6), point any search input at `/of1` (RULE 7).
-2. **Add the `section-metadata` block**: `Template Intent = <intent>`, a short structurally-distinct `Template Description`, `Template Min Items` / `Template Max Items`. No commas in values.
+1. **Compose the document from harvested blocks** (RULES 8-9), not by hand: write a spec (block types from the plan, in order; `keepRows` to size card grids to `Template Min/Max Items`; `replace` for text; `images` from the harvest pool; `ctaHref: "/of1"` so every link goes to the generative page) and run the composer. It fails on text it cannot find, unknown blocks, or any placeholder image:
+   ```bash
+   node "$SKILL_DIR/assets/compose-template.mjs" --harvest "$OF1_STATE_DIR/of1-build-templates-harvest.json" --spec spec-<variation>.json --out "<intent>-<variation>.html"
+   ```
+   Spec: `{"intent":"comparison","description":"…","minItems":2,"maxItems":2,"ctaHref":"/of1","sections":[{"block":"hero-split","replace":[["Old text","New text"]],"images":[{"url":"…","alt":"…"}]},{"block":"news-cards","keepRows":[0,1]}]}`. Fall back to hand-written markup only for a block type the site has no instance of (then follow RULE 4 and use pool images). Honor the plan's alignment intent (RULE 5), size to purpose (RULE 6), point any search input at `/of1` (RULE 7).
+2. **`section-metadata`** (the composer adds it from the spec; by hand otherwise): `Template Intent = <intent>`, a short structurally-distinct `Template Description`, `Template Min Items` / `Template Max Items`. No commas in values.
 3. **Wrap** in `<body><header></header><main><div>…</div></main><footer></footer></body>` and `da_put` (source `assets/da-api.sh`):
    ```bash
    da_put "./<intent>-<variation>.html" "templates/<intent>-<variation>.html"
@@ -125,6 +136,11 @@ Run once after all 5 intent agents complete; first `. "$SKILL_DIR/scripts/env.sh
    bash "$SKILL_DIR/scripts/verify-richness.sh"
    ```
    Counts content blocks per `.plain.html` (`<div class="NAME">` section children minus `section-metadata`/`metadata`, via `assets/template-richness.mjs`). **Aborts** on an empty template (0 blocks); **warns** when an exploratory one (`Max Items ≥ 3`) has < 3; quick-answer templates (`Max Items ≤ 2`) are never warned.
+3b. **Verify every image is real:**
+   ```bash
+   bash "$SKILL_DIR/scripts/verify-images.sh"
+   ```
+   Per template: **aborts** on placeholder / invented / unusable images (static check, no HTTP) and on any image URL that does not answer `200 image/*` (relative URLs resolve against the template's preview path). Fix the DA doc, re-preview, re-run. This is the guard against `about:error` images and white-on-white heroes.
 4. **Final status file** (the deliverable status the driver reports; links to `https://da.live/edit#/${OWNER}/${REPO}/templates`): `bash "$SKILL_DIR/scripts/write-status.sh" final`.
 
 ## Deliverables & notes

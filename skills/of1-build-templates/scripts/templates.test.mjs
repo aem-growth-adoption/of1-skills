@@ -13,6 +13,7 @@ const FAKE_CURL = `#!/bin/bash
 url=""; method=GET; hasO=0
 while [ $# -gt 0 ]; do case "$1" in -X) method="$2"; shift;; -o) hasO=1;; http*) url="$1";; esac; shift; done
 d="$FAKE_DIR"; echo "$method $url" >> "$d/calls.log"
+if [ "$hasO" = 1 ]; then case "$url" in */imgs/*) f="$d/img-$(basename "\${url%%\\?*}")"; [ -f "$f" ] && cat "$f" || printf '404 text/html'; exit 0;; esac; fi
 if [ "$hasO" = 1 ]; then case "$url" in */blocks/*) [ -f "$d/live" ] && { printf 200; exit 0; } || { printf 404; exit 22; };; *) printf 200; exit 0;; esac; fi
 case "$method $url" in
   "POST https://admin.hlx.page/"*) printf 'ok\\n%s' "$(cat "$d/preview-code" 2>/dev/null || echo 200)";;
@@ -68,6 +69,41 @@ test('verify-richness: quick answer with 2 blocks passes silently; 0 blocks abor
   writeFileSync(join(f.fake, 'a.plain.html'), doc(0, 4));
   const r2 = f.run('verify-richness.sh');
   assert.equal(r2.status, 1); assert.match(r2.stderr, /0 content blocks/);
+});
+const withImg = (...imgs) => '<div><div class="hero"><div><div>' + imgs.map((u) => `<picture><img src="${u}" alt=""></picture>`).join('') + '</div></div></div></div>';
+test('verify-images: passes when every template image resolves to a real image', () => {
+  const f = fixture();
+  writeFileSync(join(f.fake, 'a.plain.html'), withImg('https://s.example/imgs/a.jpg', './imgs/b.png'));
+  writeFileSync(join(f.fake, 'img-a.jpg'), '200 image/jpeg'); writeFileSync(join(f.fake, 'img-b.png'), '200 image/png');
+  const r = f.run('verify-images.sh');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /templates\/a: 2 image\(s\) ok/);
+  // a relative ./ src resolves against the template's own preview path
+  assert.match(readFileSync(join(f.fake, 'calls.log'), 'utf8'), /GET https:\/\/main--r--o\.aem\.page\/templates\/imgs\/b\.png/);
+});
+test('verify-images: aborts on placeholder hosts, about:error and invented names, without any HTTP probe', () => {
+  const f = fixture();
+  writeFileSync(join(f.fake, 'a.plain.html'), withImg('https://picsum.photos/seed/a/750/500', 'about:error', 'https://www.acme.com/example-hero.jpg'));
+  const r = f.run('verify-images.sh');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /templates\/a: 3 bad image\(s\)/);
+  assert.match(r.stderr, /placeholder-host\thttps:\/\/picsum\.photos/);
+  assert.match(r.stderr, /unusable-src\tabout:error/);
+  assert.match(r.stderr, /placeholder-name\thttps:\/\/www\.acme\.com\/example-hero\.jpg/);
+});
+test('verify-images: aborts when an image URL is not served as an image (404 or HTML)', () => {
+  const f = fixture();
+  writeFileSync(join(f.fake, 'a.plain.html'), withImg('https://s.example/imgs/gone.jpg', 'https://s.example/imgs/html.png'));
+  writeFileSync(join(f.fake, 'img-html.png'), '200 text/html');
+  const r = f.run('verify-images.sh');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /404 text\/html\thttps:\/\/s\.example\/imgs\/gone\.jpg/);
+  assert.match(r.stderr, /200 text\/html\thttps:\/\/s\.example\/imgs\/html\.png/);
+});
+test('verify-images: a template with no images at all is fine', () => {
+  const f = fixture();
+  writeFileSync(join(f.fake, 'a.plain.html'), doc(2, 2));
+  assert.equal(f.run('verify-images.sh').status, 0);
 });
 test('commit-block-code: commits, pushes, waits for code sync', () => {
   const f = fixture();
