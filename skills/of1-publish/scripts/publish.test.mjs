@@ -331,7 +331,7 @@ case "$url" in
   */list/o/r/templates) cat "$d/list-templates.json";;
   */list/o/r) echo '[]';;
   */source/o/r/*) k=$(echo "\${url##*/source/o/r/}" | tr '/' '_'); if [ -f "$d/probe-$k" ]; then printf '%s' "$(cat "$d/probe-$k")"; else printf 404; fi;;
-  https://admin.hlx.page/preview/*) ;;
+  https://admin.hlx.page/preview/*) k=$(echo "\${url##*/main/}" | tr '/' '_'); printf '%s' "$(cat "$d/preview-$k" 2>/dev/null || echo 201)";;
   *) exit 22;;
 esac
 `;
@@ -463,6 +463,19 @@ test('03: previews the proxy sheets (signals, llmquestions, context-endpoints) w
   }
   assert.doesNotMatch(urls, /admin\.hlx\.page\/preview\/o\/r\/main\/of1\/config\/llmquestions/);
   assert.match(urls, /admin\.da\.live\/source\/o\/r\/of1\/config\/llmquestions\.json/);
+  assert.match(r.stdout, /^previewed 3, failed 0$/m);
+  assert.doesNotMatch(r.stderr, /preview failed/);
+});
+test('03: a failed preview of the first or the last present sheet warns, continues, exits 0 with a summary', () => {
+  for (const bad of ['config', 'context-endpoints']) {
+    const f = liveFixture({ 'of1_config_config.json': '200', 'of1_config_signals.json': '200', 'of1_config_context-endpoints.json': '200' });
+    writeFileSync(join(f.fake, `preview-of1_config_${bad}.json`), '500');
+    const r = f.run('03-push-config.sh');
+    assert.equal(r.status, 0, bad + r.stderr);
+    assert.match(r.stderr, new RegExp(`^✗ preview failed of1/config/${bad} \\(HTTP 500\\)$`, 'm'), bad);
+    assert.match(r.stdout, /^previewed 2, failed 1$/m, bad);
+    assert.equal((readFileSync(join(f.fake, 'live-urls.log'), 'utf8').match(/admin\.hlx\.page\/preview/g) || []).length, 3, bad);
+  }
 });
 test('04b: publishes the proxy sheets live (admin.hlx.page/live ... .json); absent ones skipped without failure', () => {
   const f = liveFixture({ 'of1_config_signals.json': '200', 'of1_config_llmquestions.json': '200' });
