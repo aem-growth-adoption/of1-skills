@@ -14,6 +14,7 @@ BRANCH=$(echo "$SETUP" | jq -r .branch)
 REPO_DIR=$(echo "$SETUP" | jq -r .of1Repo)
 # Every step uses repo-relative paths and git — run them all from the repo root.
 cd "$REPO_DIR" || { echo "✗ cannot cd into $REPO_DIR" >&2; exit 1; }
+. "$LIB/env.sh"; of1_require_main || exit 1
 
 if [ "$(echo "$SETUP" | jq -r .tokenFromEnv)" = "true" ]; then
   DA_TOKEN="$ADOBE_IMS_TOKEN"

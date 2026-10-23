@@ -46,8 +46,9 @@ node scripts/baseline/baseline.mjs diff docs/baseline/of1-site-da-first.shape.js
 
 ## Conventions
 
-- Config is authored in DA; git only gets `of1/config/config.json`. Never
-  commit any other `of1/config/*.json`.
+- Config is authored in DA; git gets no `of1/config/{config,cta-template,signals,llmquestions,context-endpoints}.json`. Never
+  commit any other `of1/config/*.json`; `of1-migrate` removes only the files it converted (`assets/to-sheet.mjs` defines the sheet formats) and leaves the rest.
+- OF1 setup runs from `main`: `of1_require_main` (lib/env.sh) guards check-dependencies, migrate, publish.
 - Commit with a scoped pathspec: `git commit -m ... -- <paths>`; never `git add -A`.
 - Before every push: `git pull --rebase --autostash`; on conflict abort and
   stop. Never force-push.

@@ -92,6 +92,11 @@ test('01: any tracked of1/config file fails and is listed; none passes', () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /of1\/config\/config\.json/);
   assert.match(r.stderr, /of1-migrate/);
+  for (const n of ['signals', 'llmquestions', 'context-endpoints']) {
+    const t = fixture({ tracked: [`of1/config/${n}.json`] }).run('01-assert-git-config.sh');
+    assert.equal(t.status, 1); assert.match(t.stderr, new RegExp(`of1/config/${n}\\.json`));
+  }
+  assert.equal(fixture({ tracked: ['of1/config/brand-voice.json'] }).run('01-assert-git-config.sh').status, 0);
   const ok = fixture({ tracked: [] });
   const r2 = ok.run('01-assert-git-config.sh');
   assert.equal(r2.status, 0, r2.stderr);
