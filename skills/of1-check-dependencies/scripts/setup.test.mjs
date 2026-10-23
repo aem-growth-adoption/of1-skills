@@ -72,6 +72,24 @@ test('cta: write-cta-template.sh uploads key,value rows', () => {
   assert.match(readFileSync(join(f.base, 'writer.log'), 'utf8'), /--path of1\/config\/cta-template --columns key,value/);
   assert.deepEqual(JSON.parse(readFileSync(join(f.base, 'rows.json'), 'utf8')), [{ key: 'html', value: '<div>{{title}}</div>' }, { key: 'fallback.title', value: 'T' }, { key: 'fallback.description', value: 'D' }, { key: 'fallback.buttonText', value: 'B' }]);
 });
+test('cta: write-cta-template.sh refuses a hard-coded font-family (it breaks on real-domain pages) and writes nothing', () => {
+  const f = fixture();
+  writeFileSync(join(f.state, 'repo-config.json'), JSON.stringify({ owner: 'o', repo: 'r', branch: 'main' }));
+  const script = join(skillDir, '../of1-build-cta-template/scripts/write-cta-template.sh');
+  const run = (html) => {
+    const cta = join(f.base, 'cta2.json');
+    writeFileSync(cta, JSON.stringify({ html, fallback: { title: 'T', description: 'D', buttonText: 'B' } }));
+    return spawnSync('bash', [script, cta], { encoding: 'utf8', env: { PATH: process.env.PATH, OF1_STATE_DIR: f.state, OF1_DA_WRITE: stubWriter(f) } });
+  };
+  for (const bad of ['<h2 style="color:#fff;font-family:amag_display, Arial">{{title}}</h2>', "<p style='FONT-FAMILY : Roboto'>{{description}}</p>"]) {
+    const r = run(bad);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /font-family/);
+    assert.match(r.stderr, /host page|inherit/i);
+  }
+  assert.equal(existsSync(join(f.base, 'writer.log')), false);
+  assert.equal(run('<h2 style="color:#fff;font-weight:700">{{title}}</h2>').status, 0);
+});
 test('08: creates helix-query.yaml when absent', () => {
   const f = fixture();
   const r = f.run('08-helix-query.sh');
@@ -102,6 +120,15 @@ test('03b: tracked of1/config stops with exit 3 and the migrate message, no remo
   assert.match(r.stderr, /^Legacy OF1 setup found: run of1-skills:of1-migrate$/m);
   assert.equal(f.git('ls-files of1/config').split('\n').length, 4);
 });
+test('03b: only non-migratable of1/config files tracked passes', () => {
+  assert.equal(fixture({ files: { 'of1/config/brand-voice.json': '{}' } }).run('03b-legacy-config.sh').status, 0);
+});
+for (const n of ['signals', 'llmquestions', 'context-endpoints']) {
+  test(`03b: tracked ${n}.json is legacy (exit 3)`, () => {
+    const r = fixture({ files: { [`of1/config/${n}.json`]: '{}' } }).run('03b-legacy-config.sh');
+    assert.equal(r.status, 3); assert.match(r.stderr, new RegExp(`of1/config/${n}\\.json`));
+  });
+}
 test('03b: nothing tracked passes', () => {
   assert.equal(fixture().run('03b-legacy-config.sh').status, 0);
 });
@@ -159,4 +186,22 @@ test('01: clears product-urls.txt', () => {
   writeFileSync(join(f.state, 'product-urls.txt'), 'x');
   f.run('01-reset-state.sh');
   assert.equal(existsSync(join(f.state, 'product-urls.txt')), false);
+});
+test('non-main branch: a write step stops before any write, commit or push', () => {
+  const f = fixture();
+  f.git('checkout -q -b feature');
+  const before = f.git('rev-parse HEAD');
+  const r = f.run('08-helix-query.sh');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /OF1 setup runs from the main branch \(checkout main\)/);
+  assert.equal(existsSync(join(f.repo, 'helix-query.yaml')), false);
+  assert.equal(f.git('rev-parse HEAD'), before);
+  assert.equal(f.remote('branch --list feature'), '');
+});
+test('detached HEAD keeps its own message; main proceeds', () => {
+  const f = fixture();
+  f.git('checkout -q --detach');
+  assert.match(f.run('08-helix-query.sh').stderr, /detached HEAD/);
+  f.git('checkout -q main');
+  assert.equal(f.run('08-helix-query.sh').status, 0);
 });

@@ -30,6 +30,13 @@ ok()   { LOG+=("✓ $1"); }
 warn() { LOG+=("⚠ $1"); WARN=$((WARN+1)); [ "${STRICT:-0}" = "1" ] && FAIL=$((FAIL+1)); }
 fail() { LOG+=("✗ $1"); FAIL=$((FAIL+1)); }
 
+# ---------- 0. Branch guard: OF1 setup runs from main, before anything is written ----------
+_GR="${OF1_DEMO_REPO:-$(git rev-parse --show-toplevel 2>/dev/null || true)}"
+if [ -n "$_GR" ] && [ -e "$_GR/.git" ]; then
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../lib/env.sh"
+  (cd "$_GR" && of1_require_main) || exit 1
+fi
+
 # ---------- 1. OF1 step skills (project- or user-scoped) ----------
 
 # The ten skills of the of1-skills plugin.
@@ -161,10 +168,6 @@ if [ -n "${OF1_DEMO_REPO:-}" ] && [ -e "${OF1_DEMO_REPO}/.git" ]; then  # -e: wo
     ok "EDS repo → $OF1_REPO ($OWNER/$REPO, branch: ${BRANCH:-<detached>})"
   else
     fail "Not an EDS repo at $OF1_DEMO_REPO — missing scripts/aem.js (or lib-franklin.js), scripts/scripts.js, or styles/styles.css. cd into a valid EDS repo checkout (or set OF1_DEMO_REPO) and re-run."
-  fi
-
-  if [ -z "$BRANCH" ] || [ "$BRANCH" = "main" ]; then
-    warn "Currently on ${BRANCH:-a detached HEAD} — demo artifacts and DA content will be affected on this branch/state"
   fi
 else
   fail "OF1_DEMO_REPO not set and $PWD is not inside a git checkout — cd into a cloned EDS repo or set OF1_DEMO_REPO to its absolute path"

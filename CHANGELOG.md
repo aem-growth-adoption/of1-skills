@@ -11,6 +11,16 @@ Found by running the AMAG demo end to end in a real browser (generated pages loo
 - **New assemble step 3b `scripts/verify-images.sh` (+ `assets/template-images.mjs`)**: aborts on placeholder / invented / unusable images (`placehold.co`, `picsum.photos`, `about:error`, `example-*.jpg`, a bare `media_1.png`) and on any template image that does not answer `200 image/*` (relative URLs resolve against the template's preview path). This was the cause of broken `about:error` hero images, and of white-on-white hero headlines.
 - **`of1-publish` check 6 accepts a whole page in one section.** The da-blocks-slots engine streams one `section` event holding the whole page, so the old "at least 2 `section` events" rule failed healthy sites. Now: >=2 sections, or 1 section with >=2 blocks; 0 sections, a single thin section, or any `error` event still fail.
 - Tests: `template-images`, `harvest-sections`, `compose-template` unit tests; `verify-images` script tests (fake curl); new check 6 cases. 311 tests pass.
+## 0.4.5
+
+- `of1-migrate` now also converts `signals.json`, `llmquestions.json` and `context-endpoints.json` to DA sheets (`of1/config/signals`: `param,value,source,context`; `llmquestions`: `url,question`, one row per question; `context-endpoints`: `name,description,url,method,timeoutMs,inputs,outputDescription,outputFields`, `inputs` as `name=from; …` with `*` on required, `outputFields` as `field=description; …`). New `assets/to-sheet.mjs` (converters + test-only reverse functions proving round-trip to the proxy's bare shapes). Everything is validated before any sheet is written; unrepresentable content (more than 2 endpoints, `;`/`=` in field descriptions, input keys outside the proxy allowlist, nested/non-string cells, duplicate llmquestions urls) fails step 2 naming file and key. Step 5 checks each converted sheet is served with the written row count; step 3 removes all converted files; the result JSON gets `converted`. The "proxy reads them from git" warning is gone; legacy catalogs and other files are still kept with warnings. `batch.mjs` dry-run prints `convert=<n>`.
+- `of1-check-dependencies` step 3b and `of1-publish` check 1 flag a tracked `signals.json` / `llmquestions.json` / `context-endpoints.json` as legacy (exit 3 / check 1 fails).
+
+## 0.4.4
+
+- `of1-migrate` no longer deletes every file under `of1/config`. Step 3 removes only what step 2 converted (`config.json`, `cta-template.json`; recorded in `migrate-converted.txt`); other tracked files (e.g. `signals.json`, `context-endpoints.json`, which the edge proxy fetches from git at runtime) stay. Step 1 lists all tracked files as `convert` / `keep`; the result JSON gets `keptInGit` and `warnings` (legacy catalogs the worker no longer reads can be deleted by hand; proxy-read files stay). A repo with only kept files is `already-new`. Rollback is restricted to the removed files. `batch.mjs` prints `keptInGit` counts.
+- `of1-check-dependencies` step 3b and `of1-publish` check 1 now only flag a tracked `config.json` / `cta-template.json`.
+- `of1-check-dependencies` stops (exit 1, `OF1 setup runs from the main branch (checkout main)`) off `main` at the start of `verify.sh` and in `00-load-setup.sh`, before any DA write, commit or push; it no longer only warns.
 
 ## 0.4.3
 
@@ -19,6 +29,8 @@ Found by running the AMAG demo end to end in a real browser (generated pages loo
 - Tests: `lib/sync-batch.test.mjs` (single call untouched, batching resumes at `next`, slice/unrelated errors kept, other content errors don't batch, stuck batches stop).
 
 ## Unreleased
+
+- `of1-build-cta-template`: the CTA template no longer sets `font-family`. It hard-coded the EDS replica's font names (`amag_display`, `amag_text`), which do not exist on pages the edge proxy serves from the tenant's real domain, so the injected CTA rendered in Arial there. With no `font-family` the host page's own fonts apply on every page. `write-cta-template.sh` now rejects html containing `font-family`. Existing tenants: re-generate or edit the DA sheet `/of1/config/cta-template` (remove the `font-family:…;` declarations), preview, publish and sync. No version bump (rides the next release).
 
 - Docs only (no version bump): removed superseded knowledge-only specs/plans (2026-08-27, 2026-08-28, 2026-09-07; history keeps them); cleanup spec/plan statuses set to Implemented.
 

@@ -18,6 +18,7 @@ case "$url" in
   */sync\\?*) cat > /dev/null; case "$url" in *stage=publish*) f=sync-publish;; *) f=sync-preview;; esac
      cat "$d/$f.body"; printf '\\n%s' "$(cat "$d/$f.code" 2>/dev/null || echo 200)";;
   */status\\?*) cat "$d/status.json";;
+  */of1/config/*.json) n=$(basename "$url" .json); [ -f "$d/rows-$n.json" ] || exit 22; jq '{data: .}' "$d/rows-$n.json";;
   */api/generate) cat "$d/gen.ndjson"; [ "$hasw" = 1 ] && printf '\\n200';;
   *) exit 22;;
 esac
@@ -25,7 +26,7 @@ esac
 const OK_SYNC = '{"ok":true,"synced":["config"],"errors":[],"content":{"indexed":3}}';
 const PUB_SYNC = '{"ok":true,"synced":[],"errors":[],"content":null}';
 
-function fixture({ legacy = true, cfg = { domain: 'x.com', contentIngestion: { indexPath: '/sitemap.json' } } } = {}) {
+function fixture({ extra = {}, legacy = true, cfg = { domain: 'x.com', contentIngestion: { indexPath: '/sitemap.json' } } } = {}) {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'of1-mig-')));
   const state = join(base, 'state'), repo = join(base, 'o-r'), bin = join(base, 'bin'), fake = join(base, 'fake');
   [state, repo, bin, fake].forEach((p) => mkdirSync(p, { recursive: true }));
@@ -43,6 +44,7 @@ function fixture({ legacy = true, cfg = { domain: 'x.com', contentIngestion: { i
     mkdirSync(join(repo, 'of1/config'), { recursive: true });
     writeFileSync(join(repo, 'of1/config/config.json'), JSON.stringify(cfg));
     writeFileSync(join(repo, 'of1/config/cta-template.json'), JSON.stringify({ html: '<p>x</p>', fallback: { title: 't', description: 'd', buttonText: 'b' } }));
+    for (const [n, c] of Object.entries(extra)) writeFileSync(join(repo, 'of1/config', n), c);
   } else writeFileSync(join(repo, 'README.md'), 'x');
   sh('git add -A && git commit -qm init && git push -q origin main', repo);
   const run = (script, more = {}) => spawnSync('bash', [join(here, script)], {
@@ -294,4 +296,107 @@ test('off main: stops with the main-branch message; detached HEAD keeps its own 
 test('bash -n on every migrate script', () => {
   for (const s of ['common', '01-detect', '02-config-to-da', '03-remove-git-config', '04-sync', '05-verify', '06-report'])
     assert.equal(spawnSync('bash', ['-n', join(here, `${s}.sh`)]).status, 0, s);
+});
+
+const SIGNALS = [{ param: 'utm_x', value: 'a', source: 'ai', context: 'ctx' }];
+const LLMQ = [{ url: '/a', questions: ['q1', 'q2'] }];
+const CEP = { endpoints: [{ name: 'acct', url: 'https://e.example/a', inputs: [{ name: 'id', from: 'account.accountId', required: true }], output: { fields: { f: 'd' } } }] };
+const EXTRA = { 'signals.json': JSON.stringify(SIGNALS), 'llmquestions.json': JSON.stringify(LLMQ), 'context-endpoints.json': JSON.stringify(CEP), 'brand-voice.json': '{}' };
+const ALL = ['of1/config/brand-voice.json', 'of1/config/config.json', 'of1/config/context-endpoints.json', 'of1/config/cta-template.json', 'of1/config/llmquestions.json', 'of1/config/signals.json'];
+const KEPT = ['of1/config/brand-voice.json'];
+const rowsOf = (f, n) => JSON.parse(readFileSync(join(f.fake, `rows-${n}.json`), 'utf8'));
+test('five files converted and removed, brand-voice kept; sheets written with exact columns; result lists both', () => {
+  const f = fixture({ extra: EXTRA });
+  const det = f.run('01-detect.sh');
+  assert.match(det.stdout, /convert\s+of1\/config\/signals\.json/); assert.match(det.stdout, /keep\s+of1\/config\/brand-voice\.json/);
+  const r = f.full();
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.deepEqual(f.tracked().split('\n'), KEPT);
+  const res = f.result();
+  assert.equal(res.status, 'migrated'); assert.deepEqual(res.keptInGit, KEPT);
+  assert.deepEqual(res.converted, ['of1/config/config.json', 'of1/config/cta-template.json', 'of1/config/signals.json', 'of1/config/llmquestions.json', 'of1/config/context-endpoints.json']);
+  assert.equal(res.warnings.length, 1); assert.match(res.warnings[0], /brand-voice\.json.*no longer reads.*deleted by hand/);
+  const daw = readFileSync(join(f.fake, 'daw.log'), 'utf8');
+  assert.match(daw, /--path of1\/config\/signals --columns param,value,source,context /);
+  assert.match(daw, /--path of1\/config\/llmquestions --columns url,question /);
+  assert.match(daw, /--path of1\/config\/context-endpoints --columns name,description,url,method,timeoutMs,inputs,outputDescription,outputFields /);
+  assert.deepEqual(rowsOf(f, 'signals'), [{ param: 'utm_x', value: 'a', source: 'ai', context: 'ctx' }]);
+  assert.deepEqual(rowsOf(f, 'llmquestions'), [{ url: '/a', question: 'q1' }, { url: '/a', question: 'q2' }]);
+  assert.equal(rowsOf(f, 'context-endpoints')[0].inputs, 'id=account.accountId*');
+  assert.equal(sh(`git --git-dir=${f.base}/origin.git ls-tree -r --name-only main of1/config`, f.repo).stdout.trim(), 'of1/config/brand-voice.json');
+});
+test('re-run after migration with only kept files is already-new', () => {
+  const f = fixture({ extra: EXTRA });
+  assert.equal(f.full().status, 0);
+  assert.equal(f.run('01-detect.sh').status, 0);
+  const res = f.result();
+  assert.equal(res.status, 'already-new'); assert.deepEqual(res.keptInGit, KEPT); assert.deepEqual(res.converted, []);
+  assert.equal(f.full().status, 0);
+});
+test('rejected push restores only the removed files; kept file untouched', () => {
+  const f = fixture({ extra: EXTRA });
+  hook(f, 'echo rejected >&2');
+  assert.equal(f.full().status, 1);
+  assert.deepEqual(f.tracked().split('\n'), ALL);
+  assert.equal(sh('git log --format=%s -1', f.repo).stdout.trim(), 'init');
+  assert.equal(sh('git status --porcelain', f.repo).stdout.trim(), '');
+});
+test('05: a converted sheet that does not serve the written rows fails verification, nothing removed', () => {
+  const f = fixture({ extra: EXTRA });
+  for (const s of ['01-detect.sh', '02-config-to-da.sh', '04-sync.sh']) assert.equal(f.run(s).status, 0, s);
+  writeFileSync(join(f.fake, 'rows-signals.json'), '[]');
+  const r = f.run('05-verify.sh');
+  assert.equal(r.status, 1); assert.match(r.stderr, /signals/);
+  assert.equal(f.run('03-remove-git-config.sh').status, 1);
+  assert.deepEqual(f.tracked().split('\n'), ALL);
+});
+test('02 reads signals/llmquestions/context-endpoints from origin when only origin has them', () => {
+  const f = fixture({ extra: EXTRA });
+  sh('git rm -rq of1/config && git commit -qm local-only', f.repo);
+  assert.equal(f.run('01-detect.sh').status, 0);
+  const r = f.run('02-config-to-da.sh');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(rowsOf(f, 'signals')[0].param, 'utm_x'); assert.equal(rowsOf(f, 'llmquestions').length, 2);
+});
+for (const [file, content, needle] of [
+  ['signals.json', [{ param: 'p' }], 'signals.json[0].value'],
+  ['signals.json', {}, 'signals.json'],
+  ['llmquestions.json', [{ url: '/a', questions: [] }], 'llmquestions.json[0].questions'],
+  ['context-endpoints.json', { endpoints: [{ name: 'a', url: 'u' }, { name: 'b', url: 'u' }, { name: 'c', url: 'u' }] }, 'more than 2'],
+  ['context-endpoints.json', { endpoints: [{ name: 'a', url: 'u', inputs: [{ name: 'x', from: 'cookie.s' }] }] }, 'endpoints[0].inputs[0].from'],
+  ['context-endpoints.json', { endpoints: [{ name: 'a', url: 'u', output: { fields: { f: 'a; b' } } }] }, 'output.fields.f'],
+]) {
+  test(`02: unrepresentable ${file} refused (${needle}), nothing written`, () => {
+    const f = fixture({ extra: { [file]: JSON.stringify(content) } });
+    f.run('01-detect.sh');
+    const r = f.run('02-config-to-da.sh');
+    assert.equal(r.status, 1);
+    assert.ok(r.stderr.includes(needle), r.stderr);
+    assert.ok(r.stderr.includes(file), r.stderr);
+    assert.ok(!existsSync(join(f.fake, 'daw.log')));
+  });
+}
+test('02: invalid JSON in signals.json is refused', () => {
+  const f = fixture({ extra: { 'signals.json': '{nope' } });
+  f.run('01-detect.sh');
+  const r = f.run('02-config-to-da.sh');
+  assert.equal(r.status, 1); assert.match(r.stderr, /signals\.json/); assert.ok(!existsSync(join(f.fake, 'daw.log')));
+});
+test('batch dry-run: lists converted sheets-to-be and the kept file', () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'of1-batch-')));
+  const d = join(base, 'orgs', 's.git'); mkdirSync(d, { recursive: true });
+  sh('git init -q -b main . && git config user.email a@b && git config user.name t && mkdir -p of1/config && echo [] > of1/config/signals.json && echo [] > of1/config/llmquestions.json && echo {} > of1/config/context-endpoints.json && echo {} > of1/config/brand-voice.json && git add -A && git commit -qm i', d);
+  writeFileSync(join(base, 'repos.txt'), 's\n');
+  const r = spawnSync('node', [join(skillDir, 'assets/batch.mjs'), '--org', 'acme', '--repos', join(base, 'repos.txt')], { encoding: 'utf8', env: { ...process.env, OF1_BATCH_CLONE_BASE: join(base, 'orgs') } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /acme\/s\twould-migrate\tconvert=3\tkeptInGit=1/);
+  assert.match(r.stdout, /summary \(dry-run\): would-migrate=1 keptInGit=1/);
+});
+test('batch dry-run: kept-only repo is already-new and prints keptInGit count', () => {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'of1-batch-')));
+  const d = join(base, 'orgs', 'k.git'); mkdirSync(d, { recursive: true });
+  sh('git init -q -b main . && git config user.email a@b && git config user.name t && mkdir -p of1/config && echo {} > of1/config/brand-voice.json && git add -A && git commit -qm i', d);
+  writeFileSync(join(base, 'repos.txt'), 'k\n');
+  const r = spawnSync('node', [join(skillDir, 'assets/batch.mjs'), '--org', 'acme', '--repos', join(base, 'repos.txt')], { encoding: 'utf8', env: { ...process.env, OF1_BATCH_CLONE_BASE: join(base, 'orgs') } });
+  assert.match(r.stdout, /acme\/k\talready-new\tkeptInGit=1/); assert.match(r.stdout, /keptInGit=1$/m);
 });
