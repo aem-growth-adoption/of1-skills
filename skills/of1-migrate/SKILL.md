@@ -14,7 +14,7 @@ Moves one repo's OF1 config from git into DA sheets, syncs the new tenant (`org/
 
 ## Env
 
-`OF1_DEMO_REPO` (repo path), `OF1_STATE_DIR` (state dir), `SKILL_DIR` (this skill), a DA token (`ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE`), optional `OF1_PUBLISH_LIVE=1` (argument `publish-live`: publish config sheets and pages live before the publish sync), `OF1_GENWEB_URL`. If `repo-config.json` is missing it is derived from `git remote origin`.
+`OF1_DEMO_REPO` (repo path), `OF1_STATE_DIR` (state dir), `SKILL_DIR` (this skill), a DA token (`ADOBE_IMS_TOKEN` / `OF1_TOKEN_FILE`), optional `OF1_PUBLISH_LIVE=1` (argument `publish-live`: publish config sheets — incl. the converted `signals` / `llmquestions` / `context-endpoints`, which the edge proxy on the publish host reads from aem.live — and pages live before the publish sync), `OF1_GENWEB_URL`. If `repo-config.json` is missing it is derived from `git remote origin`.
 
 ## Steps (run in this order: 01, 02, 04, 05, 03, 06)
 

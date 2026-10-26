@@ -400,3 +400,14 @@ test('batch dry-run: kept-only repo is already-new and prints keptInGit count', 
   const r = spawnSync('node', [join(skillDir, 'assets/batch.mjs'), '--org', 'acme', '--repos', join(base, 'repos.txt')], { encoding: 'utf8', env: { ...process.env, OF1_BATCH_CLONE_BASE: join(base, 'orgs') } });
   assert.match(r.stdout, /acme\/k\talready-new\tkeptInGit=1/); assert.match(r.stdout, /keptInGit=1$/m);
 });
+test('publish-live: the three converted proxy sheets are published live (edge proxy reads them from the publish host)', () => {
+  const f = fixture({ extra: EXTRA });
+  for (const s of ['01-detect.sh', '02-config-to-da.sh']) assert.equal(f.run(s).status, 0, s);
+  const r = f.run('04-sync.sh', { OF1_PUBLISH_LIVE: '1' });
+  assert.equal(r.status, 0, r.stderr);
+  const daw = readFileSync(join(f.fake, 'daw.log'), 'utf8');
+  for (const n of ['signals', 'llmquestions', 'context-endpoints']) {
+    assert.match(daw, new RegExp(`^sheet .*--path of1/config/${n} `, 'm'), `${n} written + previewed`);
+    assert.match(daw, new RegExp(`^live .*--path of1/config/${n}\\.json$`, 'm'), `${n} published`);
+  }
+});

@@ -15,7 +15,8 @@ present() {
   code=$(of1_curl_auth DA_TOKEN auth -- -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 30 "https://admin.da.live/source/${OWNER}/${REPO}/$1")
   case "$code" in 200) return 0 ;; 404) return 1 ;; *) note_fail "$1" "probe HTTP ${code:-none}"; return 2 ;; esac
 }
-for s in config cta-template suggestions template-list personas audiences; do
+# signals/llmquestions/context-endpoints: the edge proxy reads them from the publish host (aem.live).
+for s in config cta-template suggestions template-list personas audiences signals llmquestions context-endpoints; do
   present "of1/config/$s.json" && live "of1/config/$s.json"
 done
 for p in of1 of1/brand-voice of1/strategy; do present "$p.html" && live "$p"; done
