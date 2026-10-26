@@ -55,3 +55,7 @@ node scripts/baseline/baseline.mjs diff docs/baseline/of1-site-da-first.shape.js
 - Never delete non-OF1 content from the customer repo.
 - Skills are prose + bash: keep steps idempotent (re-runs must be safe).
 - Update `CHANGELOG.md` and the status in `docs/README.md` with each change.
+
+## Documentation
+
+Product documentation lives in the umbrella repo: [of1/docs](https://github.com/Adobe-AEM-Foundation/of1/tree/main/docs). If a change alters behaviour described there (APIs, config, hosts, sync, skills, UI flows), update the docs in the same piece of work and link the docs PR in this PR's description. This also applies to PRs opened from the command line, which skip the PR template.
