@@ -232,7 +232,7 @@ test('409 legacy gen-web tenant: failed with code legacy-tenant-present, git con
   assert.equal(f.full().status, 1);
   const res = f.result();
   assert.equal(res.status, 'failed');
-  assert.ok(res.errors.some((e) => e.code === 'legacy-tenant-present' && /Legacy gen-web data exists for o\/r\. An admin must/.test(e.error)));
+  assert.ok(res.errors.some((e) => e.code === 'legacy-tenant-present' && /Legacy gen-web data exists for o\/r\. Ask the OF1 team to clear or migrate it, then re-run\./.test(e.error)));
   assert.match(f.tracked(), /of1\/config\/config\.json/);
   writeFileSync(join(f.fake, 'sync-publish.body'), PUB_SYNC); writeFileSync(join(f.fake, 'sync-publish.code'), '200');
   assert.equal(f.full().status, 0);

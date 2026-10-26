@@ -7,7 +7,6 @@ This is optional and separate from `of1-publish` (which does the initial deploy)
 ## App URL
 
 - **Production:** `https://of1-gen-web-service.franklin-prod.workers.dev/da-app`
-- Dev: `https://of1-gen-web-service-dev.franklin-prod.workers.dev/da-app`
 
 Served by the of1-gen-web worker at `/da-app`. Deploys are branch-driven: `main` → dev worker; the `main → prod` promotion PR → prod worker. Register the **production** URL for real sites.
 
