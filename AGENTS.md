@@ -15,7 +15,6 @@ The skills name no specific caller. Callers use the stable interface in
 - `skills/of1-integration/knowledge/`: shared references (config schemas, DA sync)
 - `scripts/baseline/`: structural regression baseline tooling
 - `docs/baseline/`: golden shape of a known-good integration
-- `docs/superpowers/{specs,plans}/`: design docs (index: `docs/README.md`)
 
 ## Skills
 
@@ -54,4 +53,8 @@ node scripts/baseline/baseline.mjs diff docs/baseline/of1-site-da-first.shape.js
   stop. Never force-push.
 - Never delete non-OF1 content from the customer repo.
 - Skills are prose + bash: keep steps idempotent (re-runs must be safe).
-- Update `CHANGELOG.md` and the status in `docs/README.md` with each change.
+- Update `CHANGELOG.md` with each change.
+
+## This repository is public
+
+Keep internal details out of code, docs, commit messages and pull request descriptions: no links to or names of internal repositories, no internal hostnames (the production gen-web worker the skills call is the only exception), no service routes beyond the ones the skills call, no chat channels, people or customer data. Write "the OF1 team" instead. Do not commit design specs or implementation plans here (for example `docs/superpowers/`); keep them in an internal repository.
