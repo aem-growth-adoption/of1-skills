@@ -423,11 +423,11 @@ exit 22
   assert.match(argv, /"id":"adobedocs\/site"/);
   assert.match(argv, /prev--main--site--adobedocs\.of1\.live/);
 });
-test('409 (legacy gen-web data): publish 04-sync stops with the admin message, check 2 names legacy-tenant-present', () => {
+test('409 (legacy gen-web data): publish 04-sync stops with the legacy-data message, check 2 names legacy-tenant-present', () => {
   const f = syncFixture('409', '{"error":"Tenant not migrated"}');
   const r = f.run('04-sync.sh');
   assert.equal(r.status, 3);
-  assert.match(r.stderr, /Legacy gen-web data exists for o\/r\. An admin must either delete the legacy tenant \(DELETE \/api\/admin\/tenants\/<legacy id>\).*migrate-tenants\?tenant=o\/r/);
+  assert.match(r.stderr, /Legacy gen-web data exists for o\/r\. Ask the OF1 team to clear or migrate it, then re-run\./);
   const j = JSON.parse(readFileSync(join(f.state, 'hub', 'sync-publish.json'), 'utf8'));
   assert.equal(j.code, 'legacy-tenant-present');
   hub(f, 'sync-preview.json', { ok: true, errors: [], content: { indexed: 3 } });

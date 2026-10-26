@@ -69,7 +69,7 @@ of1_sync_content_batches() {
 }
 
 of1_legacy_message() {
-  printf 'Legacy gen-web data exists for %s/%s. An admin must either delete the legacy tenant (DELETE /api/admin/tenants/<legacy id>) so this sync recreates it from DA, or run POST /api/admin/migrate-tenants?tenant=%s/%s; then re-run.' "$1" "$2" "$1" "$2"
+  printf 'Legacy gen-web data exists for %s/%s. Ask the OF1 team to clear or migrate it, then re-run.' "$1" "$2"
 }
 
 # of1_proxy_post <name> <json-body> -> sets PROXY_CODE and PROXY_BODY. No credentials.

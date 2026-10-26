@@ -72,7 +72,7 @@ test('upload-of1-page: api-endpoint is the proxied host (not gen-web) and the SD
 
 test('upload-of1-page: dev worker pairs with the --dev proxy host', () => {
   const f = fixture();
-  assert.equal(f.run('upload-of1-page.sh', [], { OF1_GENWEB_URL: 'https://of1-gen-web-service-dev.franklin-prod.workers.dev' }).status, 0);
+  assert.equal(f.run('upload-of1-page.sh', [], { OF1_GENWEB_URL: 'https://genweb-dev.example.com' }).status, 0);
   assert.equal(apiEndpoint(f), 'https://main--r--o--dev.of1.live');
 });
 
