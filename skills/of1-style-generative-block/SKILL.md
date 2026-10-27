@@ -24,7 +24,7 @@ Each step is a script in `$SKILL_DIR/scripts/` (run `bash "$SKILL_DIR/scripts/<n
 
 1. **NEVER modify `blocks/of1/of1.js`** — the OF1 block JavaScript is shared infrastructure and must not be changed. Only the CSS (`blocks/of1/of1.css`) is customized per brand.
 2. **This skill OWNS the block install.** Always copy `of1.js` and `of1.css` fresh from `$SKILL_DIR/assets/` to `blocks/of1/` — never reuse whatever exists in the demo repo (may be stale from a previous run).
-3. **Style using brand tokens from stardust** — read `DESIGN.json` (resolve its path via `of1-integration/knowledge/design-tokens-resolution.md` — `stardust/current/` OR `./`), `DESIGN.md`, and the `:root` tokens in `styles/styles.css`. The OF1 block must feel native to the brand, not a generic overlay.
+3. **Style using brand tokens from stardust** — read `DESIGN.json` (`stardust/current/DESIGN.json`, see `of1-integration/knowledge/design-tokens-resolution.md`), `DESIGN.md`, and the `:root` tokens in `styles/styles.css`. The OF1 block must feel native to the brand, not a generic overlay.
 4. **Commit BOTH `of1.js` and `of1.css`** — `of1.js` deployed as-is alongside your styled `of1.css`. Always `git add blocks/of1/` to include both. Missing JS = blank page.
 
 ## Why this skill exists

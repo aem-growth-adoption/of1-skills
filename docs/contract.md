@@ -24,9 +24,9 @@ no other skill parses arguments.
 | Argument | Env var | Default | Effect |
 |---|---|---|---|
 | `content-source=<domain>` | `OF1_CONTENT_SOURCE` | unset | `of1-extract-brand-voice` / `of1-extract-content` crawl `https://<domain>`. Unset: crawl the site's own preview URL. |
-| `non-interactive` | `OF1_NON_INTERACTIVE` | off | No skill asks questions: overwrite `/of1/brand-voice`, remove legacy `of1/config/*.json`, skip confirmation steps. |
+| `non-interactive` | `OF1_NON_INTERACTIVE` | off | No skill asks questions: overwrite `/of1/brand-voice`, skip confirmation steps. Legacy git config is never removed: `of1-check-dependencies` step 3b still exits `3` (run `of1-skills:of1-migrate`). |
 | `cta-template` | `OF1_CTA_TEMPLATE` | off | Run `of1-build-cta-template` (DA sheet), enable publish check 7. |
-| `publish-live` | `OF1_PUBLISH_LIVE` | off | `of1-publish` publishes config sheets and pages live (`da-write.mjs live`) before the publish-stage sync. Sheets: `config`, `cta-template`, `suggestions`, `template-list`, `personas`, `audiences`, `signals`, `llmquestions`, `context-endpoints` (each only when present in DA). The edge proxy reads `signals`, `llmquestions`, `context-endpoints` at request time from the stage origin (aem.page for `prev--` hosts, aem.live for publish hosts), so without `publish-live` the publish host gets 404 for them. |
+| `publish-live` | `OF1_PUBLISH_LIVE` | off | `of1-publish` publishes config sheets and pages live (`da-write.mjs live`) before the publish-stage sync. Sheets: `config`, `cta-template`, `suggestions`, `template-list`, `personas`, `audiences`, `signals`, `llmquestions`, `context-endpoints` (each only when present in DA). The edge proxy reads `signals`, `llmquestions`, `context-endpoints` at request time from the stage origin (aem.page for `prev--` hosts, aem.live for publish hosts), so without `publish-live` the publish host gets 404 for them. `audiences` is legacy: gen-web no longer syncs it (the edge proxy reads its own `audiences-aep` sheet). |
 
 Always required, not new: `OF1_DEMO_REPO` (absolute path to the EDS repo, derived from
 the git toplevel of the cwd when unset) and a DA token (`ADOBE_IMS_TOKEN` or `OF1_TOKEN_FILE`).

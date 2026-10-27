@@ -44,7 +44,7 @@ Nothing installs this row automatically — lab sites need the same manual `libr
    | `/templates/*` | `templates` |
    | `/of1/knowledge/*` | `content` |
 
-   The worker's sync file names are `config`, `brand-voice`, `suggestions`, `cta-template`, `strategy`, `templates`, `content` (plus `audiences`, `generative-images`, `generative-fragments`, which these skills don't produce). Personas aren't synced to the worker — they're read straight from the sheet's `.json` URL by the preview extension / edge proxy.
+   The worker's sync file names are `config`, `brand-voice`, `suggestions`, `cta-template`, `strategy`, `templates`, `content` (plus `generative-images`, `generative-fragments`, `compose-library`, `compose-pages`, which these skills don't produce; the worker no longer syncs `audiences`, the edge proxy reads its own `audiences-aep` sheet). Personas aren't synced to the worker — they're read straight from the sheet's `.json` URL by the preview extension / edge proxy.
 2. Open **Sync OF1**:
    - **Canvas editor:** the **Tools panel on the right** → **Extensions** group → **Sync OF1**.
    - **Classic editor:** the **Library** panel → **Sync OF1**.

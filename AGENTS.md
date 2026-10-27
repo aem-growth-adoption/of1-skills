@@ -22,7 +22,8 @@ The skills name no specific caller. Callers use the stable interface in
 `of1-integration` (entry), `of1-check-dependencies`, `of1-extract-design`,
 `of1-build-templates`, `of1-style-generative-block`, `of1-extract-brand-voice`,
 `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`
-(only with `cta-template`), `of1-publish`.
+(only with `cta-template`), `of1-publish`. Outside the driver's graph: `of1-migrate`
+(legacy git config → DA sheets; run when `of1-check-dependencies` exits `3`).
 
 ## Commands
 
@@ -35,14 +36,14 @@ bash -n <script>.sh        # syntax-check every shell script you touch
 
 ## Baseline workflow
 
-Run after every stage of the cleanup; a non-empty diff needs an explanation in the PR.
+Run after a change that can alter the integration output (skill steps, scripts, `lib/`); a non-empty diff needs an explanation in the PR.
 
 ```
 node scripts/baseline/baseline.mjs capture --tenant <host-label> --repo-dir <path> --out <file>
 node scripts/baseline/baseline.mjs diff docs/baseline/of1-site-da-first.shape.json <file>
 ```
 
-`--tenant` is the preview **host label** `main--<repo>--<owner>` (it builds `https://<label>.aem.page`), not the worker tenant id, which is `<org>/<repo>` (`$TENANT_ID`). See `docs/baseline/README.md`.
+`--tenant` is the preview **host label** `main--<repo>--<owner>`, not the worker tenant id `<org>/<repo>` (`$TENANT_ID`). Capture uses the label for `https://<label>.aem.page` and the proxy `https://<label>.of1.live`, but also (known bug) as the tenant id for `/api/tenants/<label>/status` and the `/api/generate` `domain`, so `status`/`generate` shapes are wrong for `org/repo` tenants. See `docs/baseline/README.md`.
 
 ## Conventions
 
