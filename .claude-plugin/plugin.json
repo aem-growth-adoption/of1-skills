@@ -14,7 +14,8 @@
       "of1-extract-content",
       "of1-build-quick-suggestions",
       "of1-build-cta-template",
-      "of1-publish"
+      "of1-publish",
+      "of1-migrate"
     ]
   },
   "dependencies": [
@@ -23,6 +24,6 @@
     "impeccable@impeccable"
   ],
   "_notes": {
-    "entrypoints": "of1-integration is the standalone entry point — invoke it directly against an existing EDS repo. It is a driver (run from a top-level context) that dispatches every other skill in this plugin per its own step graph (see of1-integration/SKILL.md) and writes of1-integration-result.json. of1-check-dependencies is its own step 1."
+    "entrypoints": "of1-integration is the standalone entry point — invoke it directly against an existing EDS repo. It is a driver (run from a top-level context) that dispatches every other skill in this plugin per its own step graph (see of1-integration/SKILL.md) and writes of1-integration-result.json. of1-check-dependencies is its own step 1. of1-migrate is outside that graph: run it on a legacy repo (git-tracked of1/config/*.json) when of1-check-dependencies exits 3."
   }
 }

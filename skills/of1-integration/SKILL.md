@@ -19,7 +19,7 @@ Invocation: `/of1-integration [content-source=<domain>] [non-interactive] [cta-t
 | Argument | Env var exported | Effect |
 |---|---|---|
 | `content-source=<domain>` | `OF1_CONTENT_SOURCE=<domain>` | brand-voice/content skills crawl `https://<domain>`; unset = the site's own preview URL |
-| `non-interactive` | `OF1_NON_INTERACTIVE=1` | no skill asks anything: overwrite `/of1/brand-voice`, remove legacy `of1/config/*.json`, skip confirmations |
+| `non-interactive` | `OF1_NON_INTERACTIVE=1` | no skill asks anything: overwrite `/of1/brand-voice`, skip confirmations (legacy git config is never removed: step 2 exits `3` → `of1-skills:of1-migrate`) |
 | `cta-template` | `OF1_CTA_TEMPLATE=1` | also run `of1-build-cta-template` (DA sheet `of1/config/cta-template`), enable publish check 7 |
 | `publish-live` | `OF1_PUBLISH_LIVE=1` | `of1-publish` publishes config sheets and pages live before the publish-stage sync |
 

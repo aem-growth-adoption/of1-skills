@@ -32,7 +32,7 @@ HAS_STYLES_CSS=false; [ -f styles/styles.css ] && HAS_STYLES_CSS=true
 
 ## Fail loudly — but only when there is genuinely no source
 
-- If **neither** `DESIGN.json` location **nor** `styles/styles.css` exists →
+- If **neither** `stardust/current/DESIGN.json` **nor** `styles/styles.css` exists →
   **stop and report.** Do not invent brand tokens from memory. Write
   `status: "failed"` (or `"review"`) naming the missing brand spec.
 - If `DESIGN.json` is missing but `styles/styles.css` exists (common on an
