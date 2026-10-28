@@ -137,9 +137,26 @@ export function diffShapes(a, b) {
   return lines.sort();
 }
 
-export const proxyBase = (tenantId, env = process.env) => env.OF1_GENERATE_BASE_URL || `https://${tenantId}.of1.live`;
+export const proxyBase = (hostLabel, env = process.env) => env.OF1_GENERATE_BASE_URL || `https://${hostLabel}.of1.live`;
 
-export async function captureShape({ base, worker, tenantId, gitFiles, fetchImpl = fetch, generateBase }) {
+// Host label `<branch>--<repo>--<owner>` -> gen-web tenant id `owner/repo` (lowercase, like TENANT_ID in lib/env.sh).
+export function tenantIdFromLabel(label) {
+  const parts = String(label).split('--');
+  if (parts.length !== 3 || parts.some((p) => !p)) {
+    throw new Error(`cannot derive org/repo from host label "${label}"; pass --tenant-id <org>/<repo>`);
+  }
+  return `${parts[2]}/${parts[1]}`.toLowerCase();
+}
+
+export function captureOptions(args) {
+  const hostLabel = args.tenant;
+  const override = args['tenant-id'];
+  if (override !== undefined && !/^[^/\s]+\/[^/\s]+$/.test(override)) throw new Error(`--tenant-id must be <org>/<repo>, got "${override}"`);
+  const tenantId = override !== undefined ? override.toLowerCase() : tenantIdFromLabel(hostLabel);
+  return { base: `https://${hostLabel}.aem.page`, hostLabel, tenantId, worker: args.worker ?? DEFAULT_WORKER };
+}
+
+export async function captureShape({ base, worker, tenantId, hostLabel, gitFiles, fetchImpl = fetch, generateBase }) {
   const get = async (url, opts) => {
     try {
       const r = await fetchImpl(url, opts);
@@ -166,7 +183,7 @@ export async function captureShape({ base, worker, tenantId, gitFiles, fetchImpl
   if (worker) {
     status = shapeOfStatus(await getJson(`${worker}/api/tenants/${tenantId}/status`));
     // /api/generate needs gen-web caller credentials: go through the tenant's proxied host (same-origin passthrough).
-    const r = await get(`${generateBase || proxyBase(tenantId)}/api/generate`, {
+    const r = await get(`${generateBase || proxyBase(hostLabel)}/api/generate`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ domain: tenantId, query: 'show me your best products', followUp: false, context: { browsing: [], conversationHistory: [] } }),
@@ -206,7 +223,7 @@ async function main(argv = process.argv.slice(2)) {
   if (cmd === 'capture') {
     if (!args.tenant || !args['repo-dir'] || !args.out) throw new Error('capture needs --tenant, --repo-dir, --out');
     const gitFiles = execFileSync('git', ['ls-files', '--', ...OWNED_PATHSPECS], { cwd: args['repo-dir'], encoding: 'utf8' }).split('\n').filter(Boolean);
-    const shape = await captureShape({ base: `https://${args.tenant}.aem.page`, worker: args.worker ?? DEFAULT_WORKER, tenantId: args.tenant, gitFiles });
+    const shape = await captureShape({ ...captureOptions(args), gitFiles });
     fs.writeFileSync(args.out, `${JSON.stringify(shape, null, 2)}\n`);
     return 0;
   }
