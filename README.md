@@ -11,7 +11,7 @@ once the site exists; the stable interface is in [`docs/contract.md`](docs/contr
 Invoke `of1-integration` pointed at an existing EDS repo:
 
 ```
-/of1-integration [content-source=<domain>] [non-interactive] [cta-template]
+/of1-integration [content-source=<domain>] [non-interactive] [cta-template] [publish-live]
 ```
 
 Run it from a top-level context (it dispatches subagents). It runs its own internal step graph (see `skills/of1-integration/SKILL.md`
@@ -32,13 +32,14 @@ result shape: [`docs/contract.md`](docs/contract.md).
 | `of1-extract-content` | Publish the site's page content to DA `/of1/knowledge/**` (RAG) and infer personas into the DA sheet `/of1/config/personas` |
 | `of1-build-quick-suggestions` | Generate suggestion chips (DA sheet `/of1/config/suggestions`) and the `/of1` landing copy |
 | `of1-build-cta-template` | Only with `cta-template`: generate a branded CTA template (DA sheet `of1/config/cta-template`; read by the gen-web worker as `cta-template`, served via `/api/personalize` `inject_cta`; personas are read by the preview extension / edge proxy instead) |
+| `of1-migrate` | Move a legacy OF1 repo (git-tracked `of1/config/*.json`) to DA sheets and the `org/repo` tenant; run it when `of1-check-dependencies` exits `3`. Not part of the `of1-integration` graph (also batch: `assets/batch.mjs`) |
 | `of1-publish` | Assert no git config, sync the OF1 worker (preview + publish stage; `publish-live` publishes first), generate the demo hub (DA edit links + status panel), and run the pre-launch checks |
 
 Author-tunable config lives in DA (edit, preview, then sync — see
 `skills/of1-integration/knowledge/da-sync-app.md`). A run commits only
 `blocks/of1/`, new general-purpose `blocks/<name>/`, `helix-query.yaml` (only if
 absent), `stardust/` + `PRODUCT.md` (only when extraction ran), and `deliverables/index.html`
-(+ `deliverables/brand-review.html` when extraction ran). Config is never committed. A repo with git-tracked `of1/config/config.json`, `cta-template.json`, `signals.json`, `llmquestions.json` or `context-endpoints.json` (older integration) makes `of1-check-dependencies` step 3b exit `3` (`Legacy OF1 setup found: run of1-skills:of1-migrate`); the run is reported `failed`. `of1-migrate` (own skill, `of1-migrate/SKILL.md`; batch: `assets/batch.mjs`, default branch of each repo, which is expected to carry OF1 on `main`) moves such a repo to DA sheets and the `org/repo` tenant, removing only those five files (other tracked `of1/config/*` stay and are reported as `keptInGit`). OF1 setup (`of1-check-dependencies`, `of1-migrate`, `of1-publish`) runs from `main` and stops before writing anything on another branch; no branch ref is sent to gen-web. Tenant id = `org/repo`; proxy host `<branch>--<repo>--<owner>.of1.live`.
+(+ `deliverables/brand-review.html` when extraction ran). Config is never committed. A repo with git-tracked `of1/config/config.json`, `cta-template.json`, `signals.json`, `llmquestions.json` or `context-endpoints.json` (older integration) makes `of1-check-dependencies` step 3b exit `3` (`Legacy OF1 setup found: run of1-skills:of1-migrate`); the run is reported `failed`. `of1-migrate` (own skill, `of1-migrate/SKILL.md`; batch: `assets/batch.mjs`, default branch of each repo, which is expected to carry OF1 on `main`) moves such a repo to DA sheets and the `org/repo` tenant, removing only those five files (other tracked `of1/config/*` stay and are reported as `keptInGit`). OF1 setup (`of1-check-dependencies`, `of1-migrate`, `of1-publish`) runs from `main` and stops before writing anything on another branch; no branch ref is sent to gen-web. Tenant id = `org/repo`; proxy host `main--<repo>--<owner>.of1.live` (lowercase).
 Config shapes: `skills/of1-integration/knowledge/worker-config-schemas.md`.
 
 ## Usage

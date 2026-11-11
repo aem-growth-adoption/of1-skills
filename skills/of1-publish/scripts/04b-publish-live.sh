@@ -16,7 +16,7 @@ present() {
   case "$code" in 200) return 0 ;; 404) return 1 ;; *) note_fail "$1" "probe HTTP ${code:-none}"; return 2 ;; esac
 }
 # signals/llmquestions/context-endpoints: the edge proxy reads them from the publish host (aem.live).
-for s in config cta-template suggestions template-list personas audiences signals llmquestions context-endpoints; do
+for s in config cta-template suggestions template-list personas signals llmquestions context-endpoints; do
   present "of1/config/$s.json" && live "of1/config/$s.json"
 done
 for p in of1 of1/brand-voice of1/strategy; do present "$p.html" && live "$p"; done

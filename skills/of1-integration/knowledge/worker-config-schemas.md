@@ -12,8 +12,8 @@ nothing under `of1/config/` is committed to git (`config` and `cta-template` are
 
 | Source | Where | Produced by | Sync file |
 |---|---|---|---|
-| `of1/config/config.json` | git | `of1-check-dependencies` | `config` |
-| `of1/config/cta-template.json` | git — **pipeline mode only** | `of1-build-cta-template` | `cta-template` (gen-web worker; served via `/api/personalize` `inject_cta`) |
+| `/of1/config/config` | DA sheet (`key,value`) | `of1-check-dependencies` | `config` |
+| `/of1/config/cta-template` | DA sheet (`key,value`), only with `cta-template` | `of1-build-cta-template` | `cta-template` (gen-web worker; served via `/api/personalize` `inject_cta`) |
 | `/of1/brand-voice` | DA document | `of1-extract-brand-voice` | `brand-voice` |
 | `/of1/config/personas` | DA sheet | `of1-extract-content` | — (not synced; read by the extension / edge proxy) |
 | `/of1/config/suggestions` | DA sheet | `of1-build-quick-suggestions` | `suggestions` |
@@ -27,9 +27,11 @@ nothing under `of1/config/` is committed to git (`config` and `cta-template` are
 Every DA item must be **previewed** (`admin.hlx.page/preview/...`) — the worker reads the preview
 host, not DA source. `skills/of1-integration/assets/da-write.mjs` writes + previews DA docs and sheets.
 
-**Never commit `of1/config/personas.json` or `of1/config/suggestions.json`.** A git file beats a DA
+**Never commit any `of1/config/*.json`** (e.g. `personas.json`, `suggestions.json`). A git file beats a DA
 sheet at the same path on EDS, so a committed file would shadow the authored sheet. `of1-publish`
-check 1 fails if any `of1/config/*` is tracked in git.
+check 1 (and `of1-check-dependencies` step 3b, exit `3`) only detects the five legacy files
+`config.json`, `cta-template.json`, `signals.json`, `llmquestions.json`, `context-endpoints.json`;
+other tracked `of1/config/*` files are not flagged.
 
 ---
 
@@ -94,8 +96,8 @@ paste brand guidelines freely. Sync fetches `/of1/brand-voice.plain.html`, strip
 stores it as the tenant's brand voice string — injected as the `## Brand Voice` section of every
 generation prompt. Not part of the ready gate (`/status` reports `hasBrandVoice`), but always write it.
 
-In standalone mode, `of1-extract-brand-voice` asks before overwriting an existing author-edited doc;
-pipeline mode overwrites.
+Interactively, `of1-extract-brand-voice` asks before overwriting an existing author-edited doc;
+with `non-interactive` (`OF1_NON_INTERACTIVE=1`) it overwrites.
 
 ---
 

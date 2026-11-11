@@ -1,12 +1,12 @@
 ---
 name: of1-build-cta-template
-description: Extract a site's visual design system and generate a branded CTA template (cta-template.json) for the OF1 extension's personalized CTA injection
+description: Extract a site's visual design system and generate a branded CTA template (DA sheet /of1/config/cta-template), served by the gen-web worker via /api/personalize inject_cta for personalized CTA injection
 user-invocable: true
 ---
 
 # CTA Template Builder
 
-Analyze a website's visual design system (colors, button styles, spacing) and generate a branded HTML CTA template with slot placeholders. The template is used by the OF1 extension to inject a personalized call-to-action that looks native to the site.
+Analyze a website's visual design system (colors, button styles, spacing) and generate a branded HTML CTA template with slot placeholders. The gen-web worker syncs it as `cta-template` and serves it via `/api/personalize` (`inject_cta`), so the injected personalized call-to-action looks native to the site.
 
 ## Env — the driver exports these (see `of1-check-dependencies`)
 
@@ -20,17 +20,15 @@ cd "$OF1_DEMO_REPO"
 mkdir -p of1/config
 ```
 
-Read existing design tokens (from the extraction step, `of1-extract-design` / `stardust:extract`) — use for colors, button styles, border-radius (not fonts: the host page supplies those). Only WebFetch the site if you need CTA-specific details not in the tokens. **Resolve the spec via the shared resolver** (`of1-integration/knowledge/design-tokens-resolution.md`) — `DESIGN.json` may live at `stardust/current/` OR project root (`./`), and `styles/styles.css` is a valid token source for a live site:
+Read existing design tokens (from the extraction step, `of1-extract-design` / `stardust:extract`) — use for colors, button styles, border-radius (not fonts: the host page supplies those). Only WebFetch the site if you need CTA-specific details not in the tokens. **Resolve the spec via the shared resolver** (`of1-integration/knowledge/design-tokens-resolution.md`) — `DESIGN.json` lives at `stardust/current/DESIGN.json` (written by `of1-extract-design`), and `styles/styles.css` is a valid token source for a live site:
 ```bash
 DESIGN_JSON=""
-if   [ -f stardust/current/DESIGN.json ]; then DESIGN_JSON="stardust/current/DESIGN.json"
-elif [ -f ./DESIGN.json ];               then DESIGN_JSON="./DESIGN.json"
-fi
+if [ -f stardust/current/DESIGN.json ]; then DESIGN_JSON="stardust/current/DESIGN.json"; fi
 [ -n "$DESIGN_JSON" ] && cat "$DESIGN_JSON"
-# If neither DESIGN.json location nor styles/styles.css exists, stop — do not invent tokens.
+# If neither DESIGN.json nor styles/styles.css exists, stop — do not invent tokens.
 ```
 
-Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `cta-template.json`.
+Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `cta-template` (DA sheet `/of1/config/cta-template`, only with `cta-template`).
 
 ## Output
 
@@ -55,7 +53,7 @@ Schema reference: `of1-integration/knowledge/worker-config-schemas.md` § `cta-t
 
 `DESIGN.json` (resolved above) already carries everything the CTA needs — it was measured from the
 real site by `stardust:extract`, so prefer it over re-deriving from HTML. Read:
-- **Fonts** → `typography.heading.family` / `typography.body.family` (+ `weight`, `letterSpacing`, `lineHeight`)
+- **Typography** → `typography.heading` / `typography.body` `weight`, `letterSpacing`, `lineHeight` (never `family`: see step 2)
 - **Colors** → `colors.{primary, secondary, accent, background, surface, text, muted}`
 - **Button style** → `components.button.{radius, padding, weight, textTransform}`
 - **Section / theme cues** → `colors.background`/`surface`, `spacing.{section, component}`, `components.hero.{style, overlay}`, `components.card.radius`, `rounded`

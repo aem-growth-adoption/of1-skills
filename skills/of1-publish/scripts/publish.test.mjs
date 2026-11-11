@@ -493,3 +493,15 @@ test('04b: publishes the proxy sheets live (admin.hlx.page/live ... .json); abse
   const log = readFileSync(join(all.fake, 'daw.log'), 'utf8');
   for (const n of PROXY_SHEETS) assert.match(log, new RegExp(`live .*--path of1/config/${n}\\.json$`, 'm'), n);
 });
+test('03 and 04b: the dead audiences sheet is neither previewed nor published, even when present in DA', () => {
+  const probes = { 'of1_config_config.json': '200', 'of1_config_audiences.json': '200' };
+  const p = liveFixture(probes);
+  const r3 = p.run('03-push-config.sh');
+  assert.equal(r3.status, 0, r3.stderr + r3.stdout);
+  assert.doesNotMatch(readFileSync(join(p.fake, 'live-urls.log'), 'utf8'), /of1\/config\/audiences\.json/);
+  assert.match(r3.stdout, /^previewed 1, failed 0$/m);
+  const l = liveFixture(probes);
+  const r4 = l.run('04b-publish-live.sh', [], l.env);
+  assert.equal(r4.status, 0, r4.stderr + r4.stdout);
+  assert.doesNotMatch(readFileSync(join(l.fake, 'daw.log'), 'utf8'), /of1\/config\/audiences\.json/);
+});

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   shapeOfConfig, shapeOfSheet, shapeOfTemplate, shapeOfOf1Page, shapeOfBrandVoice,
   shapeOfStatus, shapeOfGenerate, diffShapes, captureShape, DEFAULT_WORKER, parseArgs, OWNED_PATHSPECS,
+  tenantIdFromLabel, captureOptions,
 } from './baseline.mjs';
 
 test('shapeOfConfig', () => {
@@ -148,13 +149,34 @@ test('captureShape enumerates templates from the template-list sheet first', asy
   assert.deepEqual(Object.keys(out.templates), ['sheetone']);
 });
 
-test('generate smoke goes through the proxied tenant host; status stays on the worker', async () => {
-  const urls = [];
-  const fetchImpl = async (u) => { urls.push(String(u)); return { ok: false, status: 404 }; };
-  await captureShape({ base: 'https://t.aem.page', worker: 'https://w', tenantId: 'main--r--o', gitFiles: [], fetchImpl });
+test('generate smoke goes through the proxied host label; worker calls use the org/repo tenant id', async () => {
+  const calls = [];
+  const fetchImpl = async (u, opts) => { calls.push({ url: String(u), opts }); return { ok: false, status: 404 }; };
+  await captureShape({ base: 'https://t.aem.page', worker: 'https://w', hostLabel: 'main--r--o', tenantId: 'o/r', gitFiles: [], fetchImpl });
+  const urls = calls.map((c) => c.url);
   assert.ok(urls.includes('https://main--r--o.of1.live/api/generate'));
-  assert.ok(urls.includes('https://w/api/tenants/main--r--o/status'));
-  urls.length = 0;
-  await captureShape({ base: 'https://t.aem.page', worker: 'https://w', tenantId: 'x', gitFiles: [], fetchImpl, generateBase: 'https://o' });
-  assert.ok(urls.includes('https://o/api/generate'));
+  assert.ok(urls.includes('https://w/api/tenants/o/r/status'));
+  assert.ok(!urls.some((u) => u.includes('/api/tenants/main--')));
+  const gen = calls.find((c) => c.url.endsWith('/api/generate'));
+  assert.equal(JSON.parse(gen.opts.body).domain, 'o/r');
+  calls.length = 0;
+  await captureShape({ base: 'https://t.aem.page', worker: 'https://w', hostLabel: 'main--r--o', tenantId: 'o/r', gitFiles: [], fetchImpl, generateBase: 'https://o' });
+  assert.ok(calls.some((c) => c.url === 'https://o/api/generate'));
+});
+
+test('tenantIdFromLabel maps main--<repo>--<owner> to lowercase owner/repo', () => {
+  assert.equal(tenantIdFromLabel('main--of1-site--aem-growth-adoption'), 'aem-growth-adoption/of1-site');
+  assert.equal(tenantIdFromLabel('main--My-Repo--Acme'), 'acme/my-repo');
+  assert.equal(tenantIdFromLabel('of1-da-first--of1-site--aem-growth-adoption'), 'aem-growth-adoption/of1-site');
+  assert.throws(() => tenantIdFromLabel('main--a--b--c'), /--tenant-id/);
+  assert.throws(() => tenantIdFromLabel('acme'), /--tenant-id/);
+});
+
+test('captureOptions: --tenant is the host label, --tenant-id overrides the derived org/repo', () => {
+  assert.deepEqual(captureOptions({ tenant: 'main--r--o' }), {
+    base: 'https://main--r--o.aem.page', hostLabel: 'main--r--o', tenantId: 'o/r', worker: DEFAULT_WORKER,
+  });
+  assert.equal(captureOptions({ tenant: 'main--a--b--c', 'tenant-id': 'B/A--b' }).tenantId, 'b/a--b');
+  assert.equal(captureOptions({ tenant: 'main--r--o', worker: '' }).worker, '');
+  assert.throws(() => captureOptions({ tenant: 'main--r--o', 'tenant-id': 'nope' }), /<org>\/<repo>/);
 });

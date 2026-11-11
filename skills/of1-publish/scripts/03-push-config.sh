@@ -5,7 +5,7 @@
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 . "$LIB/curl-auth.sh"
 OK=0; FAILED=0
-for p in of1/config/config of1/config/cta-template of1/config/suggestions of1/config/template-list of1/config/personas of1/config/audiences \
+for p in of1/config/config of1/config/cta-template of1/config/suggestions of1/config/template-list of1/config/personas \
   of1/config/signals of1/config/llmquestions of1/config/context-endpoints; do
   code=$(of1_curl_auth DA_TOKEN auth -- -s -o /dev/null -w '%{http_code}' "https://admin.da.live/source/${OWNER}/${REPO}/${p}.json")
   [ "$code" = 200 ] || continue
