@@ -43,7 +43,7 @@ node scripts/baseline/baseline.mjs capture --tenant <host-label> --repo-dir <pat
 node scripts/baseline/baseline.mjs diff docs/baseline/of1-site-da-first.shape.json <file>
 ```
 
-`--tenant` is the preview **host label** `main--<repo>--<owner>`, not the worker tenant id `<org>/<repo>` (`$TENANT_ID`). Capture uses the label for `https://<label>.aem.page` and the proxy `https://<label>.of1.live`, but also (known bug) as the tenant id for `/api/tenants/<label>/status` and the `/api/generate` `domain`, so `status`/`generate` shapes are wrong for `org/repo` tenants. See `docs/baseline/README.md`.
+`--tenant` is the preview **host label** `main--<repo>--<owner>`, used for `https://<label>.aem.page` and the proxy `https://<label>.of1.live`. Worker calls (`/api/tenants/<org>/<repo>/status`, `/api/generate` `domain`) use the tenant id `<org>/<repo>` (`$TENANT_ID`), derived from the label; `--tenant-id <org>/<repo>` overrides it. See `docs/baseline/README.md`.
 
 ## Conventions
 
