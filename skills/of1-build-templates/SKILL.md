@@ -8,7 +8,7 @@ user-invocable: true
 
 Produce the worker's template library as **DA-authored block templates**: real EDS documents in a tenant's `/templates` DA folder, composed of the site's **own** blocks (`hero`, `cards`, `columns`, …) filled with realistic example content, each carrying a `section-metadata` block describing its intent. DA is the source of truth — no git-committed template HTML, `.metadata.json`, catalog, or gallery.
 
-At request time the worker (`da-blocks-slots` engine) selects one template by intent, asks the LLM for **content-only slot values** addressed by structural id, and splices them into the authored skeleton; the browser then runs the site's real `decorate()` pipeline. See `of1-gen-web-service/docs/superpowers/specs/2026-08-10-da-block-templates-design.md` and this repo's `docs/superpowers/specs/2026-08-31-of1-build-templates-da-blocks-slots-migration.md`.
+At request time the worker (`da-blocks-slots` engine) selects one template by intent, asks the LLM for **content-only slot values** addressed by structural id, and splices them into the authored skeleton; the browser then runs the site's real `decorate()` pipeline.
 
 ## Env — the driver exports these (see `of1-check-dependencies`)
 
