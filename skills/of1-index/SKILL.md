@@ -18,7 +18,7 @@ description: Choose the pages OF1 should index for a registered site, add them t
 1. Run `node <plugin root>/lib/cli.mjs identity` for `site`.
 2. Call `get_setup` { site, area: "pages" }. If `areas.pages.list` is non-empty, pages are already set: report `skipped` and go to step 6.
 3. Call `get_setup` { site, area: "site" } and read `areas.site.domain`.
-4. Run `node <plugin root>/lib/cli.mjs pages --domain <domain>`, adding `--pages '<input>'` when the `pages` input is given. It returns `{ origin, source, proposal, skipped }`; `proposal` entries are live pages with a path and type. If `source` is `"none"` (no sitemap or query-index) and no `pages` input: interactive, ask for paths; autonomous, stop and say no pages were found.
+4. Run `node <plugin root>/lib/cli.mjs pages` (add `--domain <domain>` only when the site has a domain), adding `--pages '<input>'` when the `pages` input is given. It returns `{ origin, source, proposal, skipped }`; `proposal` entries are live pages with a path and type. If `source` is `"none"` (no sitemap or query-index) and no `pages` input: interactive, ask for paths; autonomous, stop and say no pages were found.
 5. Choose:
    - **Interactive:** ask "What do you want to demo?", show the proposal grouped by type, and let the person add, remove or change pages. Re-run `pages --pages '<edited JSON>'` on the edited list so non-live pages are still reported, and use its `proposal`.
    - **Autonomous:** take the proposal as is.
