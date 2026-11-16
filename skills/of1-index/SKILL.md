@@ -9,7 +9,7 @@ description: Choose the pages OF1 should index for a registered site, add them t
 
 - Plugin root: `$CLAUDE_PLUGIN_ROOT`, else two directories above this SKILL.md. Run the CLI as `node <plugin root>/lib/cli.mjs <command>` from the site repo.
 - Portal tools are MCP tools, referred to by name suffix. Use the `of1-portal-token` server's tools when `OF1_PORTAL_TOKEN` is set, else the `of1-portal` server's.
-- Autonomous mode: `OF1_AUTONOMOUS` is set or the argument `autonomous` is given. Never ask questions then.
+- Autonomous mode: `OF1_AUTONOMOUS` is set to anything other than `0` or `false`, or the argument `autonomous` is given. Never ask questions then.
 - If a portal tool returns unauthorized: interactive, tell the person to sign in (`/mcp` in Claude Code) and stop; autonomous, stop with `OF1_PORTAL_TOKEN missing or invalid`.
 - Optional input `pages` (argument `pages=...` or `OF1_PAGES`): a JSON array of paths/URLs or `{path,type}` objects, or `@<file>` containing that JSON. Always pass it quoted to `--pages`.
 
