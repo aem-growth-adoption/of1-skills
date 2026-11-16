@@ -6,7 +6,8 @@
   "entrypoints": {
     "skills": [
       "of1-index",
-      "of1-register"
+      "of1-register",
+      "of1-search"
     ]
   },
   "dependencies": [
