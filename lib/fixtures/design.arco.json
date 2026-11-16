@@ -1,0 +1,30 @@
+{
+  "colors": {
+    "primary": "#B5651D",
+    "primary-hover": "#8E4E14",
+    "accent-secondary": "#D4883A",
+    "text": "#1C2B35",
+    "text-muted": "#5C6B73",
+    "background": "#F5F0E8",
+    "surface": "#FFFFFF",
+    "border": "#D4CFC5"
+  },
+  "typography": {
+    "heading": {
+      "family": "'Inter', sans-serif",
+      "weight": "600",
+      "style": "normal"
+    },
+    "body": {
+      "family": "'Inter', sans-serif",
+      "weight": "400",
+      "style": "normal"
+    }
+  },
+  "rounded": {
+    "sm": "4px",
+    "md": "12px",
+    "pill": "100px",
+    "circle": "50%"
+  }
+}
