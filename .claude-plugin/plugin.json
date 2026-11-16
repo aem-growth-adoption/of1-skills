@@ -1,29 +1,13 @@
 {
   "name": "of1-skills",
-  "version": "0.5.1",
-  "description": "Integrate OF1 (generative-search) into an existing Adobe Edge Delivery Services project: verify prerequisites, extract/reuse design tokens, generate templates and CTA config, style the generative block, and publish. Runs standalone against any EDS/Stardust repo — no demo-building or site-crawling steps.",
+  "version": "1.0.0-next",
+  "description": "Connect an existing Adobe Edge Delivery Services site to OF1: register it with the OF1 portal, build generative templates, suggestions and brand voice, and verify the result.",
   "skills": "./skills/",
   "entrypoints": {
-    "skills": [
-      "of1-check-dependencies",
-      "of1-integration",
-      "of1-extract-design",
-      "of1-build-templates",
-      "of1-style-generative-block",
-      "of1-extract-brand-voice",
-      "of1-extract-content",
-      "of1-build-quick-suggestions",
-      "of1-build-cta-template",
-      "of1-publish",
-      "of1-migrate"
-    ]
+    "skills": []
   },
   "dependencies": [
     "stardust@adobe-skills",
-    "aem-edge-delivery-services@adobe-skills",
-    "impeccable@impeccable"
-  ],
-  "_notes": {
-    "entrypoints": "of1-integration is the standalone entry point — invoke it directly against an existing EDS repo. It is a driver (run from a top-level context) that dispatches every other skill in this plugin per its own step graph (see of1-integration/SKILL.md) and writes of1-integration-result.json. of1-check-dependencies is its own step 1. of1-migrate is outside that graph: run it on a legacy repo (git-tracked of1/config/*.json) when of1-check-dependencies exits 3."
-  }
+    "aem-edge-delivery-services@adobe-skills"
+  ]
 }

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "of1-portal": {
+      "type": "http",
+      "url": "https://dev-portal.of1.live/mcp"
+    },
+    "of1-portal-token": {
+      "type": "http",
+      "url": "https://dev-portal.of1.live/mcp",
+      "headers": { "Authorization": "Bearer ${OF1_PORTAL_TOKEN}" }
+    }
+  }
+}
