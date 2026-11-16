@@ -1,0 +1,7 @@
+{
+  "name": "of1-skills",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node --test lib/*.test.mjs lib/**/*.test.mjs" }
+}
