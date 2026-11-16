@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-next
+
+- **Rewrite.** The plugin is now six skills: `of1-integrate` (entry), `of1-register`, `of1-index`, `of1-search`, `of1-generative`, `of1-decision`. The portal is reached through MCP tools only; DA and preview through their admin APIs; code is delivered to `main`, a branch or a pull request (`code-delivery`).
+- **Removed:** the skills `of1-integration`, `of1-check-dependencies`, `of1-extract-design`, `of1-build-templates`, `of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-migrate`, `of1-publish`; `docs/contract.md` and the baseline tooling. Nothing reads or writes `/of1/config/*` in DA any more.
+- Inputs: `OF1_AUTONOMOUS`/`autonomous`, `OF1_PORTAL_TOKEN`, `DA_TOKEN`, `pages`, `page-mode`, `code-delivery`.
+- `pagesReady` always returns a numeric `ready` and a boolean `allReady` (`ready: 0`, `reason: "no-pages"` when empty); `pages-ready` exits 0 only when `allReady`.
+
+## Earlier (before the rewrite)
 
 - **Baseline `capture` uses the `org/repo` tenant id for gen-web calls.** `--tenant` (the host label `main--<repo>--<owner>`) was also sent as the gen-web tenant id (`GET /api/tenants/<label>/status`, `/api/generate` `domain`), so `status`/`generate` shapes did not reflect `org/repo` tenants (0.4.0+). The label still drives `https://<label>.aem.page` and the proxy `https://<label>.of1.live`; the tenant id is derived from it (`owner/repo`, lowercase, like `$TENANT_ID`) or given with the new `--tenant-id <org>/<repo>` (required when the label has more than three `--` parts). New exports `tenantIdFromLabel`, `captureOptions`. Golden shape unchanged (it encodes no tenant id). Docs: `docs/baseline/README.md`, AGENTS.md.
 - **`of1-publish` stops previewing/publishing the dead `audiences` sheet.** Step 3 (`03-push-config.sh`) and step 4b (`04b-publish-live.sh`) dropped `of1/config/audiences`: gen-web's `CONFIG_FILES` no longer includes it, the edge proxy reads `audiences-rules`, `audiences-brief`, `audiences-aep`, `aep`, and the extension reads `audiences-brief`. No skill generated it. An existing sheet is left in DA. Docs: `docs/contract.md`, `of1-publish` SKILL.md, `da-sync-app.md`.

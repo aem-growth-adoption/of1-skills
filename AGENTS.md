@@ -1,65 +1,33 @@
 # of1-skills
 
-Claude Code plugin that integrates OF1 (branded generative search) into an
-**existing** Adobe EDS site. Entry skill: `of1-integration`, which runs its own
-step graph (see `skills/of1-integration/SKILL.md`). No crawling or site building.
-
-The skills name no specific caller. Callers use the stable interface in
-`docs/contract.md` (arguments, status files, `of1-integration-result.json`).
-`of1-integration` is a driver and must run from a top-level context.
+Claude Code plugin that connects an **existing** Adobe EDS site to OF1. Entry skill: `of1-integrate`. No crawling or site building.
 
 ## Layout
 
-- `skills/<name>/SKILL.md`: one skill each; `skills/*/assets/*.mjs`: Node helpers + tests;
-  `skills/*/scripts/`: step bash (SKILL.md <= 200 lines, bash blocks <= 25); `lib/`: shared helpers (`env.sh`, `da-client.mjs`, ...)
-- `skills/of1-integration/knowledge/`: shared references (config schemas, DA sync)
-- `scripts/baseline/`: structural regression baseline tooling
-- `docs/baseline/`: golden shape of a known-good integration
-
-## Skills
-
-`of1-integration` (entry), `of1-check-dependencies`, `of1-extract-design`,
-`of1-build-templates`, `of1-style-generative-block`, `of1-extract-brand-voice`,
-`of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`
-(only with `cta-template`), `of1-publish`. Outside the driver's graph: `of1-migrate`
-(legacy git config → DA sheets; run when `of1-check-dependencies` exits `3`).
+- `skills/<name>/SKILL.md`: one skill each (`of1-integrate`, `of1-register`, `of1-index`, `of1-search`, `of1-generative`, `of1-decision`); extra reference files sit next to it.
+- `lib/`: the CLI (`lib/cli.mjs`) and helpers, with tests next to the code; `lib/templates/`: template tools; `lib/target.mjs`: the target switch.
+- `assets/blocks/`: the `of1` and `decision` blocks installed into a site.
 
 ## Commands
 
 ```
-node --test skills/*/assets/*.test.mjs scripts/baseline/*.test.mjs lib/*.test.mjs skills/*/scripts/*.test.mjs
-bash -n <script>.sh        # syntax-check every shell script you touch
+npm test
 ```
-
-`node --test <dir>` does not work on Node 23; pass file globs.
-
-## Baseline workflow
-
-Run after a change that can alter the integration output (skill steps, scripts, `lib/`); a non-empty diff needs an explanation in the PR.
-
-```
-node scripts/baseline/baseline.mjs capture --tenant <host-label> --repo-dir <path> --out <file>
-node scripts/baseline/baseline.mjs diff docs/baseline/of1-site-da-first.shape.json <file>
-```
-
-`--tenant` is the preview **host label** `main--<repo>--<owner>`, used for `https://<label>.aem.page` and the proxy `https://<label>.of1.live`. Worker calls (`/api/tenants/<org>/<repo>/status`, `/api/generate` `domain`) use the tenant id `<org>/<repo>` (`$TENANT_ID`), derived from the label; `--tenant-id <org>/<repo>` overrides it. See `docs/baseline/README.md`.
 
 ## Conventions
 
-- Config is authored in DA; git gets no `of1/config/{config,cta-template,signals,llmquestions,context-endpoints}.json`. Never
-  commit any other `of1/config/*.json`; `of1-migrate` removes only the files it converted (`assets/to-sheet.mjs` defines the sheet formats) and leaves the rest.
-- OF1 setup runs from `main`: `of1_require_main` (lib/env.sh) guards check-dependencies, migrate, publish.
-- Commit with a scoped pathspec: `git commit -m ... -- <paths>`; never `git add -A`.
-- Before every push: `git pull --rebase --autostash`; on conflict abort and
-  stop. Never force-push.
-- Never delete non-OF1 content from the customer repo.
-- Skills are prose + bash: keep steps idempotent (re-runs must be safe).
+- Skills know nothing about any calling system (a test enforces it for `skills/`, `lib/`, `assets/`).
+- SKILL.md is at most 200 lines; frontmatter `name` equals the directory name.
+- The portal is used only through MCP tools (`describe_site`, `register_site`, `get_registration`, `add_pages`, `preview_changes`, `get_pages_status`, `set_area`, `set_suggestions`, `upsert_template`, `set_feature`, `get_setup`, `get_settings`); `lib/` never calls MCP. The MCP `site` argument is `org/repo`.
+- DA through `https://admin.da.live/source/<org>/<repo>/<path>`, preview through `https://admin.hlx.page/preview/...`. Never `live` unless the person asks (interactive only). Nothing reads or writes `/of1/config/*`.
+- Commit with `git commit -m ... -- <paths>`; `git pull --rebase` before push; never force; never `git add -A`; never delete non-OF1 content.
+- Never tests or builds against a real DA, portal or EDS admin: tests use fakes.
 - Update `CHANGELOG.md` with each change.
+
+## Target switch (rollout)
+
+`lib/target.mjs` `TARGET` is `"dev"` (portal MCP `https://dev-portal.of1.live/mcp`, proxy host suffix `--dev`). For the rollout set it to `"prod"` and change both URLs in `.mcp.json` to the same value; a test checks they agree.
 
 ## This repository is public
 
-Keep internal details out of code, docs, commit messages and pull request descriptions: no links to or names of internal repositories, no internal hostnames (the production gen-web worker the skills call is the only exception), no service routes beyond the ones the skills call, no chat channels, people or customer data. Write "the OF1 team" instead. Do not commit design specs or implementation plans here (for example `docs/superpowers/`); keep them in an internal repository.
-
-## Portal MCP servers
-
-`.mcp.json` ships two servers on the same URL (`lib/target.mjs` `PORTAL_MCP_URL`): `of1-portal` (OAuth, no headers) and `of1-portal-token` (`Authorization: Bearer ${OF1_PORTAL_TOKEN}`). Claude Code never falls back to OAuth once an `Authorization` header is configured, and an unset `${VAR}` is sent as literal text, so one server cannot serve both. Skills use whichever answers `describe_site`.
+Keep internal details out of code, docs, commit messages and pull requests: no internal repository names or hostnames, no chat channels, people or customer data. Write "the OF1 team" instead. Do not commit design specs or implementation plans here.
