@@ -4,7 +4,9 @@
   "description": "Connect an existing Adobe Edge Delivery Services site to OF1: register it with the OF1 portal, build generative templates, suggestions and brand voice, and verify the result.",
   "skills": "./skills/",
   "entrypoints": {
-    "skills": []
+    "skills": [
+      "of1-register"
+    ]
   },
   "dependencies": [
     "stardust@adobe-skills",
