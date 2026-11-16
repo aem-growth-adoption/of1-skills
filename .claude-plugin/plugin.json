@@ -5,6 +5,7 @@
   "skills": "./skills/",
   "entrypoints": {
     "skills": [
+      "of1-index",
       "of1-register"
     ]
   },
