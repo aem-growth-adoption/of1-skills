@@ -59,3 +59,7 @@ node scripts/baseline/baseline.mjs diff docs/baseline/of1-site-da-first.shape.js
 ## This repository is public
 
 Keep internal details out of code, docs, commit messages and pull request descriptions: no links to or names of internal repositories, no internal hostnames (the production gen-web worker the skills call is the only exception), no service routes beyond the ones the skills call, no chat channels, people or customer data. Write "the OF1 team" instead. Do not commit design specs or implementation plans here (for example `docs/superpowers/`); keep them in an internal repository.
+
+## Portal MCP servers
+
+`.mcp.json` ships two servers on the same URL (`lib/target.mjs` `PORTAL_MCP_URL`): `of1-portal` (OAuth, no headers) and `of1-portal-token` (`Authorization: Bearer ${OF1_PORTAL_TOKEN}`). Claude Code never falls back to OAuth once an `Authorization` header is configured, and an unset `${VAR}` is sent as literal text, so one server cannot serve both. Skills use whichever answers `describe_site`.
