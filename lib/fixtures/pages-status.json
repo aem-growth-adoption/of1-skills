@@ -1,0 +1,1 @@
+{"sync":{"status":"ok","mode":"managed","siteOrigin":"https://main--r--o.aem.live"},"pages":{"/a":{"state":"live"},"/b":{"state":"ready"},"/c":{"state":"fetching"},"/d":{"state":"unusable","reason":"could not be fetched"}}}
