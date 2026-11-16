@@ -11,6 +11,7 @@ description: Add a decision block to a page: one promo or teaser section is repl
 - Portal tools are MCP tools, referred to by name suffix. Use the `of1-portal-token` server's tools when `OF1_PORTAL_TOKEN` is set, else the `of1-portal` server's.
 - Autonomous mode: `OF1_AUTONOMOUS` is set to anything other than `0` or `false`, or the argument `autonomous` is given. Never ask questions then.
 - If a portal tool returns unauthorized: interactive, tell the person to sign in (`/mcp` in Claude Code) and stop; autonomous, stop with `OF1_PORTAL_TOKEN missing or invalid`.
+- Input `deliver=no` (argument, or `OF1_DELIVER=no`): do not run `deliver`; list the paths this skill changed (blocks, `stardust/current`) under `Changed paths` in the report, for the caller to deliver once. Run alone, deliver as described.
 - Each sub-step ends with `done` or `skipped` (and why) in the report.
 
 ## Steps
@@ -24,7 +25,7 @@ description: Add a decision block to a page: one promo or teaser section is repl
    - Write the original section as the page `<body><header></header><main>SECTION</main><footer></footer></body>` to `default.html`, then `da-put fragments/of1/<id>/default @default.html`.
    - Write 2-3 versions of the section, each aimed at one intent (`comparison`, `recommendation`, `deep-dive`, `budget` or `discovery`), with the same block, the site's real products, pages and images and the brand voice, and `da-put fragments/of1/<id>/<intent> @<intent>.html` for each. Exist already (`exists`): keep, do not overwrite.
    - `preview fragments/of1/<id>/default fragments/of1/<id>/<intent>...`
-7. **Block.** `install-block decision` with `--design stardust/current/DESIGN.json` when that file exists (never `--overwrite`); `exists` is `skipped`. Deliver it with `deliver --message "Add decision block" -- blocks/decision`, `--mode <code-delivery>` (and `--branch <name>` for `branch`/`pr`).
+7. **Block.** `install-block decision` with `--design stardust/current/DESIGN.json` when that file exists (never `--overwrite`); `exists` is `skipped`. Unless `deliver=no` (then list `blocks/decision` as changed), deliver it with `deliver --message "Add decision block" -- blocks/decision`, `--mode <code-delivery>` (and `--branch <name>` for `branch`/`pr`).
 8. **Replace.** Build `<div>` + `decisionBlockHtml({ id, hint, candidates })` + `</div>` with the default candidate first: `['/fragments/of1/<id>/default', '/fragments/of1/<id>/<intent>', ...]` (2-10 entries, no `when` guards). `replaceSection(html, index, thatSection)`, save to `page.html`, `da-put <target> @page.html --overwrite`, `preview <target>`. Steps 4-5 `skipped` means no write and no preview of the page.
 9. **Check.** On a `prev--` host the previewed fragments are enough. Report the page URL `https://main--<repo>--<org>.aem.page<target>`.
 

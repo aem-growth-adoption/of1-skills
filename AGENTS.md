@@ -24,6 +24,8 @@ npm test
 - Never tests or builds against a real DA, portal or EDS admin: tests use fakes.
 - Update `CHANGELOG.md` with each change.
 
+`.mcp.json` ships two servers on the same URL, `of1-portal` (OAuth) and `of1-portal-token` (Bearer `OF1_PORTAL_TOKEN`): Claude Code never falls back to OAuth once an `Authorization` header is set, and an unset `${VAR}` is sent as literal text, so one server cannot serve both. Skills use whichever answers.
+
 ## Target switch (rollout)
 
 `lib/target.mjs` `TARGET` is `"dev"` (portal MCP `https://dev-portal.of1.live/mcp`, proxy host suffix `--dev`). For the rollout set it to `"prod"` and change both URLs in `.mcp.json` to the same value; a test checks they agree.

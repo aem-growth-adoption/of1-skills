@@ -5,6 +5,7 @@
 - **Rewrite.** The plugin is now six skills: `of1-integrate` (entry), `of1-register`, `of1-index`, `of1-search`, `of1-generative`, `of1-decision`. The portal is reached through MCP tools only; DA and preview through their admin APIs; code is delivered to `main`, a branch or a pull request (`code-delivery`).
 - **Removed:** the skills `of1-integration`, `of1-check-dependencies`, `of1-extract-design`, `of1-build-templates`, `of1-style-generative-block`, `of1-extract-brand-voice`, `of1-extract-content`, `of1-build-quick-suggestions`, `of1-build-cta-template`, `of1-migrate`, `of1-publish`; `docs/contract.md` and the baseline tooling. Nothing reads or writes `/of1/config/*` in DA any more.
 - Inputs: `OF1_AUTONOMOUS`/`autonomous`, `OF1_PORTAL_TOKEN`, `DA_TOKEN`, `pages`, `page-mode`, `code-delivery`.
+- `of1-integrate` runs the steps with `deliver=no` (new input, also `OF1_DELIVER=no`) and delivers once at the end. New CLI: `identity --ref <ref>` (hosts of that ref), `portalUrl` in the `identity` output, `publish <path>...` (EDS live; used only on an explicit yes, interactive only).
 - `pagesReady` always returns a numeric `ready` and a boolean `allReady` (`ready: 0`, `reason: "no-pages"` when empty); `pages-ready` exits 0 only when `allReady`.
 
 ## Earlier (before the rewrite)

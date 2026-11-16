@@ -12,6 +12,7 @@ description: Make a page generative with OF1: a generative hero and a generative
 - Autonomous mode: `OF1_AUTONOMOUS` is set to anything other than `0` or `false`, or the argument `autonomous` is given. Never ask questions then.
 - If a portal tool returns unauthorized: interactive, tell the person to sign in (`/mcp` in Claude Code) and stop; autonomous, stop with `OF1_PORTAL_TOKEN missing or invalid`.
 - CTA host-block rules: `cta.md` next to this file.
+- Input `deliver=no` (argument, or `OF1_DELIVER=no`): do not run `deliver`; list the paths this skill changed (blocks, `stardust/current`) under `Changed paths` in the report, for the caller to deliver once. Run alone, deliver as described.
 - Each sub-step ends with `done` or `skipped` (and why) in the report.
 
 ## Steps
@@ -26,7 +27,7 @@ description: Make a page generative with OF1: a generative hero and a generative
 5. **Hero.** If `page.html` has no `h1` section, `skipped` (no hero). If its hero section already has `generative-scope` Section Metadata, `skipped`. Else write one `instruction` from the site's brand voice (`get_setup` { site, area: "site" }) and the page, saying how the headline and text should adapt to the visitor, then apply `heroGenerative(html, instruction)` from `<plugin root>/lib/doc.mjs`. It adds `generative-scope: h1` and `generative-instruction` to the hero's Section Metadata. Keep the original text as it is; it stays the default.
 6. **CTA.** If `hasOf1Cta(html)` is true (a `{{generate:` after the hero), `skipped`. Else follow `cta.md`: pick the host block, then insert a section right after the hero built with `ctaSectionHtml({ block, heading, text, button: { label, href } })`. `heading`, `text` and `label` are each `[instruction, default]` (the default is the static text shown without generation); `href` is `/of1`.
 7. Only if step 5 or 6 changed the HTML (both `skipped`: do nothing here, report `skipped`), save it to `page.html`. Run `da-put <target> @page.html --overwrite` (the copy, or the real page only when `real` was chosen), then `preview <target>`.
-8. If a CTA block was created or restyled, run `deliver --message "Add of1-cta block" -- blocks/of1-cta` with `--mode <code-delivery>` (and `--branch <name>` for `branch`/`pr`).
+8. If a CTA block was created or restyled: with `deliver=no` list `blocks/of1-cta` as changed, else run `deliver --message "Add of1-cta block" -- blocks/of1-cta` with `--mode <code-delivery>` (and `--branch <name>` for `branch`/`pr`).
 9. Report the preview URL `https://main--<repo>--<org>.aem.page<target>` and, for generation, the proxy URL `<hosts.proxyPreview><target>?of1-region=us` (`hosts` from `identity`).
 
 ## Report

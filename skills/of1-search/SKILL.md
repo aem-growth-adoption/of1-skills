@@ -12,6 +12,7 @@ description: Prepare Generative Search for a registered site: brand voice, sugge
 - Autonomous mode: `OF1_AUTONOMOUS` is set to anything other than `0` or `false`, or the argument `autonomous` is given. Never ask questions then.
 - If a portal tool returns unauthorized: interactive, tell the person to sign in (`/mcp` in Claude Code) and stop; autonomous, stop with `OF1_PORTAL_TOKEN missing or invalid`.
 - Brand voice and chips rules: `guidance.md` next to this file. Template tools live in `<plugin root>/lib/templates/`.
+- Input `deliver=no` (argument, or `OF1_DELIVER=no`): do not run `deliver`; list the paths this skill changed (blocks, `stardust/current`) under `Changed paths` in the report, for the caller to deliver once. Run alone, deliver as described.
 - Each sub-step ends with `done` or `skipped` (and why) in the report.
 
 ## Steps
@@ -27,7 +28,7 @@ description: Prepare Generative Search for a registered site: brand voice, sugge
    - `da-put <path> @template.html`, then `preview <path>...` for all built pages (paths without `.html`).
    - `upsert_template` { site, template: { path, intent, description, minItems?, maxItems? } } for every built entry and every `register` entry (for `register` pages take the intent from the name `<intent>-<n>`, else the best fit, and write a description of 1-500 characters). Keep `minItems <= maxItems`, whole numbers 1-20.
    - Report counts: kept, registered, built.
-6. **Block.** `install-block of1 --design stardust/current/DESIGN.json` (add `--design` only if the file exists; never `--overwrite`). Status `installed` or `exists` (report `skipped`). Commit and publish the code with `deliver --message "Add of1 block" -- blocks/of1` `--mode <code-delivery input, default main>` (and `--branch <name>` for `branch`/`pr`).
+6. **Block.** `install-block of1 --design stardust/current/DESIGN.json` (add `--design` only if the file exists; never `--overwrite`). Status `installed` or `exists` (report `skipped`). Unless `deliver=no`, commit and publish the code with `deliver --message "Add of1 block" -- blocks/of1` `--mode <code-delivery input, default main>` (and `--branch <name>` for `branch`/`pr`).
 7. **`/of1` page.** Run `da-put of1 @of1.html` where `of1.html` is `<body><header></header><main><div><h1>Search</h1><div class="of1"><div><div></div></div></div></div></main><footer></footer></body>`. On status `exists`: interactive, ask before overwriting and re-run with `--overwrite` only on yes; autonomous, keep it. Report `skipped` when kept. Then `preview of1`.
 8. Call `preview_changes` { site } so the portal asks gen-web to materialize the templates. Do not wait.
 

@@ -43,6 +43,7 @@ OpenCode (`opencode.json`):
 | `pages` / `OF1_PAGES` | JSON array of paths/URLs or `{path,type}`, or `@file` | chosen from the site's sitemap |
 | `page-mode` / `OF1_PAGE_MODE` | `copy` or `real` | `copy` |
 | `code-delivery` / `OF1_CODE_DELIVERY` | `main`, `branch` or `pr` | `main` |
+| `deliver=no` / `OF1_DELIVER=no` | a step lists its changed paths instead of delivering (used by `of1-integrate`, which delivers once) | deliver |
 
 ## Skills
 
