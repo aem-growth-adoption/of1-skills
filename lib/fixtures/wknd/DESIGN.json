@@ -1,0 +1,114 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-11-16T15:13:45.828Z",
+    "stardustVersion": "0.37.2",
+    "readArtifacts": [
+      "stardust/current/_brand-extraction.json",
+      "stardust/current/_computed-styles.json",
+      "stardust/current/DESIGN.md"
+    ],
+    "synthesizedInputs": [],
+    "mode": "descriptive current-state snapshot"
+  },
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-16T15:13:45.828Z",
+  "title": "Design System: WKND (current state)",
+  "extensions": {
+    "colorMeta": {
+      "wknd-yellow": {
+        "role": "primary",
+        "displayName": "WKND Yellow",
+        "canonical": "#ffea00",
+        "customProperty": "--brand-primary"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#202020",
+        "customProperty": "--text-color / --brand-secondary / --dark-color"
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ffffff",
+        "customProperty": "--background-color"
+      },
+      "mist": {
+        "role": "neutral",
+        "displayName": "Mist",
+        "canonical": "#ebebeb",
+        "customProperty": "--brand-third / --text-color-inverse"
+      },
+      "light-surface": {
+        "role": "neutral",
+        "displayName": "Light Surface",
+        "canonical": "#f7f7f7",
+        "customProperty": "--light-color"
+      },
+      "dim-gray": {
+        "role": "neutral",
+        "displayName": "Dim Gray",
+        "canonical": "#696969",
+        "customProperty": "--gray"
+      },
+      "link-blue": {
+        "role": "secondary",
+        "displayName": "Link Blue",
+        "canonical": "#0045ff",
+        "customProperty": "--link-color"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Asar display",
+        "purpose": "Page titles (h1 40px) and section headings (h2 36px)."
+      },
+      "title": {
+        "displayName": "Asar title",
+        "purpose": "Card/person names and sub-section headings (h3 24px)."
+      },
+      "body": {
+        "displayName": "Source Sans Pro body",
+        "purpose": "Running copy at 18px / 1.75."
+      },
+      "label": {
+        "displayName": "Source Sans Pro label",
+        "purpose": "Uppercase 600 labels: nav, buttons, h4/h5, card titles, FAQ questions."
+      }
+    },
+    "shadows": [],
+    "motifs": {
+      "borderRadius": {
+        "primary": "0px",
+        "secondary": null,
+        "pill": "50%"
+      },
+      "shadows": [],
+      "gradients": []
+    },
+    "register": "brand",
+    "layoutTokens": {
+      "--gutter": "14px",
+      "--content-max": "1164px",
+      "--shell-max": "1680px",
+      "--header-height": "200px",
+      "--header-mobile-height": "130px",
+      "--utility-height": "25px",
+      "--button-size": "48px"
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Yellow, square, uppercase CTA (View Trips, Full Article, All Trips).",
+      "html": "<a class=\"ds-btn-primary\" href=\"#\">View Trips</a>",
+      "css": ".ds-btn-primary{display:inline-block;background:#ffea00;color:#202020;padding:14px 35px;border:0;border-radius:0;font:600 14px/1.5 'Source Sans Pro',helvetica,arial,sans-serif;text-transform:uppercase;text-decoration:none}.ds-btn-primary:hover{background:#ffea00;color:#202020}.ds-btn-primary:focus-visible{outline:2px solid #202020;outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Trail Journal"
+  }
+}
